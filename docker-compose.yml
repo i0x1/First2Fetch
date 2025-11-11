@@ -1,4 +1,4 @@
-name: first2apply-monorepo
+name: first2fetch-monorepo
 
 services:
   nginx:
@@ -22,13 +22,13 @@ services:
     #   - rabbitmq
     #   - mysql
     volumes:
-      - ./:/first2apply
-      - /first2apply/.nx/cache
-      - /first2apply/.pnpm-store
+      - ./:/first2fetch
+      - /first2fetch/.nx/cache
+      - /first2fetch/.pnpm-store
       # Create anonymous volumes for any nested node_modules to isolate them
-      - nodeModules:/first2apply/node_modules # Use named volume for root
-      - /first2apply/apps/*/node_modules
-    working_dir: /first2apply
+      - nodeModules:/first2fetch/node_modules # Use named volume for root
+      - /first2fetch/apps/*/node_modules
+    working_dir: /first2fetch
     networks:
       - backend
     expose:
