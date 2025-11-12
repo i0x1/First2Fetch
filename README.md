@@ -3,32 +3,67 @@
 First 2 Apply (https://first2apply.com/) is an open-source job board aggregator that centralizes listings from platforms like LinkedIn, Indeed, Dice, and more, helping job seekers find opportunities faster.
 Watch demo [video](https://www.youtube.com/watch?v=9-OYPBhwYG8).
 
-## Project Setup
-The project has 2 main components:
-- supabase backend
-- desktop probe 
+## Installation
 
-Create `.env` files in both folders by coping the existing `.env.example` ones.
+This is a monorepo containing multiple applications and shared libraries. Follow these steps to set up the development environment:
 
-To set up the project using Supabase:
-```
-npx supabase init
-```
+### Prerequisites
+- Node.js 18+ 
+- pnpm package manager
 
-You should now be able to visit the Supabase dashboard by visiting http://localhost:54323/
-All required tables should already be configured.
+### Setup Instructions
 
-Then import the [sites_rows.csv](./supabase/sites_rows.csv) file into the `sites` table in the supabase manager.
+1. **Install dependencies**
+   ```bash
+   pnpm install
+   ```
 
-Run edge functions with hot reload:
-```
-npx supabase functions serve
-```
+2. **Build shared libraries**
+   ```bash
+   cd libraries/core && pnpm build
+   cd ../ui && pnpm build
+   ```
 
-Finally, navigate to the `desktopProbe` folder and run:
-```
-npm run start
-```
+3. **Set up environment files**
+   Create `.env` files by copying the existing `.env.example` files in relevant directories.
+
+4. **Set up Supabase (for backend development)**
+   ```bash
+   cd apps/backend
+   npx supabase init
+   npx supabase start
+   ```
+   The `supabase start` command will display all service URLs including:
+   - **Studio URL (Dashboard)**: http://127.0.0.1:54333
+   - **API URL**: http://127.0.0.1:54331
+   - **Database URL**: postgresql://postgres:postgres@127.0.0.1:54332/postgres
+   
+   If Supabase is already running, you can check the status and view URLs with:
+   ```bash
+   cd apps/backend
+   npx supabase status
+   ```
+   
+   Import the [sites_rows.csv](./apps/backend/supabase/sites_rows.csv) file into the `sites` table using the Studio interface.
+
+5. **Run applications**
+
+   **Desktop Application:**
+   ```bash
+   cd apps/desktopProbe
+   npm start
+   ```
+
+   **Backend Edge Functions (optional):**
+   ```bash
+   npx supabase functions serve
+   ```
+
+   **Landing Page (optional):**
+   ```bash
+   cd apps/landingPage
+   npm run dev
+   ```
 
 ## Release
 
