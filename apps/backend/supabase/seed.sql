@@ -257,12 +257,13 @@ create foreign data wrapper stripe_wrapper
   handler stripe_fdw_handler
   validator stripe_fdw_validator;
 
-insert into vault.secrets (name, secret)
-values (
-  'stripe_secret_key',
-  'YOUR_SECRET'
-)
-returning key_id;
+-- Commented out vault.secrets insertion due to permission issues in local dev
+-- insert into vault.secrets (name, secret)
+-- values (
+--   'stripe_secret_key',
+--   'YOUR_SECRET'
+-- )
+-- returning key_id;
 
 create server stripe_server
   foreign data wrapper stripe_wrapper
