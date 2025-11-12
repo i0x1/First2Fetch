@@ -101,8 +101,8 @@ on public.notes
 as permissive 
 for all 
 to authenticated 
-using (auth.uid() = user_id) 
-with check (auth.uid() = user_id);
+using ((select auth.uid()) = user_id) 
+with check ((select auth.uid()) = user_id);
 
 alter table public.sites enable row level security;
 alter table public.jobs enable row level security;
@@ -124,45 +124,45 @@ on public.links
 as permissive 
 for all 
 to authenticated 
-using (auth.uid() = user_id) 
-with check (auth.uid() = user_id);
+using ((select auth.uid()) = user_id) 
+with check ((select auth.uid()) = user_id);
 
 create policy "enable all for users based on user_id" 
 on public.jobs 
 as permissive 
 for all 
 to authenticated 
-using (auth.uid() = user_id) 
-with check (auth.uid() = user_id);
+using ((select auth.uid()) = user_id) 
+with check ((select auth.uid()) = user_id);
 
 create policy "enable insert reviews for authenticated users only" 
 on public.reviews 
 as permissive 
 for insert 
 to authenticated 
-with check (auth.uid() = user_id);
+with check ((select auth.uid()) = user_id);
 
 create policy "enable update reviews for authenticated users only"
 on public.reviews
 as permissive
 for update
 to authenticated
-using (auth.uid() = user_id);
+using ((select auth.uid()) = user_id);
 
 create policy "enable select reviews for authenticated users only" 
 on public.reviews 
 as permissive 
 for select 
 to authenticated 
-using (auth.uid() = user_id);
+using ((select auth.uid()) = user_id);
 
 create policy "enable all for users based on user_id" 
 on public.html_dumps 
 as permissive 
 for all 
 to authenticated 
-using (auth.uid() = user_id) 
-with check (auth.uid() = user_id);
+using ((select auth.uid()) = user_id) 
+with check ((select auth.uid()) = user_id);
 
 create table
 public.profiles (
@@ -185,7 +185,7 @@ on public.profiles
 as permissive 
 for select 
 to authenticated 
-using (auth.uid() = user_id);
+using ((select auth.uid()) = user_id);
 
 -- create custom DB functions
 create or replace function list_jobs(
@@ -197,7 +197,10 @@ create or replace function list_jobs(
     jobs_link_ids integer[] default null,
     jobs_labels text[] default null
 )
-returns setof jobs as $$
+returns setof jobs 
+language plpgsql
+set search_path = public
+as $$
 declare
   after_id integer;
   after_updated_at timestamp;
@@ -218,17 +221,19 @@ begin
     and (jobs_search is null or job_search_vector @@ plainto_tsquery('english', jobs_search))
   order by updated_at desc, id desc
   limit jobs_page_size;
-end; $$
-language plpgsql;
+end;
+$$;
 
 create or replace function get_user_id_by_email(email text)
 returns table (id uuid)
 security definer
+set search_path = public
+language plpgsql
 as $$
 begin
   return query select au.id from auth.users au where au.email = $1;
 end;
-$$ language plpgsql;
+$$;
 
 -- trigger used to automatically create public.profiles for new users
 create function public.handle_new_user()
@@ -322,8 +327,8 @@ on public.advanced_matching
 as permissive 
 for all 
 to authenticated 
-using (auth.uid() = user_id) 
-with check (auth.uid() = user_id);
+using ((select auth.uid()) = user_id) 
+with check ((select auth.uid()) = user_id);
 
 create or replace function count_chatgpt_usage(
   for_user_id uuid, 
@@ -333,6 +338,8 @@ create or replace function count_chatgpt_usage(
 ) 
 returns void 
 language plpgsql 
+security definer
+set search_path = public
 as $$
 begin
   update public.advanced_matching
@@ -349,7 +356,10 @@ alter table public.jobs
 add column job_search_vector tsvector;
 
 create or replace function update_job_search_vector()
-returns trigger as $$
+returns trigger 
+language plpgsql
+set search_path = public
+as $$
 begin
   -- Update the job_search_vector column with weighted tsvector values
   new.job_search_vector := 
@@ -357,7 +367,7 @@ begin
     setweight(to_tsvector('english', coalesce(new."companyName", '')), 'B');
   return new;
 end;
-$$ language plpgsql;
+$$;
 
 create trigger trigger_update_job_search_vector
 before insert or update of title, "companyName" on jobs
@@ -397,7 +407,10 @@ create or replace function count_jobs(
     jobs_link_ids integer[] default null,
     jobs_labels text[] default null
 )
-returns table(status "Job Status", job_count bigint) as $$
+returns table(status "Job Status", job_count bigint) 
+language plpgsql
+set search_path = public
+as $$
 begin
   return query
   select j.status, count(*) as job_count
@@ -409,8 +422,8 @@ begin
     and (jobs_search is null or j.job_search_vector @@ plainto_tsquery('english', jobs_search))
   group by j.status
   order by j.status;
-end; $$
-language plpgsql;
+end;
+$$;
 
 
 -- tables needed for 2025-11 release
@@ -424,6 +437,15 @@ create table public.ai_usage_daily (
   constraint ai_usage_daily_pkey primary key (user_id, usage_date),
   constraint ai_usage_daily_user_id_fkey foreign KEY (user_id) references auth.users (id) on delete RESTRICT
 ) TABLESPACE pg_default;
+
+alter table public.ai_usage_daily enable row level security;
+create policy "enable all for users based on user_id" 
+on public.ai_usage_daily 
+as permissive 
+for all 
+to authenticated 
+using ((select auth.uid()) = user_id) 
+with check ((select auth.uid()) = user_id);
 
 create view public.v_ai_usage_last_30d as
 select
@@ -445,7 +467,8 @@ create or replace function log_ai_usage(
   output_tokens_increment bigint
 ) 
 returns void 
-language plpgsql 
+language plpgsql
+set search_path = public
 as $$
 begin
   insert into public.ai_usage_daily (user_id, usage_date, cost, input_tokens, output_tokens)
@@ -458,3 +481,18 @@ begin
     updated_at = now();
 end;
 $$;
+
+-- Performance optimization: Add indexes for foreign keys
+-- These indexes improve JOIN performance and foreign key constraint checks
+
+-- Indexes for jobs table foreign keys
+create index if not exists idx_jobs_siteid on public.jobs("siteId");
+create index if not exists idx_jobs_link_id on public.jobs(link_id);
+
+-- Indexes for links table foreign keys
+create index if not exists idx_links_site_id on public.links(site_id);
+create index if not exists idx_links_user_id on public.links(user_id);
+
+-- Indexes for notes table foreign keys
+create index if not exists idx_notes_job_id on public.notes(job_id);
+create index if not exists idx_notes_user_id on public.notes(user_id);
