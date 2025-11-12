@@ -22,8 +22,8 @@ const config: ForgeConfig = {
     appBundleId: process.env.APP_BUNDLE_ID,
     protocols: [
       {
-        name: 'First 2 Apply',
-        schemes: ['first2apply'],
+        name: 'First 2 Fetch',
+        schemes: ['first2fetch'],
       },
     ],
     osxSign: {},

@@ -29,7 +29,7 @@ export class F2aSupabaseApi {
   sendPasswordResetEmail({ email }: { email: string }) {
     return this._supabaseApiCall(() =>
       this._supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: 'first2apply://reset-password',
+        redirectTo: 'first2fetch://reset-password',
       }),
     );
   }
@@ -330,10 +330,8 @@ export class F2aSupabaseApi {
       !!data &&
       typeof data === 'object' &&
       'errorMessage' in data &&
-      // @ts-ignore
       typeof data.errorMessage === 'string'
     ) {
-      // @ts-ignore
       throw new Error(data.errorMessage);
     }
 

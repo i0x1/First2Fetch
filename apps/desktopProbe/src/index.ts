@@ -29,7 +29,7 @@ if (require('electron-squirrel-startup')) {
   app.quit();
 }
 
-const APP_PROTOCOL = 'first2apply';
+const APP_PROTOCOL = 'first2fetch';
 let appIsRunning = false;
 const storage = new Storage<{
   width: number;

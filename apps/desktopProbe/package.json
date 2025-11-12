@@ -1,6 +1,6 @@
 {
-  "name": "first2apply-desktop",
-  "productName": "First 2 Apply",
+  "name": "first2fetch-desktop",
+  "productName": "First 2 Fetch",
   "version": "2.3.0",
   "description": "First 2 Apply - Job Alert App | Instant Notifications for New Job Listings",
   "main": ".webpack/main",
