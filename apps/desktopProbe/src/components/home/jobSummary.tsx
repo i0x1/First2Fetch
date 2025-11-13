@@ -4,13 +4,16 @@ import {
   CheckIcon,
   CookieIcon,
   CopyIcon,
+  HeartFilledIcon,
   InfoCircledIcon,
   ListBulletIcon,
+  MinusCircledIcon,
   ResetIcon,
   TrashIcon,
 } from '@radix-ui/react-icons';
 import React, { useMemo } from 'react';
 
+import { Icons } from '@/components/icons';
 import { useLinks } from '@/hooks/links';
 import { useSites } from '@/hooks/sites';
 import { LABEL_COLOR_CLASSES } from '@/lib/labels';
@@ -36,12 +39,26 @@ export function JobSummary({
   onUpdateJobStatus,
   onUpdateLabels,
   onOpenUrl,
+  isFavoriteCompany = false,
+  isBlacklistedCompany = false,
+  onToggleFavorite,
+  onToggleBlacklist,
+  favoriteActionPending = false,
+  blacklistActionPending = false,
+  isCompanyPreferencesLoaded = false,
 }: {
   job: Job;
   onView: (job: Job) => void;
   onUpdateJobStatus: (jobId: number, status: JobStatus) => void;
   onUpdateLabels: (jobId: number, labels: JobLabel[]) => void;
   onOpenUrl: (url: string) => void;
+  isFavoriteCompany?: boolean;
+  isBlacklistedCompany?: boolean;
+  onToggleFavorite?: (companyName?: string | null) => void | Promise<void>;
+  onToggleBlacklist?: (companyName?: string | null) => void | Promise<void>;
+  favoriteActionPending?: boolean;
+  blacklistActionPending?: boolean;
+  isCompanyPreferencesLoaded?: boolean;
 }) {
   const { siteLogos } = useSites();
   const { links } = useLinks();
@@ -81,6 +98,7 @@ export function JobSummary({
           {/* Company name & location */}
           <p className="text-sm text-muted-foreground">
             {job.companyName}
+            {isFavoriteCompany && <HeartFilledIcon className="ml-1 inline h-3.5 w-3.5 text-rose-500" />}
             {job.location && (
               <span>
                 {' · '}
@@ -257,6 +275,72 @@ export function JobSummary({
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
+
+        {/* Favorite company button */}
+        {onToggleFavorite && job.companyName && (
+          <TooltipProvider delayDuration={500}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="lg"
+                  variant="secondary"
+                  className={`w-10 border-none px-0 transition-colors duration-200 ease-in-out ${
+                    isFavoriteCompany
+                      ? 'bg-rose-500/10 hover:bg-rose-500/20 focus:bg-rose-500/20'
+                      : 'bg-border hover:bg-foreground/15 focus:bg-foreground/15'
+                  }`}
+                  disabled={!isCompanyPreferencesLoaded || favoriteActionPending}
+                  onClick={() => onToggleFavorite(job.companyName)}
+                >
+                  {favoriteActionPending ? (
+                    <Icons.spinner2 className="h-5 w-auto animate-spin" />
+                  ) : (
+                    <HeartFilledIcon
+                      className={`h-5 w-auto ${isFavoriteCompany ? 'text-rose-500' : 'text-muted-foreground'}`}
+                    />
+                  )}
+                </Button>
+              </TooltipTrigger>
+
+              <TooltipContent side="bottom" className="text-base">
+                {isFavoriteCompany ? 'Remove from favorites' : 'Add to favorites'}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+
+        {/* Block company button */}
+        {onToggleBlacklist && job.companyName && (
+          <TooltipProvider delayDuration={500}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="lg"
+                  variant="secondary"
+                  className={`w-10 border-none px-0 transition-colors duration-200 ease-in-out ${
+                    isBlacklistedCompany
+                      ? 'bg-destructive/10 hover:bg-destructive/20 focus:bg-destructive/20'
+                      : 'bg-border hover:bg-foreground/15 focus:bg-foreground/15'
+                  }`}
+                  disabled={!isCompanyPreferencesLoaded || blacklistActionPending}
+                  onClick={() => onToggleBlacklist(job.companyName)}
+                >
+                  {blacklistActionPending ? (
+                    <Icons.spinner2 className="h-5 w-auto animate-spin" />
+                  ) : (
+                    <MinusCircledIcon
+                      className={`h-5 w-auto ${isBlacklistedCompany ? 'text-destructive' : 'text-muted-foreground'}`}
+                    />
+                  )}
+                </Button>
+              </TooltipTrigger>
+
+              <TooltipContent side="bottom" className="text-base">
+                {isBlacklistedCompany ? 'Remove from blacklist' : 'Block company'}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
 
         <DeleteJobDialog
           isOpen={isDeleteDialogOpen}

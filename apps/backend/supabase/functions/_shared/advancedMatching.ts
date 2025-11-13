@@ -48,6 +48,10 @@ export async function applyAdvancedMatchingFilters({
     return { newStatus: 'new' };
   }
 
+  if (isFavoriteCompany({ companyName: job.companyName, advancedMatching })) {
+    logger.info(`job marked as favorite due to company name: ${job.companyName}`);
+  }
+
   // exclude jobs from specific companies if it fully matches the entire company name
   if (isExcludedCompany({ companyName: job.companyName, advancedMatching })) {
     logger.info(`job excluded due to company name: ${job.companyName}`);
@@ -94,6 +98,18 @@ export function isExcludedCompany({
   const excludedCompanies = advancedMatching.blacklisted_companies.map((c) => c.toLowerCase());
   const lowerCaseCompanyName = companyName.toLowerCase();
   return excludedCompanies.some((c) => lowerCaseCompanyName === c);
+}
+
+export function isFavoriteCompany({
+  companyName,
+  advancedMatching,
+}: {
+  companyName: string;
+  advancedMatching: AdvancedMatchingConfig;
+}): boolean {
+  const favoriteCompanies = advancedMatching.favorite_companies.map((c) => c.toLowerCase());
+  const lowerCaseCompanyName = companyName.toLowerCase();
+  return favoriteCompanies.some((c) => lowerCaseCompanyName === c);
 }
 
 /**

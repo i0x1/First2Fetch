@@ -7,9 +7,14 @@ import { useError } from '@/hooks/error';
 import { useSession } from '@/hooks/session';
 import { useSettings } from '@/hooks/settings';
 import {
+  addBlacklistedCompany,
+  addFavoriteCompany,
   getJobById,
+  getAdvancedMatchingConfig,
   listJobs,
   openExternalUrl,
+  removeBlacklistedCompany,
+  removeFavoriteCompany,
   scanJob,
   updateJobLabels,
   updateJobStatus,
@@ -65,6 +70,12 @@ export function JobTabsContent({
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
   const selectedJob = listing.jobs.find((job) => job.id === selectedJobId);
 
+  const [favoriteCompanies, setFavoriteCompanies] = useState<string[]>([]);
+  const [blacklistedCompanies, setBlacklistedCompanies] = useState<string[]>([]);
+  const [isAdvancedMatchingLoaded, setIsAdvancedMatchingLoaded] = useState(false);
+  const [pendingFavoriteCompany, setPendingFavoriteCompany] = useState<string | null>(null);
+  const [pendingBlacklistCompany, setPendingBlacklistCompany] = useState<string | null>(null);
+
   const statusIndex = ALL_JOB_STATUSES.indexOf(status);
 
   // Navigate between tabs using arrow keys
@@ -76,6 +87,24 @@ export function JobTabsContent({
     const nextIndex = (statusIndex + 1) % ALL_JOB_STATUSES.length;
     navigate(`?status=${ALL_JOB_STATUSES[nextIndex]}&r=${Math.random()}`);
   });
+
+  useEffect(() => {
+    const loadAdvancedMatching = async () => {
+      try {
+        const config = await getAdvancedMatchingConfig();
+        if (config) {
+          setFavoriteCompanies(config.favorite_companies ?? []);
+          setBlacklistedCompanies(config.blacklisted_companies ?? []);
+        }
+      } catch (error) {
+        handleError({ error, title: 'Failed to load company preferences' });
+      } finally {
+        setIsAdvancedMatchingLoaded(true);
+      }
+    };
+
+    loadAdvancedMatching();
+  }, [handleError]);
 
   // Reload jobs when location changes
   useEffect(() => {
@@ -314,6 +343,165 @@ export function JobTabsContent({
     );
   };
 
+  const normalizeCompanyName = (companyName?: string | null) => companyName?.trim() ?? '';
+  const companyKey = (companyName?: string | null) => normalizeCompanyName(companyName).toLowerCase();
+
+  const isFavoriteCompany = (companyName?: string | null) => {
+    const key = companyKey(companyName);
+    if (!key) {
+      return false;
+    }
+    return favoriteCompanies.some((company) => company.toLowerCase() === key);
+  };
+
+  const isBlacklistedCompany = (companyName?: string | null) => {
+    const key = companyKey(companyName);
+    if (!key) {
+      return false;
+    }
+    return blacklistedCompanies.some((company) => company.toLowerCase() === key);
+  };
+
+  const removeJobsByCompany = (companyName: string): Job | null => {
+    const key = companyName.toLowerCase();
+    let nextJobToSelect: Job | null = null;
+    let removedSelectedJob = false;
+    setListing((prev) => {
+      const jobsToRemove = prev.jobs.filter(
+        (job) => job.companyName && job.companyName.toLowerCase() === key,
+      );
+      if (jobsToRemove.length === 0) {
+        return prev;
+      }
+
+      const remainingJobs = prev.jobs.filter(
+        (job) => !job.companyName || job.companyName.toLowerCase() !== key,
+      );
+
+      let newCount = prev.new;
+      let appliedCount = prev.applied;
+      let archivedCount = prev.archived;
+      let filteredCount = prev.filtered;
+      const removedIds = new Set<number>();
+
+      jobsToRemove.forEach((job) => {
+        removedIds.add(job.id);
+        switch (job.status) {
+          case 'new':
+            newCount = Math.max(0, newCount - 1);
+            break;
+          case 'applied':
+            appliedCount = Math.max(0, appliedCount - 1);
+            break;
+          case 'archived':
+            archivedCount = Math.max(0, archivedCount - 1);
+            break;
+          case 'excluded_by_advanced_matching':
+            filteredCount = Math.max(0, filteredCount - 1);
+            break;
+          default:
+            break;
+        }
+      });
+
+      if (selectedJobId && removedIds.has(selectedJobId)) {
+        removedSelectedJob = true;
+        nextJobToSelect = remainingJobs[0] ?? null;
+      }
+
+      return {
+        ...prev,
+        jobs: remainingJobs,
+        new: newCount,
+        applied: appliedCount,
+        archived: archivedCount,
+        filtered: filteredCount,
+      };
+    });
+
+    if (removedSelectedJob) {
+      if (nextJobToSelect) {
+        setSelectedJobId(nextJobToSelect.id);
+      } else {
+        setSelectedJobId(null);
+      }
+    }
+
+    return nextJobToSelect;
+  };
+
+  const toggleFavoriteCompany = async (companyName?: string | null) => {
+    const normalized = normalizeCompanyName(companyName);
+    if (!normalized) {
+      return;
+    }
+
+    const key = normalized.toLowerCase();
+    setPendingFavoriteCompany(key);
+    const alreadyFavorite = isFavoriteCompany(normalized);
+
+    try {
+      const updatedConfig = alreadyFavorite
+        ? await removeFavoriteCompany(normalized)
+        : await addFavoriteCompany(normalized);
+
+      setFavoriteCompanies(updatedConfig.favorite_companies ?? []);
+      setBlacklistedCompanies(updatedConfig.blacklisted_companies ?? []);
+
+      toast({
+        title: alreadyFavorite ? `${normalized} removed from favorites` : `${normalized} added to favorites`,
+        variant: 'success',
+      });
+    } catch (error) {
+      handleError({ error, title: 'Failed to update favorite companies' });
+    } finally {
+      setPendingFavoriteCompany(null);
+    }
+  };
+
+  const toggleBlacklistedCompany = async (companyName?: string | null) => {
+    const normalized = normalizeCompanyName(companyName);
+    if (!normalized) {
+      return;
+    }
+
+    const key = normalized.toLowerCase();
+    setPendingBlacklistCompany(key);
+    const alreadyBlacklisted = isBlacklistedCompany(normalized);
+
+    try {
+      const updatedConfig = alreadyBlacklisted
+        ? await removeBlacklistedCompany(normalized)
+        : await addBlacklistedCompany(normalized);
+
+      setBlacklistedCompanies(updatedConfig.blacklisted_companies ?? []);
+      setFavoriteCompanies(updatedConfig.favorite_companies ?? []);
+
+      if (alreadyBlacklisted) {
+        toast({
+          title: `${normalized} removed from blacklist`,
+          variant: 'success',
+        });
+      } else {
+        const nextJob = removeJobsByCompany(normalized);
+        toast({
+          title: `${normalized} added to blacklist`,
+          description: 'We cleaned the current list for you. Future scans will skip this company.',
+          variant: 'success',
+        });
+        if (nextJob) {
+          scanJobAndSelect(nextJob);
+        }
+      }
+    } catch (error) {
+      handleError({ error, title: 'Failed to update blacklisted companies' });
+    } finally {
+      setPendingBlacklistCompany(null);
+    }
+  };
+
+  const selectedCompanyKey = selectedJob ? companyKey(selectedJob.companyName) : '';
+
   return (
     <>
       {ALL_JOB_STATUSES.map((statusItem) => {
@@ -351,6 +539,7 @@ export function JobTabsContent({
                     onDelete={(j) => {
                       onUpdateJobStatus(j.id, 'deleted');
                     }}
+                    favoriteCompanies={favoriteCompanies}
                   />
                 ) : (
                   <p className="px-4 pt-20 text-center">
@@ -382,6 +571,17 @@ export function JobTabsContent({
                         onUpdateJobStatus={onUpdateJobStatus}
                         onUpdateLabels={onUpdateJobLabels}
                         onOpenUrl={onOpenUrl}
+                        isFavoriteCompany={isFavoriteCompany(selectedJob.companyName)}
+                        isBlacklistedCompany={isBlacklistedCompany(selectedJob.companyName)}
+                        onToggleFavorite={toggleFavoriteCompany}
+                        onToggleBlacklist={toggleBlacklistedCompany}
+                        favoriteActionPending={
+                          !!selectedCompanyKey && pendingFavoriteCompany === selectedCompanyKey
+                        }
+                        blacklistActionPending={
+                          !!selectedCompanyKey && pendingBlacklistCompany === selectedCompanyKey
+                        }
+                        isCompanyPreferencesLoaded={isAdvancedMatchingLoaded}
                       />
                       <JobNotes jobId={selectedJobId} />
                       <hr className="border-t border-muted" />
@@ -653,3 +853,4 @@ const NoSearchResults = () => {
     <span>There aren't any jobs that match your search.</span>
   );
 };
+

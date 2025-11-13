@@ -204,11 +204,19 @@ as $$
 declare
   after_id integer;
   after_updated_at timestamp;
+  favorite_companies_lower text[] := ARRAY[]::text[];
 begin
   if jobs_after is not null then
     after_id := split_part(jobs_after, '!', 1)::integer;
     after_updated_at := split_part(jobs_after, '!', 2)::timestamp;
   end if;
+
+  select coalesce(array_agg(lower(fc)), ARRAY[]::text[]) into favorite_companies_lower
+  from (
+    select unnest(am.favorite_companies) as fc
+    from public.advanced_matching am
+    where am.user_id = auth.uid()
+  ) favorite_values;
 
   return query
   select *
@@ -219,7 +227,9 @@ begin
     and (array_length(jobs_link_ids, 1) is null or link_id = any(jobs_link_ids))
     and (array_length(jobs_labels, 1) is null or labels && jobs_labels)
     and (jobs_search is null or job_search_vector @@ plainto_tsquery('english', jobs_search))
-  order by updated_at desc, id desc
+  order by (case when array_length(favorite_companies_lower, 1) > 0 then coalesce(lower("companyName") = any(favorite_companies_lower), false) else false end) desc,
+           updated_at desc,
+           id desc
   limit jobs_page_size;
 end;
 $$;
@@ -316,6 +326,7 @@ public.advanced_matching (
   created_at timestamp with time zone not null default now(),
   user_id uuid not null default auth.uid (),
   blacklisted_companies text[] not null default '{}'::text[],
+  favorite_companies text[] not null default '{}'::text[],
   chatgpt_prompt text not null default ''::text,
   ai_api_cost double precision not null default '0'::double precision,
   ai_api_input_tokens_used double precision not null default '0'::double precision,
@@ -456,6 +467,7 @@ $$;
 create or replace function update_advanced_matching_with_ai_config(
   p_chatgpt_prompt text,
   p_blacklisted_companies text[],
+  p_favorite_companies text[] default null,
   p_ai_provider text default null,
   p_ai_model text default null,
   p_ai_api_key text default null
@@ -487,6 +499,7 @@ begin
     user_id,
     chatgpt_prompt,
     blacklisted_companies,
+    favorite_companies,
     ai_provider,
     ai_model,
     ai_api_key_encrypted
@@ -495,6 +508,7 @@ begin
     v_user_id,
     p_chatgpt_prompt,
     p_blacklisted_companies,
+    coalesce(p_favorite_companies, '{}'::text[]),
     p_ai_provider,
     p_ai_model,
     v_encrypted_key
@@ -502,6 +516,7 @@ begin
   on conflict (user_id) do update set
     chatgpt_prompt = excluded.chatgpt_prompt,
     blacklisted_companies = excluded.blacklisted_companies,
+    favorite_companies = excluded.favorite_companies,
     ai_provider = excluded.ai_provider,
     ai_model = excluded.ai_model,
     ai_api_key_encrypted = coalesce(excluded.ai_api_key_encrypted, advanced_matching.ai_api_key_encrypted);

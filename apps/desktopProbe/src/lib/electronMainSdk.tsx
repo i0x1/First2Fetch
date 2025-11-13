@@ -368,6 +368,7 @@ export async function deleteNote(noteId: number): Promise<void> {
 }
 
 export type AdvancedMatchingConfigWithAI = AdvancedMatchingConfig & {
+  favorite_companies: string[];
   ai_provider?: string | null;
   ai_model?: string | null;
   ai_api_key_encrypted?: string | null;
@@ -386,6 +387,7 @@ export async function getAdvancedMatchingConfig(): Promise<AdvancedMatchingConfi
 type AdvancedMatchingUpdatePayload = {
   chatgpt_prompt: string;
   blacklisted_companies: string[];
+  favorite_companies: string[];
   ai_provider?: string | null;
   ai_model?: string | null;
   ai_api_key_encrypted?: string | null;
@@ -395,6 +397,65 @@ export async function updateAdvancedMatchingConfig(config: AdvancedMatchingUpdat
   return await _mainProcessApiCall<AdvancedMatchingConfigWithAI>('update-advanced-matching-config', {
     config,
   });
+}
+
+export async function addFavoriteCompany(companyName: string) {
+  return await _mainProcessApiCall<AdvancedMatchingConfigWithAI>('add-favorite-company', { companyName });
+}
+
+export async function removeFavoriteCompany(companyName: string) {
+  return await _mainProcessApiCall<AdvancedMatchingConfigWithAI>('remove-favorite-company', { companyName });
+}
+
+export async function addBlacklistedCompany(companyName: string) {
+  return await _mainProcessApiCall<AdvancedMatchingConfigWithAI>('add-blacklisted-company', { companyName });
+}
+
+export async function removeBlacklistedCompany(companyName: string) {
+  return await _mainProcessApiCall<AdvancedMatchingConfigWithAI>('remove-blacklisted-company', { companyName });
+}
+
+export type UserSettingsExport = {
+  version: '1.0';
+  exported_at: string;
+  advanced_matching: {
+    chatgpt_prompt: string;
+    blacklisted_companies: string[];
+    favorite_companies: string[];
+    ai_provider: string | null;
+    ai_model: string | null;
+  };
+  saved_searches: Array<{
+    title: string;
+    url: string;
+    site_id: number;
+    site_name: string | null;
+  }>;
+};
+
+export type UserSettingsImport = {
+  version: '1.0';
+  advanced_matching?: {
+    chatgpt_prompt?: string;
+    blacklisted_companies?: string[];
+    favorite_companies?: string[];
+    ai_provider?: string | null;
+    ai_model?: string | null;
+  };
+  saved_searches?: Array<{
+    title?: string;
+    url?: string;
+    site_id?: number | null;
+    site_name?: string | null;
+  }>;
+};
+
+export async function exportUserSettings(): Promise<UserSettingsExport> {
+  return await _mainProcessApiCall<UserSettingsExport>('export-user-settings', {});
+}
+
+export async function importUserSettings(settings: UserSettingsImport) {
+  return await _mainProcessApiCall<AdvancedMatchingConfigWithAI>('import-user-settings', { settings });
 }
 
 /**

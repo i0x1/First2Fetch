@@ -490,6 +490,7 @@ export class F2aSupabaseApi {
   async updateAdvancedMatchingConfig(config: {
     chatgpt_prompt: string;
     blacklisted_companies: string[];
+    favorite_companies: string[];
     ai_provider?: string | null;
     ai_model?: string | null;
     ai_api_key_encrypted?: string | null;
@@ -499,6 +500,7 @@ export class F2aSupabaseApi {
     const { data: updatedConfig, error } = await (this._supabase.rpc as any)('update_advanced_matching_with_ai_config', {
       p_chatgpt_prompt: config.chatgpt_prompt,
       p_blacklisted_companies: config.blacklisted_companies,
+      p_favorite_companies: config.favorite_companies,
       p_ai_provider: config.ai_provider || null,
       p_ai_model: config.ai_model || null,
       p_ai_api_key: config.ai_api_key_encrypted || null, // This will be encrypted in the function
@@ -511,6 +513,114 @@ export class F2aSupabaseApi {
     return updatedConfig;
   }
 
+  private _normalizeCompanyName(companyName: string): string {
+    return companyName.trim();
+  }
+
+  private _ensureUniqueCompanies(companies: string[]): string[] {
+    const seen = new Set<string>();
+    const normalized: string[] = [];
+    for (const company of companies) {
+      const trimmed = this._normalizeCompanyName(company);
+      if (!trimmed) {
+        continue;
+      }
+      const key = trimmed.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        normalized.push(trimmed);
+      }
+    }
+    return normalized;
+  }
+
+  private async _getOrCreateAdvancedMatchingConfig() {
+    const config = await this.getAdvancedMatchingConfig();
+    if (config) {
+      return config;
+    }
+
+    return await this.updateAdvancedMatchingConfig({
+      chatgpt_prompt: '',
+      blacklisted_companies: [],
+      favorite_companies: [],
+      ai_provider: null,
+      ai_model: null,
+      ai_api_key_encrypted: null,
+    });
+  }
+
+  async addFavoriteCompany(companyName: string) {
+    const config = await this._getOrCreateAdvancedMatchingConfig();
+    const normalizedName = this._normalizeCompanyName(companyName);
+    if (!normalizedName) {
+      return config;
+    }
+
+    const updatedFavorites = this._ensureUniqueCompanies([...config.favorite_companies, normalizedName]);
+
+    return this.updateAdvancedMatchingConfig({
+      chatgpt_prompt: config.chatgpt_prompt,
+      blacklisted_companies: config.blacklisted_companies,
+      favorite_companies: updatedFavorites,
+      ai_provider: config.ai_provider,
+      ai_model: config.ai_model,
+    });
+  }
+
+  async removeFavoriteCompany(companyName: string) {
+    const config = await this._getOrCreateAdvancedMatchingConfig();
+    const normalizedName = this._normalizeCompanyName(companyName);
+    const updatedFavorites = config.favorite_companies.filter(
+      (company: string) => company.toLowerCase() !== normalizedName.toLowerCase(),
+    );
+
+    return this.updateAdvancedMatchingConfig({
+      chatgpt_prompt: config.chatgpt_prompt,
+      blacklisted_companies: config.blacklisted_companies,
+      favorite_companies: updatedFavorites,
+      ai_provider: config.ai_provider,
+      ai_model: config.ai_model,
+    });
+  }
+
+  async addBlacklistedCompany(companyName: string) {
+    const config = await this._getOrCreateAdvancedMatchingConfig();
+    const normalizedName = this._normalizeCompanyName(companyName);
+    if (!normalizedName) {
+      return config;
+    }
+
+    const updatedBlacklist = this._ensureUniqueCompanies([...config.blacklisted_companies, normalizedName]);
+    const updatedFavorites = config.favorite_companies.filter(
+      (company: string) => company.toLowerCase() !== normalizedName.toLowerCase(),
+    );
+
+    return this.updateAdvancedMatchingConfig({
+      chatgpt_prompt: config.chatgpt_prompt,
+      blacklisted_companies: updatedBlacklist,
+      favorite_companies: updatedFavorites,
+      ai_provider: config.ai_provider,
+      ai_model: config.ai_model,
+    });
+  }
+
+  async removeBlacklistedCompany(companyName: string) {
+    const config = await this._getOrCreateAdvancedMatchingConfig();
+    const normalizedName = this._normalizeCompanyName(companyName);
+    const updatedBlacklist = config.blacklisted_companies.filter(
+      (company: string) => company.toLowerCase() !== normalizedName.toLowerCase(),
+    );
+
+    return this.updateAdvancedMatchingConfig({
+      chatgpt_prompt: config.chatgpt_prompt,
+      blacklisted_companies: updatedBlacklist,
+      favorite_companies: config.favorite_companies,
+      ai_provider: config.ai_provider,
+      ai_model: config.ai_model,
+    });
+  }
+
   /**
    * Increase scrape failure count for a link.
    */
@@ -518,5 +628,147 @@ export class F2aSupabaseApi {
     await this._supabaseApiCall(async () =>
       this._supabase.from('links').update({ scrape_failure_count: failures }).eq('id', linkId),
     );
+  }
+
+  async exportUserSettings() {
+    const config = await this._getOrCreateAdvancedMatchingConfig();
+    const [links, sites] = await Promise.all([
+      this._supabaseApiCall(async () =>
+        this._supabase.from('links').select('title,url,site_id').order('created_at', { ascending: true }),
+      ),
+      this._supabaseApiCall(async () => this._supabase.from('sites').select('id,name')),
+    ]);
+
+    const siteNameMap = new Map<number, string>();
+    for (const site of sites ?? []) {
+      if (site?.id && site?.name) {
+        siteNameMap.set(site.id, site.name);
+      }
+    }
+
+    const savedSearches =
+      links?.map((link) => ({
+        title: link.title,
+        url: link.url,
+        site_id: link.site_id,
+        site_name: siteNameMap.get(link.site_id) ?? null,
+      })) ?? [];
+
+    return {
+      version: '1.0',
+      exported_at: new Date().toISOString(),
+      advanced_matching: {
+        chatgpt_prompt: config.chatgpt_prompt,
+        blacklisted_companies: config.blacklisted_companies,
+        favorite_companies: config.favorite_companies,
+        ai_provider: config.ai_provider ?? null,
+        ai_model: config.ai_model ?? null,
+      },
+      saved_searches: savedSearches,
+    };
+  }
+
+  async importUserSettings(settings: {
+    version: string;
+    advanced_matching?: {
+      chatgpt_prompt?: string;
+      blacklisted_companies?: string[];
+      favorite_companies?: string[];
+      ai_provider?: string | null;
+      ai_model?: string | null;
+    };
+    saved_searches?: Array<{
+      title?: string;
+      url?: string;
+      site_id?: number | null;
+      site_name?: string | null;
+    }>;
+  }) {
+    if (!settings || typeof settings !== 'object') {
+      throw new Error('Invalid settings payload');
+    }
+
+    if (!settings.version || settings.version !== '1.0') {
+      throw new Error(`Unsupported settings version: ${settings.version ?? 'unknown'}`);
+    }
+
+    const advancedMatching = settings.advanced_matching ?? {};
+
+    const updatedConfig = await this.updateAdvancedMatchingConfig({
+      chatgpt_prompt: advancedMatching.chatgpt_prompt ?? '',
+      blacklisted_companies: this._ensureUniqueCompanies(advancedMatching.blacklisted_companies ?? []),
+      favorite_companies: this._ensureUniqueCompanies(advancedMatching.favorite_companies ?? []),
+      ai_provider: advancedMatching.ai_provider ?? null,
+      ai_model: advancedMatching.ai_model ?? null,
+    });
+
+    const savedSearches = settings.saved_searches ?? [];
+    if (savedSearches.length === 0) {
+      return updatedConfig;
+    }
+
+    const [existingLinks, sites] = await Promise.all([
+      this._supabaseApiCall(async () => this._supabase.from('links').select('id,url')),
+      this._supabaseApiCall(async () => this._supabase.from('sites').select('id,name')),
+    ]);
+
+    const existingLinksByUrl = new Map<string, { id: number }>();
+    for (const link of existingLinks ?? []) {
+      if (link?.url) {
+        existingLinksByUrl.set(link.url.toLowerCase(), { id: link.id });
+      }
+    }
+
+    const siteIdByName = new Map<string, number>();
+    for (const site of sites ?? []) {
+      if (site?.id && site?.name) {
+        siteIdByName.set(site.name.toLowerCase(), site.id);
+      }
+    }
+
+    for (const saved of savedSearches) {
+      if (!saved?.url) {
+        continue;
+      }
+
+      const normalizedUrl = saved.url.trim();
+      if (!normalizedUrl) {
+        continue;
+      }
+
+      let siteId: number | undefined = undefined;
+      if (typeof saved.site_id === 'number') {
+        siteId = saved.site_id;
+      } else if (saved.site_name) {
+        siteId = siteIdByName.get(saved.site_name.toLowerCase());
+      }
+
+      if (!siteId) {
+        // Skip saved search if we can't determine a valid site
+        continue;
+      }
+
+      const title = (saved.title ?? '').trim() || normalizedUrl;
+      const existing = existingLinksByUrl.get(normalizedUrl.toLowerCase());
+
+      if (existing) {
+        await this._supabaseApiCall(async () =>
+          this._supabase.from('links').update({ title, site_id: siteId, url: normalizedUrl }).eq('id', existing.id),
+        );
+      } else {
+        await this._supabaseApiCall(async () =>
+          this._supabase
+            .from('links')
+            .insert({
+              title,
+              url: normalizedUrl,
+              site_id: siteId,
+            })
+            .select('id'),
+        );
+      }
+    }
+
+    return updatedConfig;
   }
 }

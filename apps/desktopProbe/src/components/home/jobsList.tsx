@@ -1,4 +1,4 @@
-import { ArchiveIcon, TrashIcon } from '@radix-ui/react-icons';
+import { ArchiveIcon, HeartFilledIcon, TrashIcon } from '@radix-ui/react-icons';
 import { createRef, useEffect, useMemo, useState } from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
 import InfiniteScroll from 'react-infinite-scroll-component';
@@ -27,6 +27,7 @@ export function JobsList({
   onSelect,
   onArchive,
   onDelete,
+  favoriteCompanies = [],
 }: {
   jobs: Job[];
   selectedJobId?: number;
@@ -36,6 +37,7 @@ export function JobsList({
   onSelect: (job: Job) => void;
   onArchive: (job: Job) => void;
   onDelete: (job: Job) => void;
+  favoriteCompanies?: string[];
 }) {
   const { siteLogos, siteMap } = useSites();
   const { links } = useLinks();
@@ -120,6 +122,15 @@ export function JobsList({
     { preventDefault: true },
   );
 
+  const isFavoriteCompany = (companyName?: string | null) => {
+    if (!companyName) {
+      return false;
+    }
+
+    const normalized = companyName.trim().toLowerCase();
+    return favoriteCompanies.some((company) => company.toLowerCase() === normalized);
+  };
+
   return (
     <InfiniteScroll
       dataLength={jobs.length}
@@ -142,7 +153,10 @@ export function JobsList({
             >
               <div className="flex flex-wrap-reverse items-center justify-between gap-1.5">
                 {/* Company Name */}
-                <p className="my-1.5 text-xs text-muted-foreground">{job.companyName}</p>
+                <p className="my-1.5 flex items-center gap-1 text-xs text-muted-foreground">
+                  <span>{job.companyName}</span>
+                  {isFavoriteCompany(job.companyName) && <HeartFilledIcon className="h-3 w-3 text-rose-500" />}
+                </p>
 
                 {/* Action buttons */}
                 <div className="ml-auto flex items-center gap-2">

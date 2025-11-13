@@ -147,6 +147,7 @@ export type AdvancedMatchingConfig = {
   id: number;
   user_id: string;
   blacklisted_companies: string[];
+  favorite_companies: string[];
   chatgpt_prompt: string;
   ai_api_cost: number;
   ai_api_input_tokens_used: number;
@@ -229,8 +230,13 @@ export type DbSchema = {
       };
       advanced_matching: {
         Row: AdvancedMatchingConfig;
-        Insert: Pick<AdvancedMatchingConfig, 'blacklisted_companies' | 'chatgpt_prompt' | 'ai_provider' | 'ai_model' | 'ai_api_key_encrypted'>;
-        Update: Partial<Pick<AdvancedMatchingConfig, 'blacklisted_companies' | 'chatgpt_prompt' | 'ai_provider' | 'ai_model' | 'ai_api_key_encrypted'>>;
+        Insert: Pick<
+          AdvancedMatchingConfig,
+          'blacklisted_companies' | 'favorite_companies' | 'chatgpt_prompt' | 'ai_provider' | 'ai_model' | 'ai_api_key_encrypted'
+        >;
+        Update: Partial<
+          Pick<AdvancedMatchingConfig, 'blacklisted_companies' | 'favorite_companies' | 'chatgpt_prompt' | 'ai_provider' | 'ai_model' | 'ai_api_key_encrypted'>
+        >;
         Relationships: [];
       };
     };

@@ -1,5 +1,7 @@
-import { Cross2Icon, InfoCircledIcon, MinusCircledIcon } from '@radix-ui/react-icons';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Icons } from '@/components/icons';
+import { Cross2Icon, DownloadIcon, UploadIcon } from '@radix-ui/react-icons';
+import type { ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import TextareaAutosize from 'react-textarea-autosize';
 
 import { PricingOptions } from '@/components/pricingOptions';
@@ -9,12 +11,14 @@ import { useSession } from '@/hooks/session';
 import { ProviderName, getProviderModels, getProviderOptions } from '@/lib/aiProviderConfig';
 import {
   AdvancedMatchingConfigWithAI,
+  UserSettingsImport,
+  exportUserSettings,
   getAdvancedMatchingConfig,
   openExternalUrl,
+  importUserSettings,
   updateAdvancedMatchingConfig,
 } from '@/lib/electronMainSdk';
 import { StripeBillingPlan, SubscriptionTier } from '@first2apply/core';
-import { Alert, AlertDescription, AlertTitle } from '@first2apply/ui';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -40,9 +44,15 @@ export function FiltersPage() {
   const [userAiInput, setUserAiInput] = useState<string>('');
   const [blacklistedCompanies, setBlacklistedCompanies] = useState<string[]>([]);
   const [addBlacklistedCompany, setAddBlacklistedCompany] = useState<string>('');
+  const [favoriteCompanies, setFavoriteCompanies] = useState<string[]>([]);
+  const [addFavoriteCompany, setAddFavoriteCompany] = useState<string>('');
   const [isSubscriptionDialogOpen, setSubscriptionDialogOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [showAllBlacklistedCompanies, setShowAllBlacklistedCompanies] = useState(false);
+  const [showAllFavoriteCompanies, setShowAllFavoriteCompanies] = useState(false);
+  const [isExportingSettings, setIsExportingSettings] = useState(false);
+  const [isImportingSettings, setIsImportingSettings] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // AI Provider configuration
   const [aiProvider, setAiProvider] = useState<ProviderName | ''>('');
@@ -68,6 +78,7 @@ export function FiltersPage() {
   const hydrateConfigFromResponse = useCallback((config: AdvancedMatchingConfigWithAI) => {
     setUserAiInput(config.chatgpt_prompt);
     setBlacklistedCompanies(config.blacklisted_companies);
+    setFavoriteCompanies(config.favorite_companies ?? []);
     const providerValue = config.ai_provider;
     setAiProvider(providerValue === 'openai' || providerValue === 'google_gemini' ? providerValue : '');
     setAiModel(config.ai_model ?? '');
@@ -114,6 +125,98 @@ export function FiltersPage() {
     return null;
   };
 
+  const normalizeCompany = (company: string) => company.trim();
+  const companyListHas = (companies: string[], candidate: string) =>
+    companies.some((company) => company.toLowerCase() === candidate.toLowerCase());
+  const filterCompanyFromList = (companies: string[], candidate: string) =>
+    companies.filter((company) => company.toLowerCase() !== candidate.toLowerCase());
+
+  const handleAddBlacklistedCompany = () => {
+    const normalized = normalizeCompany(addBlacklistedCompany);
+    if (!normalized) {
+      return;
+    }
+
+    if (companyListHas(blacklistedCompanies, normalized)) {
+      setAddBlacklistedCompany('');
+      return;
+    }
+
+    setBlacklistedCompanies([...blacklistedCompanies, normalized]);
+    setFavoriteCompanies((companies) => filterCompanyFromList(companies, normalized));
+    setAddBlacklistedCompany('');
+  };
+
+  const handleAddFavoriteCompany = () => {
+    const normalized = normalizeCompany(addFavoriteCompany);
+    if (!normalized) {
+      return;
+    }
+
+    if (companyListHas(favoriteCompanies, normalized)) {
+      setAddFavoriteCompany('');
+      return;
+    }
+
+    setFavoriteCompanies([...favoriteCompanies, normalized]);
+    setBlacklistedCompanies((companies) => filterCompanyFromList(companies, normalized));
+    setAddFavoriteCompany('');
+  };
+
+  const handleExportSettings = async () => {
+    try {
+      setIsExportingSettings(true);
+      const settings = await exportUserSettings();
+      const json = JSON.stringify(settings, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      const timestamp = new Date().toISOString().split('T')[0];
+      anchor.href = url;
+      anchor.download = `first2fetch-settings-${timestamp}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+      toast({
+        title: 'Settings exported',
+        description: 'We saved your configuration to a JSON file.',
+      });
+    } catch (error) {
+      handleError({ error, title: 'Failed to export settings' });
+    } finally {
+      setIsExportingSettings(false);
+    }
+  };
+
+  const handleImportSettingsFromFile = async (evt: ChangeEvent<HTMLInputElement>) => {
+    const file = evt.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      setIsImportingSettings(true);
+      const fileContent = await file.text();
+      const parsedSettings = JSON.parse(fileContent) as UserSettingsImport;
+      const updatedConfig = await importUserSettings(parsedSettings);
+      hydrateConfigFromResponse(updatedConfig);
+      toast({
+        title: 'Settings imported',
+        description: 'We refreshed your filters and company preferences.',
+      });
+    } catch (error) {
+      handleError({ error, title: 'Failed to import settings' });
+    } finally {
+      setIsImportingSettings(false);
+      evt.target.value = '';
+    }
+  };
+
+  const triggerImportSettings = () => {
+    fileInputRef.current?.click();
+  };
+
   /**
    * Save the config to the database.
    */
@@ -145,6 +248,7 @@ export function FiltersPage() {
       const updatedConfig = await updateAdvancedMatchingConfig({
         chatgpt_prompt: userAiInput,
         blacklisted_companies: blacklistedCompanies,
+        favorite_companies: favoriteCompanies,
         ai_provider: aiProvider || null,
         ai_model: aiModel || null,
         ai_api_key_encrypted: aiApiKey || null, // This will be encrypted on the backend
@@ -221,42 +325,26 @@ export function FiltersPage() {
       <h1 className="w-fit text-2xl font-medium tracking-wide">Advanced Matching</h1>
 
       <section>
-        <p className="mb-4 text-lg">
-          Set your preferences and let <span className="font-medium">AI</span> find the{' '}
-          <span className="font-medium">right jobs</span> for you. Just tell us what you’re looking for:
-        </p>
-
+        <h2 className="mb-4 text-lg font-medium">Job filter prompt</h2>
         <div className="relative">
           <TextareaAutosize
             value={userAiInput}
             placeholder='E.g. "Avoid Java or senior roles", "Seeking $60K+ salary, remote opportunities", "Suitable for under 2 years of experience"'
             autoFocus={true}
-            onChange={(evt) => setUserAiInput(evt.target.value)}
+            onChange={(evt) => {
+              const newValue = evt.target.value;
+              setUserAiInput(newValue);
+            }}
             minRows={3}
             maxLength={5000}
             className="w-full resize-none rounded-md border border-border bg-card px-6 py-4 text-base ring-ring placeholder:text-muted-foreground focus:outline-none focus:ring-2"
           />
           <span className="absolute bottom-4 right-4 text-sm text-muted-foreground">{userAiInput.length}/5000</span>
         </div>
-
-        <Alert className="flex items-center gap-2 border-0 p-0">
-          <AlertTitle className="mb-0">
-            <InfoCircledIcon className="h-4 w-4 text-muted-foreground" />
-          </AlertTitle>
-          <AlertDescription className="text-sm text-muted-foreground">
-            Pro Tips: Exclude skills you don’t want, specify salary expectations, define experience levels, select job
-            specifics like remote work or PTO preferences and more.
-          </AlertDescription>
-        </Alert>
       </section>
 
-      {/* HERE STARTS THE BLACKLISTING */}
-
       <section>
-        <p className="mb-4 text-lg">
-          <span className="font-medium">Blacklist companies</span> you don’t want to work for. We’ll make sure you{' '}
-          <span className="font-medium">don’t see jobs</span> from them anymore:
-        </p>
+        <h2 className="mb-4 text-lg font-medium">Blacklist companies</h2>
 
         <div className="flex w-full gap-2">
           <div className="relative flex-1">
@@ -272,28 +360,10 @@ export function FiltersPage() {
             </span>
           </div>
 
-          <Button
-            variant="secondary"
-            className="w-36 border border-border"
-            onClick={() => {
-              if (addBlacklistedCompany) {
-                setBlacklistedCompanies([...blacklistedCompanies, addBlacklistedCompany]);
-                setAddBlacklistedCompany('');
-              }
-            }}
-          >
+          <Button variant="secondary" className="w-36 border border-border" onClick={handleAddBlacklistedCompany}>
             Add company
           </Button>
         </div>
-
-        <Alert className="mt-1.5 flex items-center gap-2 border-0 p-0">
-          <AlertTitle className="mb-0">
-            <MinusCircledIcon className="h-4 w-4 text-destructive/90" />
-          </AlertTitle>
-          <AlertDescription className="text-sm text-destructive/90">
-            Attention: Ensure you input the company name accurately without any typos.
-          </AlertDescription>
-        </Alert>
 
         <div className="mt-4">
           {blacklistedCompanies.length === 0 ? (
@@ -312,7 +382,7 @@ export function FiltersPage() {
                         <TooltipTrigger asChild>
                           <button
                             className="inline-flex items-center justify-center"
-                            onClick={() => setBlacklistedCompanies(blacklistedCompanies.filter((c) => c !== company))}
+                            onClick={() => setBlacklistedCompanies(filterCompanyFromList(blacklistedCompanies, company))}
                           >
                             <Cross2Icon className="h-4 w-4 text-foreground" />
                           </button>
@@ -332,6 +402,71 @@ export function FiltersPage() {
               )}
               {showAllBlacklistedCompanies && (
                 <Button variant="secondary" className="py-2" onClick={() => setShowAllBlacklistedCompanies(false)}>
+                  Show Less
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-4 text-lg font-medium">Favorite companies</h2>
+
+        <div className="flex w-full gap-2">
+          <div className="relative flex-1">
+            <Input
+              value={addFavoriteCompany}
+              placeholder="E.g. Google"
+              onChange={(evt) => setAddFavoriteCompany(evt.target.value)}
+              maxLength={100}
+              className="bg-card px-6 pr-20 text-base ring-ring placeholder:text-base focus-visible:ring-2"
+            />
+            <span className="absolute bottom-2 right-4 text-sm text-muted-foreground">
+              {addFavoriteCompany.length}/100
+            </span>
+          </div>
+
+          <Button variant="secondary" className="w-36 border border-border" onClick={handleAddFavoriteCompany}>
+            Add favorite
+          </Button>
+        </div>
+
+        <div className="mt-4">
+          {favoriteCompanies.length === 0 ? (
+            <p>You haven't added any favorite companies yet</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {(showAllFavoriteCompanies ? favoriteCompanies : favoriteCompanies.slice(0, 10)).map((company) => (
+                <Badge
+                  key={company}
+                  className="flex items-center gap-2 border border-border bg-card py-1 pl-4 pr-2 text-base hover:bg-card"
+                >
+                  {company}
+                  <TooltipProvider delayDuration={500}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          className="inline-flex items-center justify-center"
+                          onClick={() => setFavoriteCompanies(filterCompanyFromList(favoriteCompanies, company))}
+                        >
+                          <Cross2Icon className="h-4 w-4 text-foreground" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="mt-2 text-sm">
+                        Remove
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </Badge>
+              ))}
+              {favoriteCompanies.length > 10 && !showAllFavoriteCompanies && (
+                <Button variant="secondary" className="py-2" onClick={() => setShowAllFavoriteCompanies(true)}>
+                  See All
+                </Button>
+              )}
+              {showAllFavoriteCompanies && (
+                <Button variant="secondary" className="py-2" onClick={() => setShowAllFavoriteCompanies(false)}>
                   Show Less
                 </Button>
               )}
@@ -437,9 +572,38 @@ export function FiltersPage() {
         </div>
       </section>
 
-      <Button className="ml-auto w-36" onClick={onSave}>
-        Save filters
-      </Button>
+      <div className="flex items-center justify-between">
+        <div className="flex gap-3">
+          <Button
+            variant="secondary"
+            className="flex items-center gap-2"
+            onClick={handleExportSettings}
+            disabled={isExportingSettings}
+          >
+            {isExportingSettings ? <Icons.spinner2 className="h-4 w-4 animate-spin" /> : <DownloadIcon className="h-4 w-4" />}
+            <span>Export</span>
+          </Button>
+          <Button
+            variant="secondary"
+            className="flex items-center gap-2"
+            onClick={triggerImportSettings}
+            disabled={isImportingSettings}
+          >
+            {isImportingSettings ? <Icons.spinner2 className="h-4 w-4 animate-spin" /> : <UploadIcon className="h-4 w-4" />}
+            <span>Import</span>
+          </Button>
+          <input
+            ref={fileInputRef}
+            className="hidden"
+            type="file"
+            accept="application/json"
+            onChange={handleImportSettingsFromFile}
+          />
+        </div>
+        <Button className="w-36" onClick={onSave}>
+          Save
+        </Button>
+      </div>
 
       <SubscriptionDialog
         isOpen={isSubscriptionDialogOpen}
