@@ -150,7 +150,7 @@ export function JobsList({
                   {job.status !== 'archived' && (
                     <TooltipProvider delayDuration={500}>
                       <Tooltip>
-                        <TooltipTrigger>
+                        <TooltipTrigger asChild>
                           <Button
                             variant="secondary"
                             className="h-[22px] w-[22px] rounded-sm bg-transparent px-0 transition-colors duration-200 ease-in-out hover:bg-foreground/10 focus:bg-foreground/10"
@@ -173,7 +173,7 @@ export function JobsList({
                   {/* Delete button */}
                   <TooltipProvider delayDuration={500}>
                     <Tooltip>
-                      <TooltipTrigger>
+                      <TooltipTrigger asChild>
                         <Button
                           variant="destructive"
                           className="h-[22px] w-[22px] rounded-sm bg-transparent px-0 transition-colors duration-200 ease-in-out hover:bg-destructive/20 focus:bg-destructive/20"

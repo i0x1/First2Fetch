@@ -309,11 +309,13 @@ export function FiltersPage() {
                     {company}
                     <TooltipProvider delayDuration={500}>
                       <Tooltip>
-                        <TooltipTrigger>
-                          <Cross2Icon
-                            className="h-4 w-4 text-foreground"
+                        <TooltipTrigger asChild>
+                          <button
+                            className="inline-flex items-center justify-center"
                             onClick={() => setBlacklistedCompanies(blacklistedCompanies.filter((c) => c !== company))}
-                          />
+                          >
+                            <Cross2Icon className="h-4 w-4 text-foreground" />
+                          </button>
                         </TooltipTrigger>
                         <TooltipContent side="bottom" className="mt-2 text-sm">
                           Remove

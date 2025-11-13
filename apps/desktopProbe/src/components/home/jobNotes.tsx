@@ -215,7 +215,7 @@ function JobNote({
         <div className="flex gap-2">
           <TooltipProvider delayDuration={500}>
             <Tooltip>
-              <TooltipTrigger>
+              <TooltipTrigger asChild>
                 <Button variant="outline" size="sm" className="w-8 p-0" onClick={() => onStartEditing(note.id)}>
                   <Pencil2Icon className="h-4 w-auto" />
                 </Button>
@@ -228,7 +228,7 @@ function JobNote({
 
           <TooltipProvider delayDuration={500}>
             <Tooltip>
-              <TooltipTrigger>
+              <TooltipTrigger asChild>
                 <Button variant="outline" size="sm" className="w-8 p-0" onClick={() => onDelete(note.id)}>
                   <TrashIcon className="h-auto w-4" />
                 </Button>

@@ -148,7 +148,7 @@ export function JobSummary({
         {job.status !== 'applied' && (
           <TooltipProvider delayDuration={500}>
             <Tooltip>
-              <TooltipTrigger>
+              <TooltipTrigger asChild>
                 <Button
                   size="lg"
                   variant="secondary"
@@ -170,7 +170,7 @@ export function JobSummary({
         {job.status !== 'new' && (
           <TooltipProvider delayDuration={500}>
             <Tooltip>
-              <TooltipTrigger>
+              <TooltipTrigger asChild>
                 <Button
                   size="lg"
                   variant="secondary"
@@ -192,7 +192,7 @@ export function JobSummary({
         {job.status !== 'archived' && (
           <TooltipProvider delayDuration={500}>
             <Tooltip>
-              <TooltipTrigger>
+              <TooltipTrigger asChild>
                 <Button
                   size="lg"
                   variant="secondary"
@@ -213,7 +213,7 @@ export function JobSummary({
         {/* Copy url button */}
         <TooltipProvider delayDuration={500}>
           <Tooltip>
-            <TooltipTrigger>
+            <TooltipTrigger asChild>
               <Button
                 size="lg"
                 variant="secondary"
@@ -241,7 +241,7 @@ export function JobSummary({
         {/* Delete button */}
         <TooltipProvider delayDuration={500}>
           <Tooltip>
-            <TooltipTrigger>
+            <TooltipTrigger asChild>
               <Button
                 size="lg"
                 variant="destructive"
