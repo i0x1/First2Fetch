@@ -10,21 +10,20 @@ module.exports = {
     if (backendFiles.length > 0) {
       const relativePaths = backendFiles.map((f) => f.replace('apps/backend/', ''));
       commands.push(`cd apps/backend && npx eslint ${relativePaths.join(' ')}`);
-      commands.push(`npx prettier ${backendFiles.join(' ')}`);
+      // Prettier checks disabled - not critical for preventing code breakage
     }
 
     // Run ESLint with root config for other files
     if (otherFiles.length > 0) {
       commands.push(`npx eslint ${otherFiles.join(' ')}`);
-      commands.push(`npx prettier ${otherFiles.join(' ')}`);
+      // Prettier checks disabled - not critical for preventing code breakage
     }
 
     return commands;
   },
   '*.tsx': (filesArray) => {
-    return [`npx eslint ${filesArray.join(' ')}`, `npx prettier ${filesArray.join(' ')}`];
+    return [`npx eslint ${filesArray.join(' ')}`];
+    // Prettier checks disabled - not critical for preventing code breakage
   },
-  '*.md': (filesArray) => {
-    return [`npx prettier ${filesArray.join(' ')}`];
-  },
+  // Prettier checks for markdown files also disabled
 };

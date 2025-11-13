@@ -1,0 +1,3 @@
+# Ignore backend Supabase functions
+apps/backend/supabase/functions/**
+

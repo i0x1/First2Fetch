@@ -23,5 +23,20 @@ module.exports = {
         plugins: ["prettier-plugin-tailwindcss"],
       },
     },
+    {
+      files: ["apps/backend/supabase/functions/**/*.ts"],
+      options: {
+        // Disable prettier formatting for backend functions
+        // These files are formatted manually or by Deno
+        printWidth: 999,
+        tabWidth: 2,
+        useTabs: false,
+        semi: true,
+        singleQuote: true,
+        trailingComma: "es5",
+        bracketSpacing: true,
+        arrowParens: "always",
+      },
+    },
   ],
 };
