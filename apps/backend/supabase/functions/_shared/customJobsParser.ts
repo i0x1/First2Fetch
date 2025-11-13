@@ -6,11 +6,12 @@ import { zodResponseFormat } from 'npm:openai/helpers/zod';
 import turndown from 'npm:turndown';
 import { z } from 'npm:zod';
 
+import { buildAIProviderFromUserConfig, logAiUsage } from './aiProvider.ts';
 import { denoHashString } from './deno.ts';
 import { JobDescriptionUpdates } from './jobDescriptionParser.ts';
 import { JobSiteParseResult, ParsedJob } from './jobListParser.ts';
 import { ILogger } from './logger.ts';
-import { buildOpenAiClient, logAiUsage } from './openAI.ts';
+import { buildOpenAiClient } from './openAI.ts';
 
 /**
  * Method used to parse jobs from custom pages.
@@ -32,12 +33,17 @@ export async function parseCustomJobs({
   logger: ILogger;
   supabaseAdminClient: SupabaseClient<DbSchema, 'public'>;
 }): Promise<JobSiteParseResult> {
-  const { logger } = context;
+  const { logger, supabaseAdminClient } = context;
 
-  const { openAi, llmConfig } = buildOpenAiClient({
-    modelName: 'o3-mini',
-    ...context,
+  // Try to use user's configured AI provider
+  const userProvider = await buildAIProviderFromUserConfig({
+    supabaseAdminClient,
+    userId: user.id,
+    logger,
   });
+
+  let provider: any;
+  let llmConfig: any;
 
   // helper methods
   const generateUserPrompt = () => {
@@ -85,39 +91,82 @@ ${htmlContent}
 """`;
   };
 
-  const response = await openAi.chat.completions.create({
-    model: llmConfig.model,
-    messages: [
-      {
-        role: 'system',
-        content: SYSTEM_PROMPT,
-      },
-      {
-        role: 'user',
-        content: generateUserPrompt(),
-      },
-    ],
-    max_completion_tokens: 50_000,
-    response_format: zodResponseFormat(PARSE_JOBS_PAGE_SCHEMA, 'ParseJobsPageResponse'),
-  });
+  let response: any;
+  let parseResult: any;
 
-  const choice = response.choices[0];
-  if (choice.finish_reason !== 'stop') {
-    throw new Error(`OpenAI response did not finish: ${choice.finish_reason}`);
+  if (userProvider) {
+    // Use user's configured provider
+    provider = userProvider.provider;
+    llmConfig = userProvider.config;
+
+    const aiResponse = await provider.createChatCompletion({
+      messages: [
+        {
+          role: 'system',
+          content: SYSTEM_PROMPT,
+        },
+        {
+          role: 'user',
+          content: generateUserPrompt(),
+        },
+      ],
+      maxCompletionTokens: 50_000,
+      responseFormat: { type: 'json_object' },
+    });
+
+    response = {
+      usage: aiResponse.usage,
+      content: aiResponse.content,
+    };
+    parseResult = PARSE_JOBS_PAGE_SCHEMA.parse(JSON.parse(response.content));
+  } else {
+    // Fall back to default OpenAI client
+    const { llmConfig: defaultConfig, openAi } = buildOpenAiClient({
+      modelName: 'o3-mini',
+    });
+    llmConfig = defaultConfig;
+
+    const openAiResponse = await openAi.chat.completions.create({
+      model: llmConfig.model,
+      messages: [
+        {
+          role: 'system',
+          content: SYSTEM_PROMPT,
+        },
+        {
+          role: 'user',
+          content: generateUserPrompt(),
+        },
+      ],
+      max_completion_tokens: 50_000,
+      response_format: zodResponseFormat(PARSE_JOBS_PAGE_SCHEMA, 'ParseJobsPageResponse'),
+    });
+
+    const choice = openAiResponse.choices[0];
+    if (choice.finish_reason !== 'stop') {
+      throw new Error(`AI response did not finish: ${choice.finish_reason}`);
+    }
+
+    response = {
+      usage: openAiResponse.usage,
+      content: choice.message.content ?? throwError('missing content'),
+    };
+    parseResult = PARSE_JOBS_PAGE_SCHEMA.parse(JSON.parse(response.content));
   }
 
-  const parseResult = PARSE_JOBS_PAGE_SCHEMA.parse(JSON.parse(choice.message.content ?? throwError('missing content')));
-
   await logAiUsage({
+    logger,
+    supabaseAdminClient,
     forUserId: user.id,
     llmConfig,
-    response,
-    ...context,
+    response: {
+      usage: response.usage,
+    },
   });
 
   const listFound = !parseResult.errorMessage && parseResult.jobs.length > 0;
   if (!listFound) {
-    logger.error(`Site ${siteId} - OpenAI reported an error: ${parseResult.errorMessage}`);
+    logger.error(`Site ${siteId} - AI reported an error: ${parseResult.errorMessage}`);
   }
 
   const jobs = await Promise.all(
@@ -251,42 +300,89 @@ ${withAdvancedMatchingPreferences}
     return { userPrompt, htmlContent };
   };
 
+  const { logger, supabaseAdminClient } = context;
   const { userPrompt, htmlContent } = generateUserPrompt();
-  const { openAi, llmConfig } = buildOpenAiClient({
-    modelName: 'gpt-4o-mini',
-    ...context,
+
+  // Try to use user's configured AI provider
+  const userProvider = await buildAIProviderFromUserConfig({
+    supabaseAdminClient,
+    userId: user.id,
+    logger,
   });
 
-  const response = await openAi.chat.completions.create({
-    model: llmConfig.model,
-    messages: [
-      {
-        role: 'system',
-        content: JOB_DESCRIPTION_SYSTEM_PROMPT,
-      },
-      {
-        role: 'user',
-        content: userPrompt,
-      },
-    ],
-    max_completion_tokens: 10_000,
-    response_format: zodResponseFormat(PARSE_JOB_DESCRIPTION_SCHEMA, 'ParseJobDescriptionResponse'),
-  });
+  let provider: any;
+  let llmConfig: any;
+  let response: any;
+  let parseResult: any;
 
-  const choice = response.choices[0];
-  if (choice.finish_reason !== 'stop') {
-    throw new Error(`OpenAI response did not finish: ${choice.finish_reason}`);
+  if (userProvider) {
+    // Use user's configured provider
+    provider = userProvider.provider;
+    llmConfig = userProvider.config;
+
+    const aiResponse = await provider.createChatCompletion({
+      messages: [
+        {
+          role: 'system',
+          content: JOB_DESCRIPTION_SYSTEM_PROMPT,
+        },
+        {
+          role: 'user',
+          content: userPrompt,
+        },
+      ],
+      maxCompletionTokens: 10_000,
+      responseFormat: { type: 'json_object' },
+    });
+
+    response = {
+      usage: aiResponse.usage,
+      content: aiResponse.content,
+    };
+    parseResult = PARSE_JOB_DESCRIPTION_SCHEMA.parse(JSON.parse(response.content));
+  } else {
+    // Fall back to default OpenAI client
+    const { llmConfig: defaultConfig, openAi } = buildOpenAiClient({
+      modelName: 'gpt-4o-mini',
+    });
+    llmConfig = defaultConfig;
+
+    const openAiResponse = await openAi.chat.completions.create({
+      model: llmConfig.model,
+      messages: [
+        {
+          role: 'system',
+          content: JOB_DESCRIPTION_SYSTEM_PROMPT,
+        },
+        {
+          role: 'user',
+          content: userPrompt,
+        },
+      ],
+      max_completion_tokens: 10_000,
+      response_format: zodResponseFormat(PARSE_JOB_DESCRIPTION_SCHEMA, 'ParseJobDescriptionResponse'),
+    });
+
+    const choice = openAiResponse.choices[0];
+    if (choice.finish_reason !== 'stop') {
+      throw new Error(`AI response did not finish: ${choice.finish_reason}`);
+    }
+
+    response = {
+      usage: openAiResponse.usage,
+      content: choice.message.content ?? throwError('missing content'),
+    };
+    parseResult = PARSE_JOB_DESCRIPTION_SCHEMA.parse(JSON.parse(response.content));
   }
 
-  const parseResult = PARSE_JOB_DESCRIPTION_SCHEMA.parse(
-    JSON.parse(choice.message.content ?? throwError('missing content')),
-  );
-
   await logAiUsage({
+    logger,
+    supabaseAdminClient,
     forUserId: user.id,
     llmConfig,
-    response,
-    ...context,
+    response: {
+      usage: response.usage,
+    },
   });
 
   let updates: JobDescriptionUpdates = {};

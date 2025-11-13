@@ -3,8 +3,9 @@ import { SupabaseClient } from '@supabase/supabasefork';
 import { zodResponseFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 
+import { buildAIProviderFromUserConfig, logAiUsage } from './aiProvider.ts';
 import { ILogger } from './logger.ts';
-import { buildOpenAiClient, logAiUsage } from './openAI.ts';
+import { buildOpenAiClient } from './openAI.ts';
 import { checkUserSubscription } from './subscription.ts';
 
 /**
@@ -56,11 +57,11 @@ export async function applyAdvancedMatchingFilters({
     };
   }
 
-  // prompt OpenAI to determine if the job should be excluded
+  // prompt AI to determine if the job should be excluded
   if (job.description && advancedMatching.chatgpt_prompt) {
-    logger.info('prompting OpenAI to determine if the job should be excluded ...');
+    logger.info('prompting AI to determine if the job should be excluded ...');
 
-    const { exclusionDecision } = await promptOpenAI({
+    const { exclusionDecision } = await promptAI({
       prompt: advancedMatching.chatgpt_prompt,
       job,
       logger,
@@ -68,7 +69,7 @@ export async function applyAdvancedMatchingFilters({
     });
 
     if (exclusionDecision.excluded) {
-      logger.info(`job excluded by OpenAI: ${exclusionDecision.reason}`);
+      logger.info(`job excluded by AI: ${exclusionDecision.reason}`);
       return {
         newStatus: 'excluded_by_advanced_matching',
         excludeReason: exclusionDecision.reason ?? undefined,
@@ -96,13 +97,13 @@ export function isExcludedCompany({
 }
 
 /**
- * Prompt the OpenAI API to interogate if a job matches the user prompt.
+ * Prompt the AI API to interogate if a job matches the user prompt.
  * Returns true if the job should be excluded, false otherwise.
+ * Uses user's configured AI provider if available, otherwise falls back to default.
  */
-async function promptOpenAI({
+async function promptAI({
   prompt,
   job,
-
   logger,
   supabaseAdminClient,
 }: {
@@ -111,44 +112,93 @@ async function promptOpenAI({
   logger: ILogger;
   supabaseAdminClient: SupabaseClient<DbSchema, 'public'>;
 }) {
-  const { llmConfig, openAi } = buildOpenAiClient({
-    modelName: 'o3-mini',
+  // Try to use user's configured AI provider
+  const userProvider = await buildAIProviderFromUserConfig({
+    supabaseAdminClient,
+    userId: job.user_id,
+    logger,
   });
 
-  const response = await openAi.chat.completions.create({
-    model: llmConfig.model,
-    messages: [
-      {
-        role: 'system',
-        content: SYSTEM_PROMPT,
-      },
-      {
-        role: 'user',
-        content: generateUserPrompt({
-          prompt,
-          job,
-        }),
-      },
-    ],
-    max_completion_tokens: 3000,
-    response_format: zodResponseFormat(JobExclusionFormat, 'JobExclusion'),
-  });
+  let provider: any;
+  let llmConfig: any;
+  let response: any;
 
-  const choice = response.choices[0];
-  if (choice.finish_reason !== 'stop') {
-    throw new Error(`OpenAI response did not finish: ${choice.finish_reason}`);
+  if (userProvider) {
+    // Use user's configured provider
+    provider = userProvider.provider;
+    llmConfig = userProvider.config;
+
+    const aiResponse = await provider.createChatCompletion({
+      messages: [
+        {
+          role: 'system',
+          content: SYSTEM_PROMPT,
+        },
+        {
+          role: 'user',
+          content: generateUserPrompt({
+            prompt,
+            job,
+          }),
+        },
+      ],
+      maxCompletionTokens: 3000,
+      responseFormat: { type: 'json_object' },
+    });
+
+    response = {
+      usage: aiResponse.usage,
+      content: aiResponse.content,
+    };
+  } else {
+    // Fall back to default OpenAI client
+    const { llmConfig: defaultConfig, openAi } = buildOpenAiClient({
+      modelName: 'o3-mini',
+    });
+    llmConfig = defaultConfig;
+
+    const openAiResponse = await openAi.chat.completions.create({
+      model: llmConfig.model,
+      messages: [
+        {
+          role: 'system',
+          content: SYSTEM_PROMPT,
+        },
+        {
+          role: 'user',
+          content: generateUserPrompt({
+            prompt,
+            job,
+          }),
+        },
+      ],
+      max_tokens: 3000,
+      response_format: zodResponseFormat(JobExclusionFormat, 'JobExclusion'),
+    });
+
+    const choice = openAiResponse.choices[0];
+    if (choice.finish_reason !== 'stop') {
+      throw new Error(`AI response did not finish: ${choice.finish_reason}`);
+    }
+
+    response = {
+      usage: openAiResponse.usage,
+      content: choice.message.content ?? throwError('missing content'),
+    };
   }
-  const exclusionDecision = JobExclusionFormat.parse(
-    JSON.parse(choice.message.content ?? throwError('missing content')),
-  );
 
-  // persist the cost of the OpenAI API call
+  // Parse the response
+  const exclusionDecision = JobExclusionFormat.parse(JSON.parse(response.content));
+
+  // Persist the cost of the AI API call
   await logAiUsage({
     logger,
     supabaseAdminClient,
     forUserId: job.user_id,
     llmConfig,
-    response,
+    response: {
+      usage: response.usage,
+    },
   });
 
   return {
@@ -157,7 +207,7 @@ async function promptOpenAI({
 }
 
 /**
- * Generate the user prompt for the OpenAI API.
+ * Generate the user prompt for the AI API.
  */
 function generateUserPrompt({ prompt, job }: { prompt: string; job: Job }) {
   // - Exclude jobs with the title "Senior" or "Lead".

@@ -1,4 +1,4 @@
-import { AdvancedMatchingConfig, DbSchema, Job, JobLabel, JobStatus, Link } from '@first2apply/core';
+import { DbSchema, Job, JobLabel, JobStatus, Link } from '@first2apply/core';
 import { FunctionsHttpError, PostgrestError, SupabaseClient, User } from '@supabase/supabase-js';
 import { backOff } from 'exponential-backoff';
 import * as luxon from 'luxon';
@@ -313,7 +313,15 @@ export class F2aSupabaseApi {
     const { data, error } = await backOff(
       async () => {
         const result = await method();
-        if (result.error) throw result.error;
+        if (result.error) {
+          // Log more details about the error for debugging
+          console.error('[supabaseApiCall] Edge function error:', {
+            errorType: result.error.constructor.name,
+            errorMessage: result.error.message,
+            error: result.error,
+          });
+          throw result.error;
+        }
 
         return result;
       },
@@ -332,10 +340,14 @@ export class F2aSupabaseApi {
       'errorMessage' in data &&
       typeof data.errorMessage === 'string'
     ) {
+      console.error('[supabaseApiCall] Edge function returned errorMessage in response body:', data.errorMessage);
       throw new Error(data.errorMessage);
     }
 
-    if (error) throw error;
+    if (error) {
+      console.error('[supabaseApiCall] Unexpected error after backoff:', error);
+      throw error;
+    }
 
     return data;
   }
@@ -473,17 +485,28 @@ export class F2aSupabaseApi {
 
   /**
    * Update the advanced matching configuration for the current user.
+   * Uses RPC function to encrypt API keys securely.
    */
-  async updateAdvancedMatchingConfig(config: Pick<AdvancedMatchingConfig, 'chatgpt_prompt' | 'blacklisted_companies'>) {
-    const [updatedConfig] = await this._supabaseApiCall(
-      async () =>
-        await this._supabase
-          .from('advanced_matching')
-          .upsert(config, {
-            onConflict: 'user_id',
-          })
-          .select('*'),
-    );
+  async updateAdvancedMatchingConfig(config: {
+    chatgpt_prompt: string;
+    blacklisted_companies: string[];
+    ai_provider?: string | null;
+    ai_model?: string | null;
+    ai_api_key_encrypted?: string | null;
+  }) {
+    // Use RPC function to handle encryption
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: updatedConfig, error } = await (this._supabase.rpc as any)('update_advanced_matching_with_ai_config', {
+      p_chatgpt_prompt: config.chatgpt_prompt,
+      p_blacklisted_companies: config.blacklisted_companies,
+      p_ai_provider: config.ai_provider || null,
+      p_ai_model: config.ai_model || null,
+      p_ai_api_key: config.ai_api_key_encrypted || null, // This will be encrypted in the function
+    });
+
+    if (error) {
+      throw error;
+    }
 
     return updatedConfig;
   }

@@ -15,7 +15,7 @@ import { User } from '@supabase/supabase-js';
 import { JobScannerSettings, NewAppVersion, OverlayBrowserViewResult } from './types';
 
 async function _mainProcessApiCall<T>(channel: string, params?: object): Promise<T> {
-  // @ts-ignore
+  // @ts-expect-error Electron preload injects `window.electron` at runtime.
   const { data, error } = await window.electron.invoke(channel, params);
   if (error) throw new Error(error);
 
@@ -367,20 +367,32 @@ export async function deleteNote(noteId: number): Promise<void> {
   await _mainProcessApiCall('delete-note', { noteId });
 }
 
+export type AdvancedMatchingConfigWithAI = AdvancedMatchingConfig & {
+  ai_provider?: string | null;
+  ai_model?: string | null;
+  ai_api_key_encrypted?: string | null;
+};
+
 /**
  * Get the advanced matching configuration for the current user.
  */
-export async function getAdvancedMatchingConfig(): Promise<AdvancedMatchingConfig | null> {
+export async function getAdvancedMatchingConfig(): Promise<AdvancedMatchingConfigWithAI | null> {
   return await _mainProcessApiCall('get-advanced-matching-config', {});
 }
 
 /**
  * Update the advanced matching configuration for the current user.
  */
-export async function updateAdvancedMatchingConfig(
-  config: Pick<AdvancedMatchingConfig, 'chatgpt_prompt' | 'blacklisted_companies'>,
-) {
-  return await _mainProcessApiCall<AdvancedMatchingConfig>('update-advanced-matching-config', {
+type AdvancedMatchingUpdatePayload = {
+  chatgpt_prompt: string;
+  blacklisted_companies: string[];
+  ai_provider?: string | null;
+  ai_model?: string | null;
+  ai_api_key_encrypted?: string | null;
+};
+
+export async function updateAdvancedMatchingConfig(config: AdvancedMatchingUpdatePayload) {
+  return await _mainProcessApiCall<AdvancedMatchingConfigWithAI>('update-advanced-matching-config', {
     config,
   });
 }

@@ -30,14 +30,26 @@ export async function checkUserSubscription({
     throw new Error('Profile not found');
   }
 
+  // TEMPORARY: Hardcode PRO subscription for 10 years
+  // TODO: Remove this temporary hardcoding
+  const tenYearsFromNow = new Date();
+  tenYearsFromNow.setFullYear(tenYearsFromNow.getFullYear() + 10);
+
+  // Override profile with PRO subscription for 10 years
+  const hardcodedProfile: Profile = {
+    ...profile,
+    subscription_tier: 'pro',
+    subscription_end_date: tenYearsFromNow.toISOString(),
+  };
+
   // check if the user's subscription has expired
-  const subscriptionHasExpired = new Date(profile.subscription_end_date) < new Date();
-  const hasProTier = profile.subscription_tier === 'pro';
+  const subscriptionHasExpired = new Date(hardcodedProfile.subscription_end_date) < new Date();
+  const hasProTier = hardcodedProfile.subscription_tier === 'pro';
 
   return {
-    profile,
-    subscriptionHasExpired,
-    hasAdvancedMatching: hasProTier && !subscriptionHasExpired,
-    hasCustomJobsParsing: hasProTier && !subscriptionHasExpired,
+    profile: hardcodedProfile,
+    subscriptionHasExpired: false, // Always false since we set it 10 years in the future
+    hasAdvancedMatching: true, // Always true with hardcoded PRO
+    hasCustomJobsParsing: true, // Always true with hardcoded PRO
   };
 }

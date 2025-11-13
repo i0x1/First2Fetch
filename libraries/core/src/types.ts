@@ -151,6 +151,9 @@ export type AdvancedMatchingConfig = {
   ai_api_cost: number;
   ai_api_input_tokens_used: number;
   ai_api_output_tokens_used: number;
+  ai_provider?: 'openai' | 'google_gemini' | null;
+  ai_model?: string | null;
+  ai_api_key_encrypted?: string | null;
 };
 
 /**
@@ -226,8 +229,8 @@ export type DbSchema = {
       };
       advanced_matching: {
         Row: AdvancedMatchingConfig;
-        Insert: Pick<AdvancedMatchingConfig, 'blacklisted_companies' | 'chatgpt_prompt'>;
-        Update: Partial<Pick<AdvancedMatchingConfig, 'blacklisted_companies' | 'chatgpt_prompt'>>;
+        Insert: Pick<AdvancedMatchingConfig, 'blacklisted_companies' | 'chatgpt_prompt' | 'ai_provider' | 'ai_model' | 'ai_api_key_encrypted'>;
+        Update: Partial<Pick<AdvancedMatchingConfig, 'blacklisted_companies' | 'chatgpt_prompt' | 'ai_provider' | 'ai_model' | 'ai_api_key_encrypted'>>;
         Relationships: [];
       };
     };
