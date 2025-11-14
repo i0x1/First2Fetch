@@ -729,7 +729,11 @@ export function parseGlassDoorJobs({ siteId, html }: { siteId: number; html: str
     const title = el.querySelector(`#job-title-${externalId}`)?.textContent?.trim() || '';
     if (!title) return null;
 
-    const companyName = el.querySelector('.jobCard .EmployerProfile_profileContainer__63w3R')?.textContent?.trim();
+    const companyNameRaw = el.querySelector('.jobCard .EmployerProfile_profileContainer__63w3R')?.textContent?.trim();
+    if (!companyNameRaw) return null;
+    
+    // Remove rating pattern (e.g., "4.5", "3.8", "3.2") from the end of company name
+    const companyName = companyNameRaw.replace(/\d+\.\d+$/, '').trim();
     if (!companyName) return null;
 
     const companyLogo = el
