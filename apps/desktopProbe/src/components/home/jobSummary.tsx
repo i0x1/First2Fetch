@@ -4,6 +4,7 @@ import {
   CheckIcon,
   CookieIcon,
   CopyIcon,
+  FileTextIcon,
   HeartFilledIcon,
   InfoCircledIcon,
   ListBulletIcon,
@@ -252,6 +253,43 @@ export function JobSummary({
 
             <TooltipContent side="bottom" className="text-base">
               Copy URL
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
+        {/* Copy job details button */}
+        <TooltipProvider delayDuration={500}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="lg"
+                variant="secondary"
+                className="w-10 border-none bg-border px-0 transition-colors duration-200 ease-in-out hover:bg-foreground/15 focus:bg-foreground/15"
+                onClick={(evt) => {
+                  evt.stopPropagation();
+                  const jobDetails = [
+                    `Title: ${job.title}`,
+                    `Company: ${job.companyName}`,
+                    job.location ? `Location: ${job.location}` : null,
+                    job.description ? `\nJob Description:\n${job.description}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join('\n');
+                  
+                  navigator.clipboard.writeText(jobDetails);
+                  toast({
+                    title: 'Job details copied to clipboard',
+                    description: 'Title, company, location, and description have been copied.',
+                    variant: 'success',
+                  });
+                }}
+              >
+                <FileTextIcon className="h-4 w-auto" />
+              </Button>
+            </TooltipTrigger>
+
+            <TooltipContent side="bottom" className="text-base">
+              Copy Job Details
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
