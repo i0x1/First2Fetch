@@ -69,12 +69,9 @@ export function LinksPage() {
   };
 
   // update link
-  const handleUpdateLink = async (data: { linkId: number; title: string }) => {
+  const handleUpdateLink = async (data: { linkId: number; title: string; url: string }) => {
     try {
-      // for now, we only update the title
-      const link = links.find((l) => l.id === data.linkId) ?? throwError('Link not found');
-
-      await updateLink(data.linkId, { title: data.title, url: link.url });
+      await updateLink(data.linkId, { title: data.title, url: data.url });
     } catch (error) {
       handleError({ error });
     }
