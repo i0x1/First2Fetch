@@ -255,13 +255,15 @@ function TabActions({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger
-          className="h-6 w-6 focus-visible:outline-none focus-visible:ring-0"
+          asChild
           onClick={(evt) => {
             evt.preventDefault();
             evt.stopPropagation();
           }}
         >
-          <DotsVerticalIcon className="m-auto h-5 w-auto text-muted-foreground transition-all duration-200 ease-in-out hover:h-6" />
+          <div className="h-6 w-6 flex items-center justify-center focus-visible:outline-none focus-visible:ring-0 cursor-pointer">
+            <DotsVerticalIcon className="h-5 w-auto text-muted-foreground transition-all duration-200 ease-in-out hover:h-6" />
+          </div>
         </DropdownMenuTrigger>
         <DropdownMenuContent side="bottom" className="space-y-1">
           <DropdownMenuItem className="cursor-pointer focus:bg-secondary/40" onClick={() => onTabChange(tab)}>
