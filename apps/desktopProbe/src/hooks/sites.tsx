@@ -12,7 +12,7 @@ import { useSession } from './session';
 export const SitesContext = createContext<{
   isLoading: boolean;
   sites: JobSite[];
-  siteLogos: Record<number, string>;
+  siteLogos: Record<number, string | undefined>;
   siteMap: Record<number, JobSite>;
 }>({ isLoading: true, sites: [], siteLogos: {}, siteMap: {} });
 
@@ -50,7 +50,20 @@ export const SitesProvider = ({ children }: React.PropsWithChildren<{}>) => {
     asyncLoad();
   }, [isLoggedIn]);
 
-  const siteLogos = Object.fromEntries(sites.map((site) => [site.id, site.logo_url]));
+  const sanitizeLogoUrl = (url?: string | null) => {
+    if (!url) {
+      return undefined;
+    }
+
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.toString() : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
+  const siteLogos = Object.fromEntries(sites.map((site) => [site.id, sanitizeLogoUrl(site.logo_url)]));
   const siteMap = Object.fromEntries(sites.map((site) => [site.id, site]));
 
   return (

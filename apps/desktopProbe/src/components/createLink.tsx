@@ -127,7 +127,8 @@ export function CreateLink() {
         <DialogContent className="w-[90vw] p-6">
           <DialogHeader>
             <DialogTitle className="text-xl font-medium tracking-wide">Add new job search</DialogTitle>
-            <DialogDescription>
+          <DialogDescription asChild>
+            <div className="space-y-2 text-left text-sm text-muted-foreground">
               <p>
                 Click on one of the supported job boards and start searching for a role. The more specific your filters,
                 the better we can tailor job alerts for you.
@@ -141,7 +142,8 @@ export function CreateLink() {
                   <span className="font-medium">Pro Tip: </span>Apply the 'Last 24 Hours' filter where possible.
                 </AlertDescription>
               </Alert>
-            </DialogDescription>
+            </div>
+          </DialogDescription>
           </DialogHeader>
 
           <h2 className="mt-6 text-base tracking-wide">Supported job boards:</h2>
@@ -199,10 +201,6 @@ const JobSearchSubmitDialog = ({
   onSaveJobSearch: (data: { title: string; url: string }) => Promise<Link>;
   onCancel: () => void;
 }) => {
-  if (!isOpen) {
-    return null;
-  }
-
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentUrl, setCurrentUrl] = useState(url);
   const [validationResult, setValidationResult] = useState<ReturnType<typeof validateJobSearchUrl> | null>(null);
@@ -231,10 +229,14 @@ const JobSearchSubmitDialog = ({
     }
   }, [currentUrl, sites]);
 
-  // Update currentUrl when the initial URL changes
+  // Reset the form when the incoming values change
   useEffect(() => {
+    form.reset({
+      title,
+      url,
+    });
     setCurrentUrl(url);
-  }, [url]);
+  }, [title, url, form]);
 
   const onSubmit = async (data: { title: string; url: string }) => {
     setIsSubmitting(true);
