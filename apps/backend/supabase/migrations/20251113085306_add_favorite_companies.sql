@@ -1,16 +1,34 @@
 -- Add favorite companies support to advanced matching (guarded for fresh resets)
+-- Note: This migration is kept for backward compatibility with existing databases.
+-- For fresh installs, favorite_companies is already included in migration 20240101000004.
 
 do $$
 begin
+  -- Only add column if table exists AND column doesn't exist
   if exists (
     select 1
     from information_schema.tables
     where table_schema = 'public'
       and table_name = 'advanced_matching'
+  ) and not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'advanced_matching'
+      and column_name = 'favorite_companies'
   ) then
     alter table public.advanced_matching
-      add column if not exists favorite_companies text[] not null default '{}'::text[];
+      add column favorite_companies text[] not null default '{}'::text[];
+  end if;
 
+  -- Ensure existing rows have default value (safe to run multiple times)
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'advanced_matching'
+      and column_name = 'favorite_companies'
+  ) then
     update public.advanced_matching
     set favorite_companies = coalesce(favorite_companies, '{}'::text[])
     where favorite_companies is null;
