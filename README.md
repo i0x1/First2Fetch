@@ -33,10 +33,13 @@ This is a monorepo containing multiple applications and shared libraries. Follow
    npx supabase init
    npx supabase start
    ```
-   The `supabase start` command will display all service URLs including:
-   - **Studio URL (Dashboard)**: http://127.0.0.1:54333
-   - **API URL**: http://127.0.0.1:54331
-   - **Database URL**: postgresql://postgres:postgres@127.0.0.1:54332/postgres
+   The `supabase start` command will:
+   - Apply all database migrations from `supabase/migrations/`
+   - Load seed data from `supabase/seed.sql` (includes initial sites data)
+   - Display all service URLs including:
+     - **Studio URL (Dashboard)**: http://127.0.0.1:54333
+     - **API URL**: http://127.0.0.1:54331
+     - **Database URL**: postgresql://postgres:postgres@127.0.0.1:54332/postgres
    
    If Supabase is already running, you can check the status and view URLs with:
    ```bash
@@ -44,7 +47,35 @@ This is a monorepo containing multiple applications and shared libraries. Follow
    npx supabase status
    ```
    
-   Import the [sites_rows.csv](./apps/backend/supabase/sites_rows.csv) file into the `sites` table using the Studio interface.
+   To reset the database and reapply all migrations and seed data:
+   ```bash
+   cd apps/backend
+   npx supabase db reset
+   ```
+
+   **Database Migrations:**
+   
+   This project follows Supabase best practices for database schema management:
+   - **Migrations** (`supabase/migrations/`): All schema changes (tables, functions, triggers, etc.) are versioned in migration files
+   - **Seed Data** (`supabase/seed.sql`): Contains only data insertions (e.g., initial sites data)
+   
+   To create a new migration:
+   ```bash
+   cd apps/backend
+   npx supabase migration new your_migration_name
+   ```
+   
+   To apply migrations to a remote project:
+   ```bash
+   cd apps/backend
+   npx supabase db push
+   ```
+   
+   To see differences between local and remote schema:
+   ```bash
+   cd apps/backend
+   npx supabase db diff
+   ```
 
 5. **Run applications**
 
