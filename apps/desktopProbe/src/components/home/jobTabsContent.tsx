@@ -521,13 +521,13 @@ export function JobTabsContent({
       {ALL_JOB_STATUSES.map((statusItem) => {
         return (
           <TabsContent key={statusItem} value={statusItem} className="focus-visible:ring-0">
-            <section className="flex">
+            <section className="flex gap-4">
               {/* Jobs list, search and filters side */}
               <div
                 id="jobsList"
-                className="no-scrollbar h-[calc(100vh-100px)] w-1/2 space-y-3 overflow-y-scroll lg:w-2/5"
+                className="no-scrollbar h-[calc(100vh-100px)] w-1/2 overflow-y-scroll lg:w-2/5"
               >
-                <div className="sticky top-0 z-50 bg-background pb-2">
+                <div className="sticky top-0 z-50 bg-background/95 backdrop-blur-sm pb-4 pt-2">
                   <JobFilters
                     search={search}
                     siteIds={siteIds}
@@ -569,14 +569,14 @@ export function JobTabsContent({
 
               {/* Job description side */}
               {listing.isLoading || statusItem !== status ? (
-                <div className="no-scrollbar h-[calc(100vh-100px)] w-1/2 animate-pulse space-y-4 overflow-scroll border-l-[1px] border-muted pl-2 lg:w-3/5 lg:space-y-5 lg:pl-4">
+                <div className="no-scrollbar h-[calc(100vh-100px)] w-1/2 animate-pulse space-y-6 overflow-scroll border-l border-border/50 pl-4 lg:w-3/5 lg:space-y-8">
                   <JobSummarySkeleton />
                   <JobDetailsSkeleton />
                 </div>
               ) : listing.jobs.length > 0 ? (
                 <div
                   ref={jobDescriptionRef}
-                  className="no-scrollbar h-[calc(100vh-100px)] w-1/2 space-y-4 overflow-y-scroll border-l-[1px] border-muted px-2 lg:w-3/5 lg:space-y-5 lg:px-4"
+                  className="no-scrollbar h-[calc(100vh-100px)] w-1/2 space-y-6 overflow-y-scroll border-l border-border/50 pl-4 lg:w-3/5 lg:space-y-8"
                 >
                   {selectedJob && (
                     <>
@@ -599,7 +599,7 @@ export function JobTabsContent({
                         isCompanyPreferencesLoaded={isAdvancedMatchingLoaded}
                       />
                       <JobNotes jobId={selectedJobId} />
-                      <hr className="border-t border-muted" />
+                      <hr className="border-t border-border/50" />
                       <JobDetails job={selectedJob} isScrapingDescription={!!selectedJob.isLoadingJD}></JobDetails>
                     </>
                   )}
@@ -607,7 +607,7 @@ export function JobTabsContent({
               ) : (
                 <div
                   ref={jobDescriptionRef}
-                  className="flex h-[calc(100vh-100px)] w-1/2 items-center justify-center space-y-4 overflow-scroll border-l-[1px] border-muted pl-2 lg:w-3/5 lg:space-y-5 lg:pl-4"
+                  className="flex h-[calc(100vh-100px)] w-1/2 items-center justify-center overflow-scroll border-l border-border/50 pl-4 lg:w-3/5"
                 >
                   {/* Light mode svg */}
                   <svg

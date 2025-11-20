@@ -71,13 +71,13 @@ export function JobSummary({
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
 
   return (
-    <div className="rounded-lg border border-muted p-4 lg:p-6">
-      <div className="flex items-start justify-between gap-4 lg:gap-6">
-        <div>
+    <div className="rounded-2xl border border-border/50 bg-card/50 p-6 shadow-sm lg:p-8">
+      <div className="flex items-start justify-between gap-6">
+        <div className="flex-1 min-w-0">
           {/* search site */}
           {usedLink && (
             <a
-              className="flex items-center gap-2 text-sm text-muted-foreground"
+              className="mb-4 inline-flex items-center gap-2 text-xs font-medium text-muted-foreground/80 transition-colors hover:text-foreground"
               href="#"
               onClick={(e) => {
                 e.stopPropagation();
@@ -85,77 +85,79 @@ export function JobSummary({
                 onOpenUrl(usedLink.url);
               }}
             >
-              <img src={siteLogos[usedLink.site_id]} alt={usedLink.title} className="h-5" />
-              <span>
-                {' via '}
-                {usedLink.title}
-              </span>
+              <img src={siteLogos[usedLink.site_id]} alt={usedLink.title} className="h-4 w-4" />
+              <span>via {usedLink.title}</span>
             </a>
           )}
 
           {/* Job title */}
-          <h1 className="mt-3 text-xl font-medium lg:mt-4">{job.title}</h1>
+          <h1 className="mb-3 text-2xl font-semibold leading-tight tracking-tight text-foreground lg:text-3xl">
+            {job.title}
+          </h1>
 
           {/* Company name & location */}
-          <p className="text-sm text-muted-foreground">
-            {job.companyName}
-            {isFavoriteCompany && <HeartFilledIcon className="ml-1 inline h-3.5 w-3.5 text-rose-500" />}
+          <div className="mb-6 flex items-center gap-2">
+            <p className="text-base font-medium text-foreground/90">
+              {job.companyName}
+            </p>
+            {isFavoriteCompany && (
+              <HeartFilledIcon className="h-4 w-4 text-rose-500" />
+            )}
             {job.location && (
-              <span>
-                {' · '}
-                {job.location}
+              <span className="text-base text-muted-foreground/80">
+                · {job.location}
               </span>
             )}
-          </p>
+          </div>
+
+          {/* Job details */}
+          <div className="space-y-2.5">
+            {job.jobType && (
+              <div className="flex items-center gap-3 text-sm text-muted-foreground/80">
+                <BackpackIcon className="h-4 w-4 flex-shrink-0" />
+                <span className="capitalize">{job.jobType}</span>
+              </div>
+            )}
+            {job.salary && (
+              <div className="flex items-center gap-3 text-sm font-medium text-muted-foreground/90">
+                <CookieIcon className="h-4 w-4 flex-shrink-0" />
+                <span>{job.salary}</span>
+              </div>
+            )}
+            {job.tags.length > 0 && (
+              <div className="flex items-start gap-3 text-sm text-muted-foreground/80">
+                <ListBulletIcon className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                <p className="flex-1">{job.tags?.slice(0, 5).join(', ')}</p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Company logo */}
         {job.companyLogo && (
-          <Avatar className="h-16 w-16">
+          <Avatar className="h-20 w-20 flex-shrink-0 ring-2 ring-border/30 lg:h-24 lg:w-24">
             <AvatarImage src={job.companyLogo} />
           </Avatar>
         )}
       </div>
 
-      {/* Job details */}
-      <div className="mt-3 space-y-1.5 lg:mt-4">
-        {job.jobType && (
-          <div className="flex items-center gap-3 capitalize text-muted-foreground">
-            <BackpackIcon className="h-auto w-5" />
-            {job.jobType}
-          </div>
-        )}
-        {job.salary && (
-          <div className="flex items-center gap-3 text-muted-foreground">
-            <CookieIcon className="h-auto w-5" />
-            {job.salary}
-          </div>
-        )}
-        {job.tags.length > 0 && (
-          <div className="flex items-center gap-3 text-muted-foreground">
-            <ListBulletIcon className="h-auto w-5" />
-            <p>{job.tags?.slice(0, 5).join(', ')}</p>
-          </div>
-        )}
-      </div>
-
       {/* Filtered out job explainer */}
       {job.status === 'excluded_by_advanced_matching' && job.exclude_reason && (
-        <div className="mt-6 rounded-md bg-destructive/10 p-4">
-          <div className="flex items-center gap-2">
-            <InfoCircledIcon className="h-auto w-5" />
-            <p className="font-medium">Why was this job excluded?</p>
+        <div className="mt-6 rounded-xl bg-destructive/10 border border-destructive/20 p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <InfoCircledIcon className="h-4 w-4 text-destructive" />
+            <p className="text-sm font-semibold text-foreground">Why was this job excluded?</p>
           </div>
-          <p className="mt-1">{job.exclude_reason}</p>
+          <p className="text-sm text-muted-foreground/90">{job.exclude_reason}</p>
         </div>
       )}
 
       {/* Action buttons */}
-      <div className={`mt-6 flex flex-wrap gap-2 ${job.status !== 'excluded_by_advanced_matching' && 'lg:mt-10'}`}>
+      <div className={`mt-8 flex flex-wrap items-center gap-2 ${job.status !== 'excluded_by_advanced_matching' && 'lg:mt-10'}`}>
         {/* Open button */}
         <Button
           size="lg"
-          className="w-24 text-sm"
+          className="h-10 rounded-xl px-6 text-sm font-medium shadow-sm transition-all duration-200 hover:shadow-md"
           onClick={() => {
             onView(job);
           }}
@@ -165,20 +167,19 @@ export function JobSummary({
 
         {/* Apply button */}
         {job.status !== 'applied' && (
-          <TooltipProvider delayDuration={500}>
+          <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  size="lg"
-                  variant="secondary"
-                  className="w-10 border-none bg-border px-0 transition-colors duration-200 ease-in-out hover:bg-foreground/15 focus:bg-foreground/15"
+                  size="icon"
+                  variant="ghost"
+                  className="h-10 w-10 rounded-xl transition-all duration-200 hover:bg-muted"
                   onClick={() => onUpdateJobStatus(job.id, 'applied')}
                 >
-                  <CheckIcon className="h-5 w-auto" />
+                  <CheckIcon className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>
-
-              <TooltipContent side="bottom" className="text-base">
+              <TooltipContent side="bottom" className="text-sm">
                 Mark job as Applied
               </TooltipContent>
             </Tooltip>
@@ -187,20 +188,19 @@ export function JobSummary({
 
         {/* Back to new button */}
         {job.status !== 'new' && (
-          <TooltipProvider delayDuration={500}>
+          <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  size="lg"
-                  variant="secondary"
-                  className="w-10 border-none bg-border px-0 transition-colors duration-200 ease-in-out hover:bg-foreground/15 focus:bg-foreground/15"
+                  size="icon"
+                  variant="ghost"
+                  className="h-10 w-10 rounded-xl transition-all duration-200 hover:bg-muted"
                   onClick={() => onUpdateJobStatus(job.id, 'new')}
                 >
-                  <ResetIcon className="h-4 w-auto" />
+                  <ResetIcon className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
-
-              <TooltipContent side="bottom" className="text-base">
+              <TooltipContent side="bottom" className="text-sm">
                 Move job back to New
               </TooltipContent>
             </Tooltip>
@@ -209,20 +209,19 @@ export function JobSummary({
 
         {/* Archive button */}
         {job.status !== 'archived' && (
-          <TooltipProvider delayDuration={500}>
+          <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  size="lg"
-                  variant="secondary"
-                  className="w-10 border-none bg-border px-0 transition-colors duration-200 ease-in-out hover:bg-foreground/15 focus:bg-foreground/15"
+                  size="icon"
+                  variant="ghost"
+                  className="h-10 w-10 rounded-xl transition-all duration-200 hover:bg-muted"
                   onClick={() => onUpdateJobStatus(job.id, 'archived')}
                 >
-                  <ArchiveIcon className="h-4 w-auto" />
+                  <ArchiveIcon className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
-
-              <TooltipContent side="bottom" className="text-base">
+              <TooltipContent side="bottom" className="text-sm">
                 Archive
               </TooltipContent>
             </Tooltip>
@@ -230,13 +229,13 @@ export function JobSummary({
         )}
 
         {/* Copy url button */}
-        <TooltipProvider delayDuration={500}>
+        <TooltipProvider delayDuration={300}>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                size="lg"
-                variant="secondary"
-                className="w-10 border-none bg-border px-0 transition-colors duration-200 ease-in-out hover:bg-foreground/15 focus:bg-foreground/15"
+                size="icon"
+                variant="ghost"
+                className="h-10 w-10 rounded-xl transition-all duration-200 hover:bg-muted"
                 onClick={(evt) => {
                   evt.stopPropagation();
                   navigator.clipboard.writeText(job.externalUrl);
@@ -247,24 +246,23 @@ export function JobSummary({
                   });
                 }}
               >
-                <CopyIcon className="h-4 w-auto" />
+                <CopyIcon className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-
-            <TooltipContent side="bottom" className="text-base">
+            <TooltipContent side="bottom" className="text-sm">
               Copy URL
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
 
         {/* Copy job details button */}
-        <TooltipProvider delayDuration={500}>
+        <TooltipProvider delayDuration={300}>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                size="lg"
-                variant="secondary"
-                className="w-10 border-none bg-border px-0 transition-colors duration-200 ease-in-out hover:bg-foreground/15 focus:bg-foreground/15"
+                size="icon"
+                variant="ghost"
+                className="h-10 w-10 rounded-xl transition-all duration-200 hover:bg-muted"
                 onClick={(evt) => {
                   evt.stopPropagation();
                   const jobDetails = [
@@ -284,31 +282,29 @@ export function JobSummary({
                   });
                 }}
               >
-                <FileTextIcon className="h-4 w-auto" />
+                <FileTextIcon className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-
-            <TooltipContent side="bottom" className="text-base">
+            <TooltipContent side="bottom" className="text-sm">
               Copy Job Details
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
 
         {/* Delete button */}
-        <TooltipProvider delayDuration={500}>
+        <TooltipProvider delayDuration={300}>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                size="lg"
-                variant="destructive"
-                className="w-10 bg-destructive/10 px-0 transition-colors duration-200 ease-in-out hover:bg-destructive/20 focus:bg-destructive/20"
+                size="icon"
+                variant="ghost"
+                className="h-10 w-10 rounded-xl transition-all duration-200 hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => setIsDeleteDialogOpen(true)}
               >
-                <TrashIcon className="h-5 w-auto text-destructive" />
+                <TrashIcon className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-
-            <TooltipContent side="bottom" className="text-base">
+            <TooltipContent side="bottom" className="text-sm">
               Delete
             </TooltipContent>
           </Tooltip>
@@ -316,31 +312,28 @@ export function JobSummary({
 
         {/* Favorite company button */}
         {onToggleFavorite && job.companyName && (
-          <TooltipProvider delayDuration={500}>
+          <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  size="lg"
-                  variant="secondary"
-                  className={`w-10 border-none px-0 transition-colors duration-200 ease-in-out ${
+                  size="icon"
+                  variant="ghost"
+                  className={`h-10 w-10 rounded-xl transition-all duration-200 ${
                     isFavoriteCompany
-                      ? 'bg-rose-500/10 hover:bg-rose-500/20 focus:bg-rose-500/20'
-                      : 'bg-border hover:bg-foreground/15 focus:bg-foreground/15'
+                      ? 'bg-rose-500/10 text-rose-500 hover:bg-rose-500/20'
+                      : 'hover:bg-muted'
                   }`}
                   disabled={!isCompanyPreferencesLoaded || favoriteActionPending}
                   onClick={() => onToggleFavorite(job.companyName)}
                 >
                   {favoriteActionPending ? (
-                    <Icons.spinner2 className="h-5 w-auto animate-spin" />
+                    <Icons.spinner2 className="h-5 w-5 animate-spin" />
                   ) : (
-                    <HeartFilledIcon
-                      className={`h-5 w-auto ${isFavoriteCompany ? 'text-rose-500' : 'text-muted-foreground'}`}
-                    />
+                    <HeartFilledIcon className="h-5 w-5" />
                   )}
                 </Button>
               </TooltipTrigger>
-
-              <TooltipContent side="bottom" className="text-base">
+              <TooltipContent side="bottom" className="text-sm">
                 {isFavoriteCompany ? 'Remove from favorites' : 'Add to favorites'}
               </TooltipContent>
             </Tooltip>
@@ -349,31 +342,28 @@ export function JobSummary({
 
         {/* Block company button */}
         {onToggleBlacklist && job.companyName && (
-          <TooltipProvider delayDuration={500}>
+          <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  size="lg"
-                  variant="secondary"
-                  className={`w-10 border-none px-0 transition-colors duration-200 ease-in-out ${
+                  size="icon"
+                  variant="ghost"
+                  className={`h-10 w-10 rounded-xl transition-all duration-200 ${
                     isBlacklistedCompany
-                      ? 'bg-destructive/10 hover:bg-destructive/20 focus:bg-destructive/20'
-                      : 'bg-border hover:bg-foreground/15 focus:bg-foreground/15'
+                      ? 'bg-destructive/10 text-destructive hover:bg-destructive/20'
+                      : 'hover:bg-muted'
                   }`}
                   disabled={!isCompanyPreferencesLoaded || blacklistActionPending}
                   onClick={() => onToggleBlacklist(job.companyName)}
                 >
                   {blacklistActionPending ? (
-                    <Icons.spinner2 className="h-5 w-auto animate-spin" />
+                    <Icons.spinner2 className="h-5 w-5 animate-spin" />
                   ) : (
-                    <MinusCircledIcon
-                      className={`h-5 w-auto ${isBlacklistedCompany ? 'text-destructive' : 'text-muted-foreground'}`}
-                    />
+                    <MinusCircledIcon className="h-5 w-5" />
                   )}
                 </Button>
               </TooltipTrigger>
-
-              <TooltipContent side="bottom" className="text-base">
+              <TooltipContent side="bottom" className="text-sm">
                 {isBlacklistedCompany ? 'Remove from blacklist' : 'Block company'}
               </TooltipContent>
             </Tooltip>
@@ -388,7 +378,7 @@ export function JobSummary({
         />
 
         {/* Label selector */}
-        <div className="lg:ml-auto">
+        <div className="ml-auto">
           <JobLabelSelector job={job} onUpdateLabels={onUpdateLabels} />
         </div>
       </div>
@@ -425,7 +415,7 @@ function JobLabelSelector({
         onUpdateLabels(job.id, newLabels);
       }}
     >
-      <SelectTrigger className="h-10 w-[148px]">
+      <SelectTrigger className="h-10 w-[148px] rounded-xl border-border/50">
         <SelectValue placeholder="Add Label" />
       </SelectTrigger>
       <SelectContent>

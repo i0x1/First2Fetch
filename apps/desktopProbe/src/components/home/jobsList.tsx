@@ -140,151 +140,131 @@ export function JobsList({
       scrollThreshold={0.8}
       scrollableTarget={parentContainerId}
     >
-      <ul>
+      <ul className="space-y-2 px-2 py-2">
         {jobs.map((job, index) => {
           const fromLink = linksMap.get(job.link_id)?.title;
 
           return (
             <li
               key={`${job.id}-${index}`}
-              className={cn('-mt-[1px] rounded-lg px-5 pt-6', selectedJobId === job.id && 'bg-muted')}
+              className={cn(
+                'group relative rounded-xl border transition-all duration-200 ease-out px-4 py-3',
+                selectedJobId === job.id
+                  ? 'border-primary/50 bg-primary/5 shadow-sm shadow-primary/5'
+                  : 'border-border/40 bg-card/40 hover:border-border hover:bg-card hover:shadow-sm'
+              )}
               ref={itemRefs[index]}
               onClick={() => onSelect(job)}
             >
-              <div className="flex flex-wrap-reverse items-center justify-between gap-1.5">
-                {/* Company Name */}
-                <p className="my-1.5 flex items-center gap-1 text-xs text-muted-foreground">
-                  <span>{job.companyName}</span>
-                  {isFavoriteCompany(job.companyName) && <HeartFilledIcon className="h-3 w-3 text-rose-500" />}
-                </p>
-
-                {/* Action buttons */}
-                <div className="ml-auto flex items-center gap-2">
-                  {/* Archive button */}
-                  {job.status !== 'archived' && (
-                    <TooltipProvider delayDuration={500}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="secondary"
-                            className="h-[22px] w-[22px] rounded-sm bg-transparent px-0 transition-colors duration-200 ease-in-out hover:bg-foreground/10 focus:bg-foreground/10"
-                            onClick={(evt) => {
-                              onArchive(job);
-                              evt.stopPropagation();
-                            }}
-                          >
-                            <ArchiveIcon className="min-h-4 w-fit text-foreground" />
-                          </Button>
-                        </TooltipTrigger>
-
-                        <TooltipContent side="bottom" className="text-base">
-                          Archive
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  )}
-
-                  {/* Delete button */}
-                  <TooltipProvider delayDuration={500}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="destructive"
-                          className="h-[22px] w-[22px] rounded-sm bg-transparent px-0 transition-colors duration-200 ease-in-out hover:bg-destructive/20 focus:bg-destructive/20"
-                          onClick={(evt) => {
-                            // onDelete(job);
-                            setJobToDelete(job);
-                            evt.stopPropagation();
-                          }}
-                        >
-                          <TrashIcon className="h-5 w-auto text-destructive" />
-                        </Button>
-                      </TooltipTrigger>
-
-                      <TooltipContent side="bottom" className="text-base">
-                        Delete
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
+              {/* Title Row */}
+              <div className="mb-1.5 pr-8">
+                <h3 className="text-sm font-bold leading-snug text-foreground tracking-tight">
+                  {job.title}
+                </h3>
               </div>
 
-              {/* Job Title */}
-              <p className="mt-2 leading-5 tracking-wide">{job.title}</p>
-
-              <div className="mt-1.5 flex items-center justify-between gap-4">
-                {/* Location, JobType, Salary & Tags */}
-                <p className="text-sm leading-[18px] tracking-tight text-foreground/80">
-                  {job.location && <span>{job.location}</span>}
-                  {job.jobType && (
-                    <>
-                      {job.location && <span className="mx-1 text-[14px] font-light text-foreground/40"> | </span>}
-                      <span>{job.jobType}</span>
-                    </>
+              {/* Company & Location Row */}
+              <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-semibold text-primary/90">
+                    {job.companyName}
+                  </span>
+                  {isFavoriteCompany(job.companyName) && (
+                    <HeartFilledIcon className="h-3 w-3 text-rose-500 flex-shrink-0" />
                   )}
-                  {job.salary && (
-                    <>
-                      {(job.location || job.jobType) && (
-                        <span className="mx-1 text-[14px] font-light text-foreground/40"> | </span>
-                      )}
-                      <span>{job.salary}</span>
-                    </>
-                  )}
-                  {job.tags?.map((tag, tagIndex) => (
-                    <span key={`${job.id}-${tag}-${tagIndex}`}>
-                      {(job.location || job.jobType || job.salary) && (
-                        <span className="text-3 mx-[8px] font-light text-foreground/40"> | </span>
-                      )}
-                      <span>{tag}</span>
+                </div>
+                
+                {job.location && (
+                  <>
+                    <span className="text-border/60 text-xs flex-shrink-0">•</span>
+                    <span className="text-xs text-muted-foreground truncate max-w-[200px]">
+                      {job.location}
                     </span>
-                  ))}
-                </p>
-
-                {/* Job Label */}
-                {job.labels[0] && (
-                  <div
-                    className={`w-[85px] flex-shrink-0 rounded-md bg-opacity-80 py-1 text-center text-xs leading-3 text-white dark:bg-opacity-60 ${
-                      LABEL_COLOR_CLASSES[job.labels[0]]
-                    }`}
-                  >
-                    {job.labels[0]}
-                  </div>
+                  </>
                 )}
               </div>
 
-              <div className="mt-4 flex items-center gap-12">
+              {/* Footer: Source & Timestamps */}
+              <div className="flex items-center justify-between gap-4 border-t border-border/30 pt-2.5">
                 {/* Source */}
-                <p className="flex items-center gap-2 text-xs leading-3 text-foreground/80">
-                  {/* Source logo */}
-                  <Avatar className="h-6 w-6">
+                <div className="flex items-center gap-1.5 opacity-70 group-hover:opacity-100 transition-opacity">
+                  <Avatar className="h-3.5 w-3.5 ring-1 ring-border/50">
                     <AvatarImage src={siteLogos[job.siteId]} />
-                    <AvatarFallback>LI</AvatarFallback>
+                    <AvatarFallback className="text-[6px]">LI</AvatarFallback>
                   </Avatar>
-                  {fromLink ?? siteMap[job.siteId]?.name}
-                </p>
+                  <span className="text-[11px] font-medium text-muted-foreground">
+                    {fromLink ?? siteMap[job.siteId]?.name}
+                  </span>
+                </div>
 
-                {/* Timestamp */}
-                <div className="ml-auto w-fit flex-shrink-0 text-xs text-foreground/80 text-right">
-                  {/* LinkedIn posting date */}
+                {/* Timestamps */}
+                <div className="flex items-center gap-2 text-[10px] text-muted-foreground/60 whitespace-nowrap">
                   {job.posted_at_raw && (
-                    <p className="font-medium">
-                      posted: {job.posted_at_raw}
+                    <span className="flex items-center gap-1">
+                      <span>posted:</span>
+                      <span className="text-muted-foreground/80 font-medium">{job.posted_at_raw}</span>
                       {job.is_repost && (
-                        <span className="ml-1 text-amber-500" title="This job was reposted">
+                        <span className="text-amber-500" title="This job was reposted">
                           ↻
                         </span>
                       )}
-                    </p>
+                    </span>
                   )}
-
-                  {/* Our scraper timestamp */}
-                  <p className={job.posted_at_raw ? 'text-foreground/60 text-[11px]' : ''}>
-                    detected {getRelativeTimeString(new Date(job.created_at))}
-                  </p>
+                  {job.posted_at_raw && <span className="text-border/50">•</span>}
+                  <span>
+                    found: <span className="text-muted-foreground/80 font-medium">{getRelativeTimeString(new Date(job.created_at))}</span>
+                  </span>
                 </div>
               </div>
 
-              <hr className="mt-6 w-full border-muted" />
+              {/* Action buttons - Top Right Absolute */}
+              <div className="absolute right-2 top-2 hidden items-center gap-1 rounded-lg bg-card/95 pl-2 shadow-sm ring-1 ring-border/10 backdrop-blur-sm group-hover:flex">
+                {/* Archive button */}
+                {job.status !== 'archived' && (
+                  <TooltipProvider delayDuration={300}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground"
+                          onClick={(evt) => {
+                            onArchive(job);
+                            evt.stopPropagation();
+                          }}
+                        >
+                          <ArchiveIcon className="h-3.5 w-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="left" className="text-xs">
+                        Archive
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+
+                {/* Delete button */}
+                <TooltipProvider delayDuration={300}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 rounded-md hover:bg-destructive/10 hover:text-destructive text-muted-foreground"
+                        onClick={(evt) => {
+                          setJobToDelete(job);
+                          evt.stopPropagation();
+                        }}
+                      >
+                        <TrashIcon className="h-3.5 w-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left" className="text-xs">
+                      Delete
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
             </li>
           );
         })}
