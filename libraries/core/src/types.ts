@@ -93,6 +93,10 @@ export type Job = {
   link_id?: number;
 
   exclude_reason?: string;
+
+  // LinkedIn posting date fields
+  posted_at_raw?: string;  // "8 hours ago", "Reposted 1 week ago"
+  is_repost?: boolean;     // Extracted from "Reposted" keyword
 };
 
 export type Review = {
@@ -250,16 +254,19 @@ export type DbSchema = {
           jobs_search?: string;
           jobs_site_ids?: number[];
           jobs_link_ids?: number[];
+          jobs_labels?: string[];
+          hide_reposted?: boolean;
         };
         Args: {};
         Returns: Job[];
       };
       count_jobs: {
         Params: {
-          jobs_status?: JobStatus;
           jobs_search?: string;
           jobs_site_ids?: number[];
           jobs_link_ids?: number[];
+          jobs_labels?: string[];
+          hide_reposted?: boolean;
         };
         Args: {};
         Returns: Array<{

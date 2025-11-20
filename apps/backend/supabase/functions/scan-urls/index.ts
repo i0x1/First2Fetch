@@ -91,6 +91,9 @@ Deno.serve(async (req) => {
             status: 'processing' as const,
             // ensure tags is not null
             tags: job.tags ?? [],
+            // ensure posting date fields are included
+            posted_at_raw: job.posted_at_raw || null,
+            is_repost: job.is_repost || false,
           })),
           { onConflict: 'user_id, externalId', ignoreDuplicates: true },
         )

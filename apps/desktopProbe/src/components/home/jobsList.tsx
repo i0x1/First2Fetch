@@ -264,9 +264,24 @@ export function JobsList({
                 </p>
 
                 {/* Timestamp */}
-                <p className="ml-auto w-fit flex-shrink-0 text-xs text-foreground/80">
-                  detected {getRelativeTimeString(new Date(job.created_at))}
-                </p>
+                <div className="ml-auto w-fit flex-shrink-0 text-xs text-foreground/80 text-right">
+                  {/* LinkedIn posting date */}
+                  {job.posted_at_raw && (
+                    <p className="font-medium">
+                      posted: {job.posted_at_raw}
+                      {job.is_repost && (
+                        <span className="ml-1 text-amber-500" title="This job was reposted">
+                          ↻
+                        </span>
+                      )}
+                    </p>
+                  )}
+
+                  {/* Our scraper timestamp */}
+                  <p className={job.posted_at_raw ? 'text-foreground/60 text-[11px]' : ''}>
+                    detected {getRelativeTimeString(new Date(job.created_at))}
+                  </p>
+                </div>
               </div>
 
               <hr className="mt-6 w-full border-muted" />

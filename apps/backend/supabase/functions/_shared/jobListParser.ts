@@ -230,6 +230,76 @@ async function parseSiteJobsList({
 }
 
 /**
+ * Extract posting date from a LinkedIn job element using hybrid approach:
+ * 1. Try specific CSS selectors
+ * 2. Search footer items for time patterns
+ * 3. Fall back to broad text pattern matching
+ */
+function extractPostingDate(el: Element): {
+  posted_at_raw?: string;
+  is_repost: boolean;
+} {
+  let posted_at_raw: string | undefined;
+
+  // STEP 1: Try specific selectors (V1 - non-logged-in layout)
+  const dateSelectors = [
+    '.job-search-card__listdate',
+    'time',
+    '.job-result-card__listdate',
+    '.job-search-card__listdate--new',
+  ];
+
+  for (const selector of dateSelectors) {
+    const dateEl = el.querySelector(selector);
+    if (dateEl?.textContent?.trim()) {
+      posted_at_raw = dateEl.textContent.trim();
+      break;
+    }
+  }
+
+  // STEP 2: Try V2 selectors (logged-in layout) - search footer items
+  if (!posted_at_raw) {
+    const footerItems = el.querySelectorAll(
+      '.job-card-container__metadata-item, ' +
+        '.job-card-list__footer-wrapper li, ' +
+        '.job-card-job-posting-card-wrapper__footer-items li',
+    );
+
+    for (const item of footerItems) {
+      const text = item.textContent?.trim() || '';
+      // Pattern: "X minute(s)/hour(s)/day(s)/week(s)/month(s) ago"
+      if (/\d+\s+(minute|hour|day|week|month)s?\s+ago/i.test(text)) {
+        posted_at_raw = text;
+        break;
+      }
+    }
+  }
+
+  // STEP 3: Broad pattern search as fallback
+  if (!posted_at_raw) {
+    const allText = el.textContent || '';
+    const timePattern = /(Reposted\s+)?\d+\s+(minute|hour|day|week|month)s?\s+ago/gi;
+    const matches = allText.match(timePattern);
+    if (matches && matches.length > 0) {
+      // Take the first match, preferring "Reposted" ones
+      const repostedMatch = matches.find((m) => m.toLowerCase().includes('repost'));
+      posted_at_raw = (repostedMatch || matches[0]).trim();
+    }
+  }
+
+  // Clean up the text
+  if (posted_at_raw) {
+    // Remove extra whitespace, normalize
+    posted_at_raw = posted_at_raw.replace(/\s+/g, ' ').replace(/\n/g, ' ').trim();
+  }
+
+  // Extract repost flag
+  const is_repost = posted_at_raw?.toLowerCase().includes('repost') ?? false;
+
+  return { posted_at_raw, is_repost };
+}
+
+/**
  * Method used to parse a linkedin job page.
  */
 export function parseLinkedInJobs({ siteId, html }: { siteId: number; html: string }): JobSiteParseResult {
@@ -299,6 +369,8 @@ export function parseLinkedInJobs({ siteId, html }: { siteId: number; html: stri
       .replace(/\(on\-site\)/i, '')
       .replace(/\(hybrid\)/i, '');
 
+    const { posted_at_raw, is_repost } = extractPostingDate(el);
+
     return {
       siteId,
       externalId,
@@ -308,6 +380,8 @@ export function parseLinkedInJobs({ siteId, html }: { siteId: number; html: stri
       companyLogo,
       location,
       labels: [],
+      posted_at_raw,
+      is_repost,
     };
   };
   const parseElementV2 = (el: Element): ParsedJob | null => {
@@ -382,6 +456,8 @@ export function parseLinkedInJobs({ siteId, html }: { siteId: number; html: stri
       .filter((p) => !p.includes('viewed'));
     const tags = [...benefitTags, ...footerTags];
 
+    const { posted_at_raw, is_repost } = extractPostingDate(el);
+
     return {
       siteId,
       externalId,
@@ -393,6 +469,8 @@ export function parseLinkedInJobs({ siteId, html }: { siteId: number; html: stri
       labels: [],
       jobType,
       tags,
+      posted_at_raw,
+      is_repost,
     };
   };
   const parseElementV3 = (el: Element): ParsedJob | null => {
@@ -433,6 +511,8 @@ export function parseLinkedInJobs({ siteId, html }: { siteId: number; html: stri
 
     const tags = details.slice(3);
 
+    const { posted_at_raw, is_repost } = extractPostingDate(el);
+
     return {
       siteId,
       externalId,
@@ -443,6 +523,8 @@ export function parseLinkedInJobs({ siteId, html }: { siteId: number; html: stri
       jobType,
       labels: [],
       tags,
+      posted_at_raw,
+      is_repost,
     };
   };
 

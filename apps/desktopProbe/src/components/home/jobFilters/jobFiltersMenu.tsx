@@ -23,6 +23,7 @@ export type JobFiltersType = {
   sites: number[];
   links: number[];
   labels: string[];
+  hideReposted: boolean;
 };
 
 const ALL_LABELS = Object.values(JOB_LABELS);
@@ -34,11 +35,13 @@ export function JobFiltersMenu({
   selectedSites,
   selectedLinks,
   selectedLabels,
+  hideReposted,
   onApplyFilters,
 }: {
   selectedSites: number[];
   selectedLinks: number[];
   selectedLabels: string[];
+  hideReposted: boolean;
   onApplyFilters: (filters: JobFiltersType) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -57,9 +60,10 @@ export function JobFiltersMenu({
         sites: selectedSites.filter((id) => id !== siteId),
         links: selectedLinks,
         labels: selectedLabels,
+        hideReposted,
       });
     } else {
-      onApplyFilters({ sites: [...selectedSites, siteId], links: selectedLinks, labels: selectedLabels });
+      onApplyFilters({ sites: [...selectedSites, siteId], links: selectedLinks, labels: selectedLabels, hideReposted });
     }
   };
 
@@ -69,9 +73,10 @@ export function JobFiltersMenu({
         sites: selectedSites,
         links: selectedLinks.filter((id) => id !== linkId),
         labels: selectedLabels,
+        hideReposted,
       });
     } else {
-      onApplyFilters({ sites: selectedSites, links: [...selectedLinks, linkId], labels: selectedLabels });
+      onApplyFilters({ sites: selectedSites, links: [...selectedLinks, linkId], labels: selectedLabels, hideReposted });
     }
   };
 
@@ -81,26 +86,36 @@ export function JobFiltersMenu({
         sites: selectedSites,
         links: selectedLinks,
         labels: selectedLabels.filter((l) => l !== label),
+        hideReposted,
       });
     } else {
-      onApplyFilters({ sites: selectedSites, links: selectedLinks, labels: [...selectedLabels, label] });
+      onApplyFilters({ sites: selectedSites, links: selectedLinks, labels: [...selectedLabels, label], hideReposted });
     }
   };
 
-  const clearSites = () => {
-    onApplyFilters({ sites: [], links: selectedLinks, labels: selectedLabels });
-  };
-  const clearLinks = () => {
-    onApplyFilters({ sites: selectedSites, links: [], labels: selectedLabels });
-  };
-  const clearLabels = () => {
-    onApplyFilters({ sites: selectedSites, links: selectedLinks, labels: [] });
-  };
-  const clearAll = () => {
-    onApplyFilters({ sites: [], links: [], labels: [] });
+  const onToggleHideReposted = () => {
+    onApplyFilters({
+      sites: selectedSites,
+      links: selectedLinks,
+      labels: selectedLabels,
+      hideReposted: !hideReposted,
+    });
   };
 
-  const activeFilterCount = selectedSites.length + selectedLinks.length + selectedLabels.length;
+  const clearSites = () => {
+    onApplyFilters({ sites: [], links: selectedLinks, labels: selectedLabels, hideReposted });
+  };
+  const clearLinks = () => {
+    onApplyFilters({ sites: selectedSites, links: [], labels: selectedLabels, hideReposted });
+  };
+  const clearLabels = () => {
+    onApplyFilters({ sites: selectedSites, links: selectedLinks, labels: [], hideReposted });
+  };
+  const clearAll = () => {
+    onApplyFilters({ sites: [], links: [], labels: [], hideReposted: false });
+  };
+
+  const activeFilterCount = selectedSites.length + selectedLinks.length + selectedLabels.length + (hideReposted ? 1 : 0);
 
   return (
     <DropdownMenu open={isOpen} onOpenChange={(opened) => setIsOpen(opened)}>
@@ -240,12 +255,28 @@ export function JobFiltersMenu({
 
         <DropdownMenuSeparator />
 
+        {/* Hide Reposted Jobs */}
+        <DropdownMenuGroup>
+          <DropdownMenuCheckboxItem
+            checked={hideReposted}
+            onSelect={(evt) => {
+              evt.preventDefault();
+              onToggleHideReposted();
+            }}
+            className="pr-8"
+          >
+            <span className="ml-2">Hide Reposted Jobs</span>
+          </DropdownMenuCheckboxItem>
+        </DropdownMenuGroup>
+
+        <DropdownMenuSeparator />
+
         {/* Reset all filters button */}
         <DropdownMenuItem
           onSelect={() => {
             clearAll();
           }}
-          disabled={selectedSites.length === 0 && selectedLinks.length === 0 && selectedLabels.length === 0}
+          disabled={selectedSites.length === 0 && selectedLinks.length === 0 && selectedLabels.length === 0 && !hideReposted}
           className="text-destructive"
         >
           Remove Filters

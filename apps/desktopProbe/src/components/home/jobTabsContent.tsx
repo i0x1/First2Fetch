@@ -47,6 +47,7 @@ export function JobTabsContent({
   siteIds,
   linkIds,
   labels,
+  hideReposted,
 }: {
   status: JobStatus;
   listing: JobListing;
@@ -55,6 +56,7 @@ export function JobTabsContent({
   siteIds: number[];
   linkIds: number[];
   labels: string[];
+  hideReposted: boolean;
 }) {
   const { handleError } = useError();
   const { settings } = useSettings();
@@ -119,7 +121,7 @@ export function JobTabsContent({
         console.log(location.search);
         setListing((listing) => ({ ...listing, isLoading: true }));
 
-        const result = await listJobs({ status, search, siteIds, linkIds, labels, limit: JOB_BATCH_SIZE });
+        const result = await listJobs({ status, search, siteIds, linkIds, labels, hideReposted, limit: JOB_BATCH_SIZE });
         console.log('found jobs', result.jobs.length);
 
         setListing({
@@ -160,6 +162,7 @@ export function JobTabsContent({
             siteIds,
             labels,
             linkIds,
+            hideReposted,
           });
           setListing((l) => ({
             ...result,
@@ -255,6 +258,7 @@ export function JobTabsContent({
         after: listing.nextPageToken,
         search,
         siteIds,
+        hideReposted,
         labels,
         linkIds,
       });
@@ -339,7 +343,7 @@ export function JobTabsContent({
   // Update the query params when the search input changes
   const onSearchJobs = ({ search, filters }: { search: string; filters: JobFiltersType }) => {
     navigate(
-      `?status=${status}&search=${search}&site_ids=${filters.sites.join(',')}&link_ids=${filters.links.join(',')}&labels=${filters.labels.join(',')}`,
+      `?status=${status}&search=${search}&site_ids=${filters.sites.join(',')}&link_ids=${filters.links.join(',')}&labels=${filters.labels.join(',')}&hide_reposted=${filters.hideReposted}`,
     );
   };
 
@@ -519,6 +523,7 @@ export function JobTabsContent({
                     siteIds={siteIds}
                     linkIds={linkIds}
                     labels={labels}
+                    hideReposted={hideReposted}
                     onSearchJobs={onSearchJobs}
                   />
                 </div>

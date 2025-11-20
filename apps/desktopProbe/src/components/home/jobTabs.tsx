@@ -58,6 +58,7 @@ export function JobTabs() {
   const siteIds = searchParams.get('site_ids') ? searchParams.get('site_ids').split(',').map(Number) : [];
   const linkIds = searchParams.get('link_ids') ? searchParams.get('link_ids').split(',').map(Number) : [];
   const labels = searchParams.get('labels') ? searchParams.get('labels').split(',') : [];
+  const hideReposted = searchParams.get('hide_reposted') === 'true';
 
   const [listing, setListing] = useState<JobListing>({
     isLoading: true,
@@ -72,7 +73,7 @@ export function JobTabs() {
   // Handle tab change
   const onTabChange = (tabValue: string) => {
     navigate(
-      `?status=${tabValue}&search=${search}&site_ids=${siteIds?.join(',')}&link_ids=${linkIds?.join(',')}&labels=${labels?.join(',')}&r=${Math.random()}`,
+      `?status=${tabValue}&search=${search}&site_ids=${siteIds?.join(',')}&link_ids=${linkIds?.join(',')}&labels=${labels?.join(',')}&hide_reposted=${hideReposted}&r=${Math.random()}`,
     );
   };
 
@@ -227,6 +228,7 @@ export function JobTabs() {
         siteIds={siteIds}
         linkIds={linkIds}
         labels={labels}
+        hideReposted={hideReposted}
       />
     </Tabs>
   );

@@ -13,12 +13,14 @@ export function JobFilters({
   siteIds,
   linkIds,
   labels,
+  hideReposted,
   onSearchJobs,
 }: {
   search: string;
   siteIds: number[];
   linkIds: number[];
   labels: string[];
+  hideReposted: boolean;
   onSearchJobs: (_: { search: string; filters: JobFiltersType }) => void;
 }) {
   const [inputValue, setInputValue] = useState(search);
@@ -26,7 +28,13 @@ export function JobFilters({
     sites: [],
     links: [],
     labels: [],
+    hideReposted: hideReposted || false,
   });
+
+  // Sync hideReposted from props
+  useEffect(() => {
+    setFilters((prev) => ({ ...prev, hideReposted }));
+  }, [hideReposted]);
 
   // Debounced search for input value
   const emitDebouncedSearch = useCallback(
@@ -54,6 +62,7 @@ export function JobFilters({
         selectedSites={siteIds || []}
         selectedLinks={linkIds || []}
         selectedLabels={labels || []}
+        hideReposted={hideReposted}
         onApplyFilters={(newFilters) => {
           setFilters(newFilters);
         }}
@@ -73,6 +82,5 @@ const useDidMountEffect = (effect: React.EffectCallback, deps?: React.Dependency
 
     // Run the effect for subsequent renders
     effect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 };

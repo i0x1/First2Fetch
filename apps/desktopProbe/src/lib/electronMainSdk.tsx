@@ -139,6 +139,7 @@ export async function listJobs({
   siteIds,
   linkIds,
   labels,
+  hideReposted,
   limit,
   after,
 }: {
@@ -147,6 +148,7 @@ export async function listJobs({
   siteIds?: number[];
   linkIds?: number[];
   labels?: string[];
+  hideReposted?: boolean;
   limit?: number;
   after?: string;
 }) {
@@ -163,6 +165,7 @@ export async function listJobs({
     siteIds,
     linkIds,
     labels,
+    hideReposted,
     limit,
     after,
   });

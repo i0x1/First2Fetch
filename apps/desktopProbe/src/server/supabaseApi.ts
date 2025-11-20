@@ -174,6 +174,7 @@ export class F2aSupabaseApi {
     siteIds,
     linkIds,
     labels,
+    hideReposted,
     limit = 50,
     after,
   }: {
@@ -182,6 +183,7 @@ export class F2aSupabaseApi {
     siteIds?: number[];
     linkIds?: number[];
     labels?: string[];
+    hideReposted?: boolean;
     limit?: number;
     after?: string;
   }) {
@@ -199,6 +201,7 @@ export class F2aSupabaseApi {
           jobs_site_ids,
           jobs_link_ids,
           jobs_labels,
+          hide_reposted: hideReposted ?? false,
         });
 
         return res;
@@ -215,6 +218,7 @@ export class F2aSupabaseApi {
           jobs_site_ids,
           jobs_link_ids,
           jobs_labels,
+          hide_reposted: hideReposted ?? false,
         });
 
         return res;
