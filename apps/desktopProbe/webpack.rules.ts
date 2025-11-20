@@ -29,4 +29,20 @@ export const rules: Required<ModuleOptions>['rules'] = [
       },
     },
   },
+  // Handle SVG files
+  {
+    test: /\.svg$/,
+    type: 'asset/resource',
+    generator: {
+      filename: 'assets/[name][ext]',
+    },
+  },
+  // Handle other image files
+  {
+    test: /\.(png|jpg|jpeg|gif|ico)$/,
+    type: 'asset/resource',
+    generator: {
+      filename: 'assets/[name][ext]',
+    },
+  },
 ];

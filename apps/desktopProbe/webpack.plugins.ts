@@ -20,6 +20,18 @@ export const plugins = [
     'AMPLITUDE_API_KEY',
   ]),
   new CopyWebpackPlugin({
-    patterns: [{ from: path.join(__dirname, 'images'), to: 'images' }],
+    patterns: [
+      { from: path.join(__dirname, 'images'), to: 'images' },
+      { from: path.join(__dirname, 'images'), to: 'assets' },
+      // Copy public directory (including job-search-next/assets) for library compatibility
+      { 
+        from: path.join(__dirname, 'public'), 
+        to: '.',
+        noErrorOnMissing: true,
+        globOptions: {
+          ignore: ['**/.gitkeep'],
+        },
+      },
+    ],
   }),
 ];

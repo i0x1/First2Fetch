@@ -146,7 +146,7 @@ export function JobsList({
 
           return (
             <li
-              key={job.id}
+              key={`${job.id}-${index}`}
               className={cn('-mt-[1px] rounded-lg px-5 pt-6', selectedJobId === job.id && 'bg-muted')}
               ref={itemRefs[index]}
               onClick={() => onSelect(job)}
@@ -230,8 +230,8 @@ export function JobsList({
                       <span>{job.salary}</span>
                     </>
                   )}
-                  {job.tags?.map((tag) => (
-                    <span key={job.id + tag}>
+                  {job.tags?.map((tag, tagIndex) => (
+                    <span key={`${job.id}-${tag}-${tagIndex}`}>
                       {(job.location || job.jobType || job.salary) && (
                         <span className="text-3 mx-[8px] font-light text-foreground/40"> | </span>
                       )}

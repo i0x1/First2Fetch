@@ -164,12 +164,17 @@ export function JobTabsContent({
             linkIds,
             hideReposted,
           });
-          setListing((l) => ({
-            ...result,
-            jobs: l.jobs.concat(result.jobs),
-            isLoading: false,
-            hasMore: !!result.nextPageToken,
-          }));
+          setListing((l) => {
+            // Deduplicate jobs by ID to prevent duplicate keys
+            const existingJobIds = new Set(l.jobs.map((job) => job.id));
+            const newJobs = result.jobs.filter((job) => !existingJobIds.has(job.id));
+            return {
+              ...result,
+              jobs: l.jobs.concat(newJobs),
+              isLoading: false,
+              hasMore: !!result.nextPageToken,
+            };
+          });
         }
       } catch (error) {
         handleError({ error });
@@ -263,12 +268,17 @@ export function JobTabsContent({
         linkIds,
       });
 
-      setListing((listing) => ({
-        ...result,
-        jobs: [...listing.jobs, ...result.jobs],
-        isLoading: false,
-        hasMore: result.jobs.length === JOB_BATCH_SIZE,
-      }));
+      setListing((listing) => {
+        // Deduplicate jobs by ID to prevent duplicate keys
+        const existingJobIds = new Set(listing.jobs.map((job) => job.id));
+        const newJobs = result.jobs.filter((job) => !existingJobIds.has(job.id));
+        return {
+          ...result,
+          jobs: [...listing.jobs, ...newJobs],
+          isLoading: false,
+          hasMore: result.jobs.length === JOB_BATCH_SIZE,
+        };
+      });
     } catch (error) {
       handleError({ error, title: 'Failed to load more jobs' });
     }
