@@ -37,9 +37,9 @@ This is a monorepo containing multiple applications and shared libraries. Follow
    - Apply all database migrations from `supabase/migrations/`
    - Load seed data from `supabase/seed.sql` (includes initial sites data)
    - Display all service URLs including:
-     - **Studio URL (Dashboard)**: http://127.0.0.1:54333
-     - **API URL**: http://127.0.0.1:54331
-     - **Database URL**: postgresql://postgres:postgres@127.0.0.1:54332/postgres
+     - **Studio URL (Dashboard)**: http://127.0.0.1:54323
+     - **API URL**: http://127.0.0.1:54321
+     - **Database URL**: postgresql://postgres:postgres@127.0.0.1:54322/postgres
    
    If Supabase is already running, you can check the status and view URLs with:
    ```bash
