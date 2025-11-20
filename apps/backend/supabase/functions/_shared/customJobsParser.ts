@@ -1,4 +1,4 @@
-import { Job, throwError } from '@first2apply/core';
+import { Job, JobType, throwError } from '@first2apply/core';
 import { DbSchema, User } from '@first2apply/core';
 import { SupabaseClient } from '@supabase/supabasefork';
 import { DOMParser, Element } from 'https://deno.land/x/deno_dom@v0.1.43/deno-dom-wasm.ts';
@@ -199,6 +199,34 @@ ${htmlContent}
     elementsCount: jobs.length,
   };
 }
+const JOB_TYPE_VALUES = ['remote', 'hybrid', 'onsite'] as const;
+type JobTypeValue = (typeof JOB_TYPE_VALUES)[number];
+
+const normalizeJobType = (value?: string | null): JobTypeValue | undefined => {
+  if (!value || typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return undefined;
+
+  if (normalized.includes('remote')) return 'remote';
+  if (normalized.includes('hybrid')) return 'hybrid';
+  if (
+    normalized.includes('onsite') ||
+    normalized.includes('on-site') ||
+    normalized.includes('on site') ||
+    normalized.includes('in-office') ||
+    normalized.includes('in office') ||
+    normalized.includes('office')
+  ) {
+    return 'onsite';
+  }
+  return undefined;
+};
+
+const JOB_TYPE_SCHEMA = z.preprocess(
+  (value) => normalizeJobType(typeof value === 'string' ? value : null),
+  z.enum(JOB_TYPE_VALUES).optional().nullable(),
+);
+
 const JOB_SCHEMA = z.object({
   externalUrl: z.string(),
 
@@ -206,7 +234,7 @@ const JOB_SCHEMA = z.object({
   companyName: z.string().min(2).max(100),
   companyLogo: z.string().optional().nullable(),
 
-  jobType: z.enum(['remote', 'hybrid', 'onsite']).optional().nullable(),
+  jobType: JOB_TYPE_SCHEMA,
   location: z.string().max(100).optional().nullable(),
   salary: z.string().max(100).optional().nullable(),
   tags: z.array(z.string().max(50)).optional().nullable(),
