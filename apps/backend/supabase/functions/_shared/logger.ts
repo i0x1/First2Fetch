@@ -1,9 +1,20 @@
-import { throwError } from '@first2apply/core';
+import {
+  LogLevel,
+  formatConsoleLog,
+  resolveLogLevel,
+  shouldLog,
+  throwError,
+} from '@first2apply/core';
 import { Logger as MezmoLogger, createLogger } from 'npm:@logdna/logger';
+
+type MezmoLoggerWithWarn = MezmoLogger & {
+  warn?: (message: string, options?: { meta?: Record<string, any> }) => void;
+};
 
 export interface ILogger {
   debug(message: string, data?: Record<string, any>): void;
   info(message: string, data?: Record<string, any>): void;
+  warn(message: string, data?: Record<string, any>): void;
   error(message: string, data?: Record<string, any>): void;
   addMeta(key: string, value: string): void;
   flush(): void;
@@ -13,10 +24,39 @@ export interface ILogger {
  * Custom logger class that wraps the Mezmo logger.
  */
 class Logger implements ILogger {
-  constructor(private _logger: MezmoLogger) {}
+  private _consoleMeta: Record<string, string>;
+
+  constructor(
+    private _logger: MezmoLogger,
+    private _consoleLevel: LogLevel,
+    meta: Record<string, string>,
+  ) {
+    this._consoleMeta = { ...meta };
+  }
+
+  private writeToConsole(level: LogLevel, message: string, data?: Record<string, any>) {
+    if (!shouldLog(level, this._consoleLevel)) {
+      return;
+    }
+
+    const formatted = formatConsoleLog({
+      level,
+      message,
+      meta: Object.keys(this._consoleMeta).length ? this._consoleMeta : undefined,
+      data,
+    });
+
+    if (level === 'error') {
+      console.error(formatted);
+    } else if (level === 'warn') {
+      console.warn(formatted);
+    } else {
+      console.log(formatted);
+    }
+  }
 
   debug(message: string, data?: Record<string, any>) {
-    console.log(message, data);
+    this.writeToConsole('debug', message, data);
     this._logger.debug &&
       this._logger.debug(message, {
         meta: data,
@@ -24,15 +64,23 @@ class Logger implements ILogger {
   }
 
   info(message: string, data?: Record<string, any>) {
-    console.log(message, data);
+    this.writeToConsole('info', message, data);
     this._logger.info &&
       this._logger.info(message, {
         meta: data,
       });
   }
 
+  warn(message: string, data?: Record<string, any>) {
+    this.writeToConsole('warn', message, data);
+    (this._logger as MezmoLoggerWithWarn).warn &&
+      (this._logger as MezmoLoggerWithWarn).warn(message, {
+        meta: data,
+      });
+  }
+
   error(message: string, data?: Record<string, any>) {
-    console.error(message, data);
+    this.writeToConsole('error', message, data);
     this._logger.error &&
       this._logger.error(message, {
         meta: data,
@@ -40,6 +88,7 @@ class Logger implements ILogger {
   }
 
   addMeta(key: string, value: string) {
+    this._consoleMeta[key] = value;
     this._logger.addMetaProperty(key, value);
   }
 
@@ -49,6 +98,11 @@ class Logger implements ILogger {
 }
 
 export const createLoggerWithMeta = (meta: Record<string, string>) => {
+  const consoleLevel = resolveLogLevel(
+    Deno.env.get('EDGE_LOG_LEVEL') ?? Deno.env.get('LOG_LEVEL') ?? null,
+    'info',
+  );
+
   const mezmoLogger = createLogger(Deno.env.get('MEZMO_API_KEY') ?? throwError(''), {
     level: 'info',
     app: 'first2apply',
@@ -58,5 +112,5 @@ export const createLoggerWithMeta = (meta: Record<string, string>) => {
     indexMeta: true,
   });
 
-  return new Logger(mezmoLogger);
+  return new Logger(mezmoLogger, consoleLevel, meta);
 };
