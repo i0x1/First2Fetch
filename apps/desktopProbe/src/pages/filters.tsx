@@ -102,7 +102,7 @@ export function FiltersPage() {
       }
     };
     asyncLoad();
-  }, [handleError, hydrateConfigFromResponse]);
+  }, []); // Only run once on mount
 
   /**
    * Validate API key format (basic validation)
@@ -369,15 +369,15 @@ export function FiltersPage() {
           {blacklistedCompanies.length === 0 ? (
             <p>You haven't blacklisted any companies yet</p>
           ) : (
-            <div className="flex flex-wrap gap-2">
-              {(showAllBlacklistedCompanies ? blacklistedCompanies : blacklistedCompanies.slice(0, 10)).map(
-                (company) => (
-                  <Badge
-                    key={company}
-                    className="flex items-center gap-2 border border-border bg-card py-1 pl-4 pr-2 text-base hover:bg-card"
-                  >
-                    {company}
-                    <TooltipProvider delayDuration={500}>
+            <TooltipProvider delayDuration={500}>
+              <div className="flex flex-wrap gap-2">
+                {(showAllBlacklistedCompanies ? blacklistedCompanies : blacklistedCompanies.slice(0, 10)).map(
+                  (company) => (
+                    <Badge
+                      key={company}
+                      className="flex items-center gap-2 border border-border bg-card py-1 pl-4 pr-2 text-base hover:bg-card"
+                    >
+                      {company}
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <button
@@ -391,21 +391,21 @@ export function FiltersPage() {
                           Remove
                         </TooltipContent>
                       </Tooltip>
-                    </TooltipProvider>
-                  </Badge>
-                ),
-              )}
-              {blacklistedCompanies.length > 10 && !showAllBlacklistedCompanies && (
-                <Button variant="secondary" className="py-2" onClick={() => setShowAllBlacklistedCompanies(true)}>
-                  See All
-                </Button>
-              )}
-              {showAllBlacklistedCompanies && (
-                <Button variant="secondary" className="py-2" onClick={() => setShowAllBlacklistedCompanies(false)}>
-                  Show Less
-                </Button>
-              )}
-            </div>
+                    </Badge>
+                  ),
+                )}
+                {blacklistedCompanies.length > 10 && !showAllBlacklistedCompanies && (
+                  <Button variant="secondary" className="py-2" onClick={() => setShowAllBlacklistedCompanies(true)}>
+                    See All
+                  </Button>
+                )}
+                {showAllBlacklistedCompanies && (
+                  <Button variant="secondary" className="py-2" onClick={() => setShowAllBlacklistedCompanies(false)}>
+                    Show Less
+                  </Button>
+                )}
+              </div>
+            </TooltipProvider>
           )}
         </div>
       </section>
@@ -436,14 +436,14 @@ export function FiltersPage() {
           {favoriteCompanies.length === 0 ? (
             <p>You haven't added any favorite companies yet</p>
           ) : (
-            <div className="flex flex-wrap gap-2">
-              {(showAllFavoriteCompanies ? favoriteCompanies : favoriteCompanies.slice(0, 10)).map((company) => (
-                <Badge
-                  key={company}
-                  className="flex items-center gap-2 border border-border bg-card py-1 pl-4 pr-2 text-base hover:bg-card"
-                >
-                  {company}
-                  <TooltipProvider delayDuration={500}>
+            <TooltipProvider delayDuration={500}>
+              <div className="flex flex-wrap gap-2">
+                {(showAllFavoriteCompanies ? favoriteCompanies : favoriteCompanies.slice(0, 10)).map((company) => (
+                  <Badge
+                    key={company}
+                    className="flex items-center gap-2 border border-border bg-card py-1 pl-4 pr-2 text-base hover:bg-card"
+                  >
+                    {company}
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <button
@@ -457,20 +457,20 @@ export function FiltersPage() {
                         Remove
                       </TooltipContent>
                     </Tooltip>
-                  </TooltipProvider>
-                </Badge>
-              ))}
-              {favoriteCompanies.length > 10 && !showAllFavoriteCompanies && (
-                <Button variant="secondary" className="py-2" onClick={() => setShowAllFavoriteCompanies(true)}>
-                  See All
-                </Button>
-              )}
-              {showAllFavoriteCompanies && (
-                <Button variant="secondary" className="py-2" onClick={() => setShowAllFavoriteCompanies(false)}>
-                  Show Less
-                </Button>
-              )}
-            </div>
+                  </Badge>
+                ))}
+                {favoriteCompanies.length > 10 && !showAllFavoriteCompanies && (
+                  <Button variant="secondary" className="py-2" onClick={() => setShowAllFavoriteCompanies(true)}>
+                    See All
+                  </Button>
+                )}
+                {showAllFavoriteCompanies && (
+                  <Button variant="secondary" className="py-2" onClick={() => setShowAllFavoriteCompanies(false)}>
+                    Show Less
+                  </Button>
+                )}
+              </div>
+            </TooltipProvider>
           )}
         </div>
       </section>
