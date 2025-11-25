@@ -136,3 +136,6 @@ build/
 .pnpm-store/
 
 ssl
+
+# Development environment PID files
+.dev-pids/

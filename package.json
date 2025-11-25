@@ -16,7 +16,12 @@
     "make": "npx nx run-many -t make",
     "publish": "npx nx run-many -t publish",
     "release": "npx release-it --ci",
-    "prepare": "husky"
+    "prepare": "husky",
+    "dev:start": "./dev.sh start",
+    "dev:stop": "./dev.sh stop",
+    "dev:quick": "./dev.sh quick",
+    "dev:quick:restart": "./dev.sh quick:restart",
+    "dev:status": "./dev.sh status"
   },
   "author": "BeastX Industries",
   "license": "MIT",
