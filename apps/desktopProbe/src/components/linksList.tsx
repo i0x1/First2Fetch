@@ -4,6 +4,7 @@ import ReactTimeAgo from 'react-time-ago';
 
 import { useSites } from '@/hooks/sites';
 import { Link } from '@first2apply/core';
+import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '@first2apply/ui';
 import { Button } from '@first2apply/ui';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@first2apply/ui';
@@ -32,118 +33,126 @@ export function LinksList({
 
   return (
     <>
-      <ul className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:gap-6">
+      <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {links.map((link) => {
           return (
             <li
               key={link.id}
-              className={`flex cursor-pointer flex-col gap-4 rounded-lg border bg-card px-6 pb-6 pt-8 shadow-sm ${isInFailureState(link) ? 'border-destructive' : 'border-border'}`}
+              className={cn(
+                "group relative flex flex-col justify-between gap-4 rounded-xl border bg-card p-5 shadow-sm transition-all hover:shadow-md cursor-pointer",
+                isInFailureState(link) ? "border-destructive/50 bg-destructive/5" : "hover:border-primary/20"
+              )}
               onClick={() => {
                 onDebugLink(link.id);
               }}
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-start gap-3">
                 <Avatar
-                  className="h-12 w-12 cursor-pointer"
-                  onClick={() => {
-                    onDebugLink(link.id);
-                  }}
+                  className="h-10 w-10 shrink-0 rounded-lg"
                 >
                   <AvatarImage src={siteLogos[link.site_id]} />
-                  <AvatarFallback className="text-xl tracking-wider">LI</AvatarFallback>
+                  <AvatarFallback className="text-sm rounded-lg">LI</AvatarFallback>
                 </Avatar>
 
-                <div>
-                  <p className="p-0 text-sm text-muted-foreground">{sitesMap.get(link.site_id)?.name}</p>
-                  <p className="text-balance text-lg leading-6">{link.title}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium text-muted-foreground mb-1">
+                    {sitesMap.get(link.site_id)?.name}
+                  </p>
+                  <p className="text-base font-medium leading-tight text-foreground line-clamp-2">
+                    {link.title}
+                  </p>
                 </div>
               </div>
 
-              {/* <p className="mb-4 mt-6 grow whitespace-pre-wrap text-pretty break-all text-xs text-muted-foreground">
-              {link.url}
-            </p> */}
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-light text-foreground/40">
-                    {'Last checked '}
-                    <ReactTimeAgo date={new Date(link.last_scraped_at)} locale="en-US" />
-                  </p>
-                  <p className="text-xs font-light text-foreground/40">
-                    {'Added '}
-                    <ReactTimeAgo date={new Date(link.created_at)} locale="en-US" />
-                  </p>
+              <div className="flex items-end justify-between pt-2">
+                <div className="space-y-0.5">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+                    Checked <ReactTimeAgo date={new Date(link.last_scraped_at)} locale="en-US" />
+                    </p>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+                    Added <ReactTimeAgo date={new Date(link.created_at)} locale="en-US" />
+                    </p>
                 </div>
 
                 {/* actions */}
-                <div>
+                <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                   {isInFailureState(link) && (
-                    <Button
-                      variant="secondary"
-                      size="default"
-                      className="rounded-full px-2 py-1 text-sm"
-                      onClick={(evt) => {
-                        evt.stopPropagation();
-                        onDebugLink(link.id);
-                      }}
-                    >
-                      <QuestionMarkCircledIcon className="h-5 w-5 text-primary" />
-                    </Button>
+                    <TooltipProvider delayDuration={200}>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                onClick={(evt) => {
+                                    evt.stopPropagation();
+                                    onDebugLink(link.id);
+                                }}
+                                >
+                                <QuestionMarkCircledIcon className="h-4 w-4" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Troubleshoot</TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
                   )}
 
-                  {/* Copy URL */}
                   <TooltipProvider delayDuration={200}>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
-                          variant="secondary"
-                          size="default"
-                          className="ml-2 rounded-full bg-secondary/50 px-[9px] py-2 text-sm transition-colors duration-200 ease-in-out hover:bg-secondary focus:bg-secondary"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
                           onClick={(evt) => {
                             evt.stopPropagation();
                             navigator.clipboard.writeText(link.url);
                           }}
                         >
-                          <CopyIcon className="h-[18px] w-[18px]" />
+                          <CopyIcon className="h-4 w-4" />
                         </Button>
                       </TooltipTrigger>
-
-                      <TooltipContent side="left">Copy URL</TooltipContent>
+                      <TooltipContent>Copy URL</TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
 
-                  {/* edit search */}
                   <TooltipProvider delayDuration={200}>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
-                          variant="secondary"
-                          size="default"
-                          className="ml-2 rounded-full bg-secondary/50 px-[9px] py-2 text-sm transition-colors duration-200 ease-in-out hover:bg-secondary focus:bg-secondary"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
                           onClick={(evt) => {
                             evt.stopPropagation();
                             setEditedLink(link);
                           }}
                         >
-                          <Pencil1Icon className="h-[18px] w-[18px]" />
+                          <Pencil1Icon className="h-4 w-4" />
                         </Button>
                       </TooltipTrigger>
-
-                      <TooltipContent side="left">Edit</TooltipContent>
+                      <TooltipContent>Edit</TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
 
-                  <Button
-                    variant="destructive"
-                    size="default"
-                    className="ml-2 rounded-full bg-destructive/10 px-2 py-1 text-sm transition-colors duration-200 ease-in-out hover:bg-destructive/20 focus:bg-destructive/20"
-                    onClick={(evt) => {
-                      evt.stopPropagation();
-                      onDeleteLink(link.id);
-                    }}
-                  >
-                    <TrashIcon className="h-5 w-5 text-destructive" />
-                  </Button>
+                  <TooltipProvider delayDuration={200}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          onClick={(evt) => {
+                            evt.stopPropagation();
+                            onDeleteLink(link.id);
+                          }}
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Delete</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
               </div>
             </li>

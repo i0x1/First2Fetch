@@ -1,4 +1,5 @@
 import { AVAILABLE_CRON_RULES } from '@/lib/types';
+import { cn } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@first2apply/ui';
 
 /**
@@ -7,15 +8,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 export function CronSchedule({
   cronRule,
   onCronRuleChange,
+  className,
 }: {
   cronRule?: string;
   onCronRuleChange: (cron: string | undefined) => void;
+  className?: string;
 }) {
   return (
-    <div className="flex flex-row items-center justify-between gap-6 rounded-lg border p-6">
+    <div className={cn("flex flex-row items-center justify-between gap-6", className)}>
       <div className="space-y-1">
-        <h2 className="text-lg">Search Frequency</h2>
-        <p className="text-sm font-light">How often do you want to receive job notifications?</p>
+        <h2 className="text-base font-medium">Search Frequency</h2>
+        <p className="text-sm text-muted-foreground">How often do you want to receive job notifications?</p>
       </div>
       <Select value={cronRule} onValueChange={onCronRuleChange}>
         <SelectTrigger className="w-[180px]">

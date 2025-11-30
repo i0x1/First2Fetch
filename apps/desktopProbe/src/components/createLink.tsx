@@ -30,6 +30,7 @@ import * as z from 'zod';
 import { BrowserWindow, BrowserWindowHandle } from './browserWindow';
 import { Icons } from './icons';
 import { UrlQueryEditor } from './urlQueryEditor';
+import { cn } from '@/lib/utils';
 
 export function CreateLink() {
   const [jobBoardModalResponse, setJobBoardModalResponse] = useState<OverlayBrowserViewResult>();
@@ -120,48 +121,45 @@ export function CreateLink() {
     <>
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogTrigger asChild>
-          <Button variant="default" size="lg" className="px-10 text-base">
+          <Button variant="default" size="default" className="shadow-sm">
             Add Search
           </Button>
         </DialogTrigger>
-        <DialogContent className="w-[90vw] p-6">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-medium tracking-wide">Add new job search</DialogTitle>
-          <DialogDescription asChild>
-            <div className="space-y-2 text-left text-sm text-muted-foreground">
-              <p>
-                Click on one of the supported job boards and start searching for a role. The more specific your filters,
-                the better we can tailor job alerts for you.
-              </p>
+        <DialogContent className="w-[95vw] max-w-lg p-0 gap-0 overflow-hidden rounded-xl border-border/60 shadow-xl sm:w-full">
+          <div className="p-6 pb-2">
+            <DialogHeader className="mb-4">
+                <DialogTitle className="text-xl font-semibold tracking-tight">Add new job search</DialogTitle>
+                <DialogDescription className="text-base text-muted-foreground/80 leading-relaxed">
+                    Select a job board to start searching. Refine your filters on the site for better results.
+                </DialogDescription>
+            </DialogHeader>
 
-              <Alert className="mt-2 flex items-center gap-2 border-0 p-0">
-                <AlertTitle className="mb-0">
-                  <InfoCircledIcon className="h-5 w-5" />
-                </AlertTitle>
-                <AlertDescription className="text-base">
-                  <span className="font-medium">Pro Tip: </span>Apply the 'Last 24 Hours' filter where possible.
+            <Alert className="mb-6 border-blue-200 bg-blue-50/50 dark:border-blue-900/50 dark:bg-blue-900/10">
+                <InfoCircledIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <AlertTitle className="text-blue-800 dark:text-blue-300 font-semibold mb-1">Pro Tip</AlertTitle>
+                <AlertDescription className="text-blue-700/90 dark:text-blue-300/80">
+                    Apply the 'Last 24 Hours' filter on the job board to get the freshest results.
                 </AlertDescription>
-              </Alert>
-            </div>
-          </DialogDescription>
-          </DialogHeader>
+            </Alert>
+          </div>
 
-          <h2 className="mt-6 text-base tracking-wide">Supported job boards:</h2>
-          <DialogFooter>
-            <ul className="flex w-full flex-wrap justify-evenly gap-1.5">
-              {sortedSites.map((site) => (
-                <li key={site.id}>
-                  <Badge
+          <div className="bg-muted/30 p-6 border-t border-border/40">
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">Supported Job Boards</h3>
+            <div className="flex flex-wrap gap-2">
+                {sortedSites.map((site) => (
+                <Badge
+                    key={site.id}
+                    variant="outline"
+                    className="cursor-pointer px-3 py-1.5 text-sm font-medium hover:bg-primary/5 hover:border-primary/30 hover:text-primary transition-all active:scale-95 bg-background shadow-sm"
                     onClick={() => {
-                      onOpenSite(site);
+                        onOpenSite(site);
                     }}
-                  >
+                >
                     {site.name}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          </DialogFooter>
+                </Badge>
+                ))}
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -287,131 +285,132 @@ const JobSearchSubmitDialog = ({
         }
       }}
     >
-      <DialogContent className="w-[95vw] max-w-4xl p-6 max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-medium tracking-wide">Add new job search</DialogTitle>
-          <DialogDescription>
-            Customize your job search details and fine-tune the URL parameters to get the most relevant results.
+      <DialogContent className="w-[95vw] max-w-4xl p-0 gap-0 max-h-[90vh] overflow-hidden rounded-xl border-border/60 shadow-2xl flex flex-col">
+        <DialogHeader className="p-6 pb-2 shrink-0">
+          <DialogTitle className="text-xl font-semibold tracking-tight">Save Search</DialogTitle>
+          <DialogDescription className="text-base text-muted-foreground/80">
+            Customize your search parameters before saving.
           </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <Tabs defaultValue="basic" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="basic">Basic Info</TabsTrigger>
-                <TabsTrigger value="advanced">URL Parameters</TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="basic" className="space-y-4 mt-4">
-                {/* Title field */}
-                <FormField
-                  control={form.control}
-                  name="title"
-                  render={({ field }) => (
-                    <FormItem className="w-full">
-                      <FormLabel>Search Title</FormLabel>
-                      <FormControl>
-                        <Input
-                          id="title"
-                          type="text"
-                          placeholder="Enter a descriptive name (e.g., Senior Java Developer Remote)"
-                          {...field}
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-
-                {/* Simple URL field */}
-                <FormField
-                  control={form.control}
-                  name="url"
-                  render={({ field }) => (
-                    <FormItem className="w-full">
-                      <FormLabel>Search URL</FormLabel>
-                      <FormControl>
-                        <Input 
-                          id="url" 
-                          type="url" 
-                          placeholder="https://example.com/jobs?q=developer"
-                          value={currentUrl}
-                          onChange={(e) => handleUrlChange(e.target.value)}
-                          className="font-mono text-sm"
-                        />
-                      </FormControl>
-                      <p className="text-xs text-muted-foreground">
-                        The complete URL of your job search. Use the "URL Parameters" tab for advanced editing.
-                      </p>
-                    </FormItem>
-                  )}
-                />
-
-                {/* URL Actions */}
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleCleanUrl}
-                    disabled={isSubmitting}
-                  >
-                    Clean URL
-                  </Button>
-                </div>
-
-                {/* Validation Results */}
-                {validationResult && (
-                  <div className="space-y-2">
-                    {validationResult.errors.length > 0 && (
-                      <Alert variant="destructive">
-                        <AlertDescription>
-                          <ul className="list-disc list-inside space-y-1">
-                            {validationResult.errors.map((error, index) => (
-                              <li key={index}>{error}</li>
-                            ))}
-                          </ul>
-                        </AlertDescription>
-                      </Alert>
-                    )}
-                    
-                    {validationResult.warnings.length > 0 && (
-                      <Alert>
-                        <AlertDescription>
-                          <div className="space-y-1">
-                            <p className="font-medium">Suggestions:</p>
-                            <ul className="list-disc list-inside space-y-1">
-                              {validationResult.warnings.map((warning, index) => (
-                                <li key={index}>{warning}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        </AlertDescription>
-                      </Alert>
-                    )}
-                  </div>
-                )}
-              </TabsContent>
-
-              <TabsContent value="advanced" className="space-y-4 mt-4">
-                <div className="space-y-2">
-                  <h3 className="text-lg font-medium">Advanced URL Editor</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Fine-tune your job search by editing individual URL parameters. This allows you to modify 
-                    search terms, location, experience level, and other filters that may not be easily 
-                    accessible through the job site's interface.
-                  </p>
-                </div>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 overflow-hidden">
+            <div className="flex-1 overflow-y-auto p-6 pt-2">
+                <Tabs defaultValue="basic" className="w-full">
+                <TabsList className="grid w-full grid-cols-2 mb-6">
+                    <TabsTrigger value="basic">Basic Info</TabsTrigger>
+                    <TabsTrigger value="advanced">URL Parameters</TabsTrigger>
+                </TabsList>
                 
-                <UrlQueryEditor
-                  url={currentUrl}
-                  onUrlChange={handleUrlChange}
-                  disabled={isSubmitting}
-                />
-              </TabsContent>
-            </Tabs>
+                <TabsContent value="basic" className="space-y-6 mt-0">
+                    {/* Title field */}
+                    <FormField
+                    control={form.control}
+                    name="title"
+                    render={({ field }) => (
+                        <FormItem className="w-full">
+                        <FormLabel className="font-medium">Search Title</FormLabel>
+                        <FormControl>
+                            <Input
+                            id="title"
+                            type="text"
+                            placeholder="e.g. Senior Product Designer (Remote)"
+                            className="h-10 text-base"
+                            {...field}
+                            />
+                        </FormControl>
+                        </FormItem>
+                    )}
+                    />
 
-            <div className="flex flex-row items-center justify-between pt-4 border-t">
+                    {/* Simple URL field */}
+                    <FormField
+                    control={form.control}
+                    name="url"
+                    render={({ field }) => (
+                        <FormItem className="w-full">
+                        <FormLabel className="font-medium">Search URL</FormLabel>
+                        <FormControl>
+                            <div className="relative">
+                                <Input 
+                                id="url" 
+                                type="url" 
+                                placeholder="https://..."
+                                value={currentUrl}
+                                onChange={(e) => handleUrlChange(e.target.value)}
+                                className="font-mono text-sm h-10 pr-24"
+                                />
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={handleCleanUrl}
+                                    disabled={isSubmitting}
+                                    className="absolute right-1 top-1 h-8 text-xs font-medium text-muted-foreground hover:text-foreground"
+                                >
+                                    Clean URL
+                                </Button>
+                            </div>
+                        </FormControl>
+                        <p className="text-xs text-muted-foreground mt-1.5">
+                            This is the exact URL we'll use to scan for jobs.
+                        </p>
+                        </FormItem>
+                    )}
+                    />
+
+                    {/* Validation Results */}
+                    {validationResult && (
+                    <div className="space-y-2 pt-2">
+                        {validationResult.errors.length > 0 && (
+                        <Alert variant="destructive" className="border-destructive/30 bg-destructive/5">
+                            <AlertDescription>
+                            <ul className="list-disc list-inside space-y-1 text-sm">
+                                {validationResult.errors.map((error, index) => (
+                                <li key={index}>{error}</li>
+                                ))}
+                            </ul>
+                            </AlertDescription>
+                        </Alert>
+                        )}
+                        
+                        {validationResult.warnings.length > 0 && (
+                        <Alert className="border-amber-200 bg-amber-50/50 dark:border-amber-900/50 dark:bg-amber-900/10">
+                            <AlertDescription>
+                            <div className="space-y-1">
+                                <p className="font-medium text-amber-800 dark:text-amber-400 text-sm">Suggestions:</p>
+                                <ul className="list-disc list-inside space-y-1 text-sm text-amber-700/90 dark:text-amber-300/80">
+                                {validationResult.warnings.map((warning, index) => (
+                                    <li key={index}>{warning}</li>
+                                ))}
+                                </ul>
+                            </div>
+                            </AlertDescription>
+                        </Alert>
+                        )}
+                    </div>
+                    )}
+                </TabsContent>
+
+                <TabsContent value="advanced" className="space-y-4 mt-0">
+                    <div className="space-y-2 mb-4">
+                    <h3 className="text-sm font-medium">Advanced URL Editor</h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                        Fine-tune your job search by editing individual URL parameters. This allows you to modify 
+                        search terms, location, experience level, and other filters.
+                    </p>
+                    </div>
+                    
+                    <UrlQueryEditor
+                    url={currentUrl}
+                    onUrlChange={handleUrlChange}
+                    disabled={isSubmitting}
+                    />
+                </TabsContent>
+                </Tabs>
+            </div>
+
+            <div className="flex flex-row items-center justify-between p-6 border-t bg-muted/20 shrink-0">
               {/* Cancel button */}
               <Button variant="outline" onClick={onCancel} disabled={isSubmitting}>
                 Cancel
@@ -424,15 +423,15 @@ const JobSearchSubmitDialog = ({
                   isSubmitting || 
                   (validationResult && !validationResult.isValid)
                 }
-                className="ml-auto flex items-center justify-center gap-2"
+                className="ml-auto min-w-[120px]"
               >
                 {isSubmitting ? (
                   <>
-                    <Icons.spinner2 className="h-4 w-4 animate-spin" />
-                    Creating search...
+                    <Icons.spinner2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
                   </>
                 ) : (
-                  'Save search'
+                  'Save Search'
                 )}
               </Button>
             </div>

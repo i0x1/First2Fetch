@@ -87,24 +87,37 @@ export function LinksPage() {
 
   return (
     <DefaultLayout className="p-6 md:p-10">
-      <div className="flex justify-between">
-        <div className="flex items-end">
-          <h1 className="text-2xl font-medium tracking-wide">Job Searches</h1>
-          {isScanning && <span className="ml-4 pb-1 text-xs">( currently scanning for new jobs )</span>}
+      <div className="flex items-center justify-between mb-8">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Job Searches</h1>
+          <p className="text-sm text-muted-foreground">
+             {isScanning ? (
+               <span className="flex items-center gap-2 text-primary">
+                 <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                </span>
+                 Scanning for new jobs...
+               </span>
+             ) : (
+               'Manage and monitor your job feeds.'
+             )}
+          </p>
         </div>
 
         {links.length > 0 && <CreateLink />}
       </div>
 
       {links.length === 0 && (
-        <div className="flex h-[calc(100vh-200px)] flex-col items-center justify-center">
-          <h2 className="mb-10 w-3/5 whitespace-break-spaces break-normal text-center text-xl tracking-wide md:text-2xl xl:w-1/2">
-            First 2 Apply periodically visits your <span className="whitespace-nowrap font-medium">pre-configured</span>{' '}
-            job searches and fetches the list of jobs. If there are new jobs since the last visit, you will be notified.
-          </h2>
-
-          <div className="w-fit">
-            <CreateLink />
+        <div className="flex h-[calc(100vh-200px)] flex-col items-center justify-center text-center">
+          <div className="max-w-md space-y-6">
+            <h2 className="text-2xl font-semibold tracking-tight">Start your job hunt</h2>
+            <p className="text-muted-foreground">
+              First 2 Apply periodically visits your pre-configured job searches and fetches the list of jobs.
+            </p>
+            <div className="flex justify-center">
+              <CreateLink />
+            </div>
           </div>
         </div>
       )}

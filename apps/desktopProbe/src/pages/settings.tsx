@@ -68,152 +68,169 @@ export function SettingsPage() {
   }
 
   return (
-    <DefaultLayout className="space-y-3 p-6 md:p-10">
-      <h1 className="pb-3 text-2xl font-medium tracking-wide">Settings ({user.email})</h1>
+    <DefaultLayout className="space-y-8 p-6 md:p-10 max-w-4xl">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+        <p className="text-sm text-muted-foreground">Manage your preferences and subscription.</p>
+      </div>
 
-      {/* new updates */}
+      {/* New Updates */}
       {hasNewUpdate && (
-        <div className="flex flex-row items-center justify-between gap-6 rounded-lg border border-destructive p-6">
+        <div className="flex flex-row items-center justify-between gap-6 rounded-xl border border-blue-200 bg-blue-50/50 p-4 dark:border-blue-900 dark:bg-blue-900/20">
           <div className="space-y-1">
-            <h2 className="text-lg">
-              New update available <span className="font-bold">{newUpdate.name}</span>
+            <h2 className="text-sm font-medium">
+              Update available: <span className="font-bold">{newUpdate.name}</span>
             </h2>
-            <p className="text-sm font-light">{newUpdate.message}</p>
+            <p className="text-xs text-muted-foreground">{newUpdate.message}</p>
           </div>
           {!profile.is_trial && (
-            <Button className="w-fit" onClick={() => onApplyUpdate()}>
-              Update
+            <Button size="sm" onClick={() => onApplyUpdate()}>
+              Update Now
             </Button>
           )}
         </div>
       )}
 
-      {/* cron settings */}
-      <CronSchedule cronRule={settings.cronRule} onCronRuleChange={onCronRuleChange} />
-
-      {/* Play/Pause scraping */}
-      <div className="flex flex-row items-center justify-between gap-6 rounded-lg border p-6">
-        <div className="space-y-1">
-          <h2 className="text-lg">Job Scraping</h2>
-          <p className="text-sm font-light">
-            {settings.isPaused
-              ? 'Scraping is paused. Click play to resume scanning for new jobs.'
-              : 'Scraping is active. The app is scanning for new jobs.'}
-          </p>
-        </div>
-        <Button
-          variant={settings.isPaused ? 'default' : 'secondary'}
-          size="icon"
-          onClick={() => onUpdatedSettings({ ...settings, isPaused: !settings.isPaused })}
-          className="h-12 w-12"
-        >
-          {settings.isPaused ? <PlayIcon className="h-6 w-6" /> : <PauseIcon className="h-6 w-6" />}
-        </Button>
-      </div>
-
-      {/* LinkedIn scan interval override */}
-      <div className="flex flex-row items-center justify-between gap-6 rounded-lg border p-6">
-        <div className="space-y-1">
-          <h2 className="text-lg">LinkedIn Scan Frequency Override</h2>
-          <p className="text-sm font-light">
-            Set a specific scan interval for LinkedIn (in minutes). Leave empty to use the global frequency.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Input
-            type="number"
-            min={1}
-            max={1440}
-            placeholder="minutes"
-            className="w-24"
-            value={settings.linkedinScanIntervalMinutes ?? ''}
-            onChange={(e) => {
-              const value = e.target.value ? parseInt(e.target.value, 10) : undefined;
-              onUpdatedSettings({ ...settings, linkedinScanIntervalMinutes: value });
-            }}
-          />
-          <span className="text-sm text-muted-foreground">min</span>
+      {/* Subscription Card */}
+      <div className="rounded-xl border bg-card p-6 shadow-sm">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1">
+            <h2 className="text-lg font-medium">
+                {profile.subscription_tier.toUpperCase()} Plan
+                {profile.is_trial && ' (Trial)'}
+            </h2>
+            <p className="text-sm text-muted-foreground">
+                {profile.is_trial ? 'Trial ends on ' : 'Renews on '}
+                <span className="font-medium text-foreground">
+                {luxon.DateTime.fromISO(profile.subscription_end_date).toFormat('MMMM dd, yyyy')}
+                </span>
+            </p>
+            </div>
+            {!profile.is_trial && (
+            <Button
+                variant="outline"
+                onClick={() => openExternalUrl(stripeConfig.customerPortalLink)}
+            >
+                Manage Subscription
+            </Button>
+            )}
         </div>
       </div>
 
-      {/* sleep settings */}
-      <div className="flex flex-row items-center justify-between gap-6 rounded-lg border p-6">
-        <div className="space-y-1">
-          <h2 className="text-lg">Prevent computer from entering sleep</h2>
-          <p className="text-sm font-light">First2Apply needs to run in the background to notify you of new jobs</p>
+      <div className="space-y-4">
+        <h3 className="text-sm font-medium text-muted-foreground px-1">Scraping & Behavior</h3>
+        <div className="divide-y rounded-xl border bg-card shadow-sm">
+            {/* Play/Pause scraping */}
+            <div className="flex flex-row items-center justify-between gap-4 p-4">
+                <div className="space-y-0.5">
+                    <h2 className="text-base font-medium">Job Scraping</h2>
+                    <p className="text-sm text-muted-foreground">
+                        {settings.isPaused
+                        ? 'Scraping is paused.'
+                        : 'Active and scanning for jobs.'}
+                    </p>
+                </div>
+                <Button
+                    variant={settings.isPaused ? 'default' : 'secondary'}
+                    size="sm"
+                    className="h-8 w-8 p-0"
+                    onClick={() => onUpdatedSettings({ ...settings, isPaused: !settings.isPaused })}
+                >
+                    {settings.isPaused ? <PlayIcon className="h-4 w-4" /> : <PauseIcon className="h-4 w-4" />}
+                </Button>
+            </div>
+
+            {/* Cron settings */}
+            <div className="p-4">
+                <CronSchedule cronRule={settings.cronRule} onCronRuleChange={onCronRuleChange} />
+            </div>
+
+            {/* LinkedIn scan interval override */}
+            <div className="flex flex-row items-center justify-between gap-4 p-4">
+                <div className="space-y-0.5">
+                    <h2 className="text-base font-medium">LinkedIn Scan Interval</h2>
+                    <p className="text-sm text-muted-foreground">
+                        Override global frequency (minutes). Empty to use default.
+                    </p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <Input
+                        type="number"
+                        min={1}
+                        max={1440}
+                        placeholder="Min"
+                        className="w-20 h-9"
+                        value={settings.linkedinScanIntervalMinutes ?? ''}
+                        onChange={(e) => {
+                            const value = e.target.value ? parseInt(e.target.value, 10) : undefined;
+                            onUpdatedSettings({ ...settings, linkedinScanIntervalMinutes: value });
+                        }}
+                    />
+                </div>
+            </div>
+
+            {/* In-app browser settings */}
+            <div className="flex flex-row items-center justify-between gap-4 p-4">
+                <div className="space-y-0.5">
+                    <h2 className="text-base font-medium">In-app Browser</h2>
+                    <p className="text-sm text-muted-foreground">Open job listings within the app.</p>
+                </div>
+                <Switch
+                    checked={settings.inAppBrowserEnabled}
+                    onCheckedChange={(checked) => onUpdatedSettings({ ...settings, inAppBrowserEnabled: checked })}
+                />
+            </div>
+
+             {/* Prevent sleep settings */}
+             <div className="flex flex-row items-center justify-between gap-4 p-4">
+                <div className="space-y-0.5">
+                    <h2 className="text-base font-medium">Prevent Sleep</h2>
+                    <p className="text-sm text-muted-foreground">Keep scanning while computer is idle.</p>
+                </div>
+                <Switch
+                    checked={settings.preventSleep}
+                    onCheckedChange={(checked) => onUpdatedSettings({ ...settings, preventSleep: checked })}
+                />
+            </div>
         </div>
-        <Switch
-          checked={settings.preventSleep}
-          onCheckedChange={(checked) => onUpdatedSettings({ ...settings, preventSleep: checked })}
-        />
       </div>
 
-      {/* notification settings */}
-      <div className="flex flex-row items-center justify-between gap-6 rounded-lg border p-6">
-        <div className="space-y-1">
-          <h2 className="text-lg">Enable notification sounds</h2>
-          <p className="text-sm font-light">Play a sound when a new job is found in order to get your attention</p>
+      <div className="space-y-4">
+        <h3 className="text-sm font-medium text-muted-foreground px-1">Notifications</h3>
+        <div className="divide-y rounded-xl border bg-card shadow-sm">
+             {/* Notification settings */}
+             <div className="flex flex-row items-center justify-between gap-4 p-4">
+                <div className="space-y-0.5">
+                    <h2 className="text-base font-medium">Sound Effects</h2>
+                    <p className="text-sm text-muted-foreground">Play a sound when a new job is found.</p>
+                </div>
+                <Switch
+                    checked={settings.useSound}
+                    onCheckedChange={(checked) => onUpdatedSettings({ ...settings, useSound: checked })}
+                />
+            </div>
+
+            {/* Email notifications */}
+            <div className="flex flex-row items-center justify-between gap-4 p-4">
+                <div className="space-y-0.5">
+                    <h2 className="text-base font-medium">Email Alerts</h2>
+                    <p className="text-sm text-muted-foreground">Receive email summaries of new jobs.</p>
+                </div>
+                <Switch
+                    checked={settings.areEmailAlertsEnabled}
+                    onCheckedChange={(checked) => onUpdatedSettings({ ...settings, areEmailAlertsEnabled: checked })}
+                />
+            </div>
         </div>
-        <Switch
-          checked={settings.useSound}
-          onCheckedChange={(checked) => onUpdatedSettings({ ...settings, useSound: checked })}
-        />
       </div>
 
-      {/* email notifications */}
-      <div className="flex flex-row items-center justify-between gap-6 rounded-lg border p-6">
-        <div className="space-y-1">
-          <h2 className="text-lg">Email notifications</h2>
-          <p className="text-sm font-light">Get notified of new jobs even when you are on the go</p>
+      <div className="flex flex-col gap-4 pt-4 border-t">
+        <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Signed in as {user.email}</span>
+            <Button variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={onLogout}>
+            Sign Out
+            </Button>
         </div>
-        <Switch
-          checked={settings.areEmailAlertsEnabled}
-          onCheckedChange={(checked) => onUpdatedSettings({ ...settings, areEmailAlertsEnabled: checked })}
-        />
-      </div>
-
-      {/* in-app browser settings */}
-      <div className="flex flex-row items-center justify-between gap-6 rounded-lg border p-6">
-        <div className="space-y-1">
-          <h2 className="text-lg">In-app browser</h2>
-          <p className="text-sm font-light">Use the in-app browser to view job listings without leaving the app</p>
-        </div>
-        <Switch
-          checked={settings.inAppBrowserEnabled}
-          onCheckedChange={(checked) => onUpdatedSettings({ ...settings, inAppBrowserEnabled: checked })}
-        />
-      </div>
-
-      {/* subscription */}
-      <div className="flex flex-row items-center justify-between gap-6 rounded-lg border p-6">
-        <div className="space-y-1">
-          <h2 className="text-lg">
-            {profile.subscription_tier.toUpperCase()} subscription
-            {profile.is_trial && ' (Trial)'}
-          </h2>
-          <p className="text-sm font-light">
-            Your subscription ends on{' '}
-            <span className="underline">
-              {luxon.DateTime.fromISO(profile.subscription_end_date).toFormat('dd LLLL yyyy')}
-            </span>
-            .{!profile.is_trial && ' You can cancel or upgrade your subscription at any time.'}
-          </p>
-        </div>
-        {!profile.is_trial && (
-          <Button
-            className="w-fit"
-            variant="secondary"
-            onClick={() => openExternalUrl(stripeConfig.customerPortalLink)}
-          >
-            Manage Subscription
-          </Button>
-        )}
-      </div>
-
-      <div className="flex justify-end pt-4">
-        <Button className="w-fit" variant="destructive" onClick={onLogout}>
-          Logout
-        </Button>
       </div>
     </DefaultLayout>
   );
