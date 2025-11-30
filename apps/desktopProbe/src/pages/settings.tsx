@@ -6,8 +6,9 @@ import { useSession } from '@/hooks/session';
 import { useSettings } from '@/hooks/settings';
 import { applyAppUpdate, logout, openExternalUrl } from '@/lib/electronMainSdk';
 import { JobScannerSettings } from '@/lib/types';
-import { Button } from '@first2apply/ui';
+import { Button, Input } from '@first2apply/ui';
 import { Switch } from '@first2apply/ui';
+import { PauseIcon, PlayIcon } from '@radix-ui/react-icons';
 import * as luxon from 'luxon';
 
 import { DefaultLayout } from './defaultLayout';
@@ -89,6 +90,51 @@ export function SettingsPage() {
 
       {/* cron settings */}
       <CronSchedule cronRule={settings.cronRule} onCronRuleChange={onCronRuleChange} />
+
+      {/* Play/Pause scraping */}
+      <div className="flex flex-row items-center justify-between gap-6 rounded-lg border p-6">
+        <div className="space-y-1">
+          <h2 className="text-lg">Job Scraping</h2>
+          <p className="text-sm font-light">
+            {settings.isPaused
+              ? 'Scraping is paused. Click play to resume scanning for new jobs.'
+              : 'Scraping is active. The app is scanning for new jobs.'}
+          </p>
+        </div>
+        <Button
+          variant={settings.isPaused ? 'default' : 'secondary'}
+          size="icon"
+          onClick={() => onUpdatedSettings({ ...settings, isPaused: !settings.isPaused })}
+          className="h-12 w-12"
+        >
+          {settings.isPaused ? <PlayIcon className="h-6 w-6" /> : <PauseIcon className="h-6 w-6" />}
+        </Button>
+      </div>
+
+      {/* LinkedIn scan interval override */}
+      <div className="flex flex-row items-center justify-between gap-6 rounded-lg border p-6">
+        <div className="space-y-1">
+          <h2 className="text-lg">LinkedIn Scan Frequency Override</h2>
+          <p className="text-sm font-light">
+            Set a specific scan interval for LinkedIn (in minutes). Leave empty to use the global frequency.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Input
+            type="number"
+            min={1}
+            max={1440}
+            placeholder="minutes"
+            className="w-24"
+            value={settings.linkedinScanIntervalMinutes ?? ''}
+            onChange={(e) => {
+              const value = e.target.value ? parseInt(e.target.value, 10) : undefined;
+              onUpdatedSettings({ ...settings, linkedinScanIntervalMinutes: value });
+            }}
+          />
+          <span className="text-sm text-muted-foreground">min</span>
+        </div>
+      </div>
 
       {/* sleep settings */}
       <div className="flex flex-row items-center justify-between gap-6 rounded-lg border p-6">

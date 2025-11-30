@@ -44,6 +44,8 @@ export type JobScannerSettings = {
   useSound: boolean;
   areEmailAlertsEnabled: boolean;
   inAppBrowserEnabled: boolean;
+  linkedinScanIntervalMinutes?: number; // LinkedIn-specific scan interval override
+  isPaused: boolean; // Global pause/resume for job scraping
 };
 
 export type NewAppVersion = {

@@ -1,6 +1,7 @@
 import {
   ChatBubbleIcon,
   Crosshair2Icon,
+  ExitIcon,
   GearIcon,
   HomeIcon,
   MagnifyingGlassIcon,
@@ -13,6 +14,8 @@ import { Link, useLocation } from 'react-router-dom';
 
 import { Icons } from '@/components/icons';
 import { useAppState } from '@/hooks/appState';
+import { useError } from '@/hooks/error';
+import { forceQuitApp } from '@/lib/electronMainSdk';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@first2apply/ui';
 import { useTheme } from 'next-themes';
 
@@ -21,8 +24,17 @@ export function Navbar() {
   const location = useLocation();
   const { theme, setTheme } = useTheme();
   const { isScanning, newUpdate } = useAppState();
+  const { handleError } = useError();
 
   const hasUpdate = !!newUpdate;
+
+  const onForceQuit = async () => {
+    try {
+      await forceQuitApp();
+    } catch (error) {
+      handleError({ error, title: 'Failed to quit application' });
+    }
+  };
 
   const navItems = [
     { name: 'Jobs', path: '/', icon: <HomeIcon className="h-7 w-7" /> },
@@ -104,24 +116,45 @@ export function Navbar() {
         ))}
       </div>
 
-      {/* theme toggle */}
-      <TooltipProvider delayDuration={500}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              className="flex items-center gap-3 p-1 hover:text-primary"
-            >
-              {theme === 'dark' ? <SunIcon className="h-7 w-7" /> : <MoonIcon className="h-7 w-7" />}
-              <span className="hidden text-lg 2xl:inline-block">{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
-            </button>
-          </TooltipTrigger>
+      <div className="flex flex-col items-center gap-4 2xl:items-start">
+        {/* theme toggle */}
+        <TooltipProvider delayDuration={500}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                className="flex items-center gap-3 p-1 hover:text-primary"
+              >
+                {theme === 'dark' ? <SunIcon className="h-7 w-7" /> : <MoonIcon className="h-7 w-7" />}
+                <span className="hidden text-lg 2xl:inline-block">{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
+              </button>
+            </TooltipTrigger>
 
-          <TooltipContent side="right" className="text-base 2xl:hidden">
-            {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+            <TooltipContent side="right" className="text-base 2xl:hidden">
+              {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
+        {/* force quit button */}
+        <TooltipProvider delayDuration={500}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={onForceQuit}
+                className="flex items-center gap-3 p-1 text-destructive hover:text-destructive/80"
+              >
+                <ExitIcon className="h-7 w-7" />
+                <span className="hidden text-lg 2xl:inline-block">Quit App</span>
+              </button>
+            </TooltipTrigger>
+
+            <TooltipContent side="right" className="text-base 2xl:hidden">
+              Quit App
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
     </nav>
   );
 }

@@ -541,3 +541,10 @@ export async function overlayBrowserViewGoForward(): Promise<void> {
 export async function overlayBrowserViewNavigate(url: string): Promise<void> {
   await _mainProcessApiCall('overlay-browser-view-navigate', { url });
 }
+
+/**
+ * Force quit the application completely.
+ */
+export async function forceQuitApp(): Promise<void> {
+  await _mainProcessApiCall('force-quit-app', {});
+}

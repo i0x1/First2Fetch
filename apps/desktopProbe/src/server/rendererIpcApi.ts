@@ -36,6 +36,7 @@ export function initRendererIpcApi({
   overlayBrowserView,
   nodeEnv,
   analytics,
+  onForceQuit,
 }: {
   supabaseApi: F2aSupabaseApi;
   jobScanner: JobScanner;
@@ -43,6 +44,7 @@ export function initRendererIpcApi({
   overlayBrowserView: OverlayBrowserView;
   nodeEnv: string;
   analytics: IAnalyticsClient;
+  onForceQuit: () => Promise<void>;
 }) {
   ipcMain.handle('get-os-type', (_event) =>
     _apiCall(async () => {
@@ -338,4 +340,11 @@ export function initRendererIpcApi({
   ipcMain.handle('overlay-browser-view-navigate', async (_event, { url }) => {
     return _apiCall(async () => overlayBrowserView.navigate(url));
   });
+
+  ipcMain.handle('force-quit-app', async (_event) =>
+    _apiCall(async () => {
+      await onForceQuit();
+      return {};
+    }),
+  );
 }

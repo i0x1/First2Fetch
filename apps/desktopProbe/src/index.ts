@@ -31,6 +31,7 @@ if (require('electron-squirrel-startup')) {
 
 const APP_PROTOCOL = 'first2fetch';
 let appIsRunning = false;
+let isQuitting = false; // Flag to prevent multiple quit calls
 const storage = new Storage<{
   width: number;
   height: number;
@@ -102,6 +103,10 @@ app.on('window-all-closed', () => {
 
 // do not close all windows when the app is quit on macOS, instead hide the main window
 app.on('before-quit', (event) => {
+  // Allow force quit to proceed without preventing default
+  if (isQuitting) {
+    return;
+  }
   if (appIsRunning) {
     event.preventDefault();
     onHideToSystemTray();
@@ -184,6 +189,121 @@ function navigate({ path }: { path: string }) {
   onActivate(); // make sure the window is visible
 }
 
+/**
+ * Method used to force quit the app immediately.
+ */
+async function forceQuit() {
+  // Prevent multiple simultaneous quit calls
+  if (isQuitting) {
+    logger.info(`force quit already in progress, skipping...`);
+    return;
+  }
+  isQuitting = true;
+  appIsRunning = false;
+
+  logger.info(`force quitting...`);
+
+  // Close main window immediately to prevent further interactions
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      mainWindow.removeAllListeners('close');
+      mainWindow.destroy();
+    } catch (error) {
+      // Ignore errors
+    }
+  }
+
+  // Perform cleanup in parallel with timeout
+  const cleanupPromises: Promise<void>[] = [];
+
+  // Close job scanner
+  cleanupPromises.push(
+    (async () => {
+      try {
+        jobScanner?.close();
+        logger.info(`closed job scanner`);
+      } catch (error) {
+        logger.debug(`error closing job scanner: ${getExceptionMessage(error)}`);
+      }
+    })(),
+  );
+
+  // Close HTML downloaders (with individual error handling)
+  cleanupPromises.push(
+    promiseAllSequence(htmlDownloaders, async (htmlDownloader) => {
+      try {
+        await htmlDownloader.close();
+      } catch (error) {
+        // Ignore errors when closing - windows may already be destroyed
+        logger.debug(`error closing html downloader instance: ${getExceptionMessage(error)}`);
+      }
+    }).then(() => {
+      logger.info(`closed html downloader`);
+    }),
+  );
+
+  // Close tray menu
+  cleanupPromises.push(
+    (async () => {
+      try {
+        trayMenu?.close();
+        logger.info(`closed tray menu`);
+      } catch (error) {
+        logger.debug(`error closing tray menu: ${getExceptionMessage(error)}`);
+      }
+    })(),
+  );
+
+  // Stop auto updater
+  cleanupPromises.push(
+    (async () => {
+      try {
+        autoUpdater.stop();
+        logger.info(`stopped auto updater`);
+      } catch (error) {
+        logger.debug(`error stopping auto updater: ${getExceptionMessage(error)}`);
+      }
+    })(),
+  );
+
+  // Track and flush analytics
+  cleanupPromises.push(
+    (async () => {
+      try {
+        analytics.trackEvent('app_force_quit');
+        analytics.flush();
+      } catch (error) {
+        logger.debug(`error flushing analytics: ${getExceptionMessage(error)}`);
+      }
+    })(),
+  );
+
+  // Wait for cleanup with timeout (max 2 seconds)
+  try {
+    await Promise.race([
+      Promise.all(cleanupPromises),
+      new Promise((resolve) => setTimeout(resolve, 2000)),
+    ]);
+  } catch (error) {
+    logger.debug(`error during cleanup: ${getExceptionMessage(error)}`);
+  }
+
+  // Flush logger (non-blocking)
+  try {
+    logger.flush();
+  } catch (error) {
+    // Ignore logger flush errors
+  }
+
+  logger.info(`force quit complete, exiting...`);
+
+  // Use app.exit() for immediate exit (bypasses before-quit handlers)
+  // This will terminate the process immediately
+  setImmediate(() => {
+    app.exit(0);
+  });
+}
+
 async function handleDeepLink(url: string) {
   try {
     if (!url.startsWith(APP_PROTOCOL)) return;
@@ -247,7 +367,7 @@ async function bootstrap() {
     });
 
     // init the renderer IPC API
-    initRendererIpcApi({ supabaseApi, jobScanner, autoUpdater, overlayBrowserView, nodeEnv: ENV.nodeEnv, analytics });
+    initRendererIpcApi({ supabaseApi, jobScanner, autoUpdater, overlayBrowserView, nodeEnv: ENV.nodeEnv, analytics, onForceQuit: forceQuit });
 
     // init the tray menu
     trayMenu = new TrayMenu({ logger, onQuit: quit, onNavigate: navigate });

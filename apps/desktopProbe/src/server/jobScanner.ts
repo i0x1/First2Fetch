@@ -21,6 +21,8 @@ const DEFAULT_SETTINGS: JobScannerSettings = {
   useSound: true,
   areEmailAlertsEnabled: true,
   inAppBrowserEnabled: true,
+  linkedinScanIntervalMinutes: undefined, // use global cron rule by default
+  isPaused: false, // scraping is active by default
 };
 
 /**
@@ -41,8 +43,11 @@ export class JobScanner {
     useSound: false,
     areEmailAlertsEnabled: true,
     inAppBrowserEnabled: true,
+    linkedinScanIntervalMinutes: undefined,
+    isPaused: false,
   };
   private _cronJob: ScheduledTask | undefined;
+  private _linkedinCronJob: ScheduledTask | undefined;
   private _prowerSaveBlockerId: number | undefined;
   private _notificationsMap: Map<string, Notification> = new Map();
   private _runningScansCount = 0;
@@ -98,7 +103,13 @@ export class JobScanner {
   /**
    * Scan all links for the current user.
    */
-  async scanAllLinks() {
+  async scanAllLinks({ linkedinOnly = false }: { linkedinOnly?: boolean } = {}) {
+    // if paused, skip the scan
+    if (this._settings.isPaused) {
+      this._logger.info('skipping scheduled scan because scraping is paused');
+      return;
+    }
+
     // if the scanner hasn't finished scanning the previous links, skip this scan
     if (this.isScanning()) {
       this._logger.info('skipping scheduled scan because the scanner is processing other links');
@@ -106,11 +117,28 @@ export class JobScanner {
     }
 
     // fetch all links from the database
-    const links = (await this._supabaseApi.listLinks()) ?? [];
-    this._logger.info(`found ${links?.length} links`);
+    const allLinks = (await this._supabaseApi.listLinks()) ?? [];
+    
+    // filter links if LinkedIn-only scan
+    let linksToScan = allLinks;
+    if (linkedinOnly) {
+      const sites = await this._supabaseApi.listSites();
+      const linkedinSiteIds = sites.filter(site => site.provider === 'linkedin').map(site => site.id);
+      linksToScan = allLinks.filter(link => linkedinSiteIds.includes(link.site_id));
+      this._logger.info(`found ${linksToScan.length} LinkedIn links to scan`);
+    } else {
+      this._logger.info(`found ${allLinks.length} links`);
+    }
 
     // start the scan
-    return this.scanLinks({ links });
+    return this.scanLinks({ links: linksToScan });
+  }
+
+  /**
+   * Scan only LinkedIn links for the current user.
+   */
+  async scanLinkedInLinks() {
+    return this.scanAllLinks({ linkedinOnly: true });
   }
 
   /**
@@ -379,6 +407,12 @@ export class JobScanner {
       this._cronJob.stop();
     }
 
+    // end LinkedIn cron job
+    if (this._linkedinCronJob) {
+      this._logger.info(`stopping LinkedIn cron schedule`);
+      this._linkedinCronJob.stop();
+    }
+
     // stop power blocker
     if (typeof this._prowerSaveBlockerId === 'number') {
       this._logger.info(`stopping prevent sleep`);
@@ -428,6 +462,22 @@ export class JobScanner {
       }
     }
 
+    // Handle LinkedIn-specific scan interval
+    if (settings.linkedinScanIntervalMinutes !== this._settings.linkedinScanIntervalMinutes) {
+      // stop old LinkedIn cron job
+      if (this._linkedinCronJob) {
+        this._logger.info(`stopping old LinkedIn cron schedule`);
+        this._linkedinCronJob.stop();
+        this._linkedinCronJob = undefined;
+      }
+      // start new LinkedIn cron job if interval is set
+      if (settings.linkedinScanIntervalMinutes && settings.linkedinScanIntervalMinutes > 0) {
+        const linkedinCronRule = `*/${settings.linkedinScanIntervalMinutes} * * * *`;
+        this._linkedinCronJob = schedule(linkedinCronRule, () => this.scanLinkedInLinks());
+        this._logger.info(`LinkedIn cron job started successfully: every ${settings.linkedinScanIntervalMinutes} minutes`);
+      }
+    }
+
     if (settings.preventSleep !== this._settings.preventSleep) {
       // stop old power blocker
       if (typeof this._prowerSaveBlockerId === 'number') {
@@ -439,6 +489,11 @@ export class JobScanner {
         this._prowerSaveBlockerId = powerSaveBlocker.start('prevent-app-suspension');
         this._logger.info(`prevent sleep started successfully: ${this._prowerSaveBlockerId}`);
       }
+    }
+
+    // Log pause state changes
+    if (settings.isPaused !== this._settings.isPaused) {
+      this._logger.info(`scraping ${settings.isPaused ? 'paused' : 'resumed'}`);
     }
 
     this._settings = settings;
