@@ -7,6 +7,17 @@ import { WorkerQueue } from './workerQueue';
 
 const KNOWN_AUTHWALLS = ['authwall', 'login'];
 
+// Chrome User-Agents for anti-detection (safe change)
+const CHROME_USER_AGENTS = [
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+];
+
+function getRandomUserAgent(): string {
+  const isMac = process.platform === 'darwin';
+  return isMac ? CHROME_USER_AGENTS[0] : CHROME_USER_AGENTS[1];
+}
+
 /**
  * Wrapper over a headless window that can be used to download HTML.
  */
@@ -38,7 +49,7 @@ export class HtmlDownloader {
    * Initialize the headless window.
    */
   init() {
-    this._pool = new BrowserWindowPool(this._numInstances, this._incognitoMode);
+    this._pool = new BrowserWindowPool(this._numInstances, this._incognitoMode, this._logger);
     this._isRunning = true;
   }
 
@@ -169,7 +180,7 @@ class BrowserWindowPool {
   /**
    * Class constructor.
    */
-  constructor(instances: number, incognitoMode: boolean) {
+  constructor(instances: number, incognitoMode: boolean, logger: ILogger) {
     for (let i = 0; i < instances; i++) {
       const window = new BrowserWindow({
         show: false,
@@ -181,6 +192,10 @@ class BrowserWindowPool {
           partition: incognitoMode ? `incognito` : `persist:scraper`,
         },
       });
+
+      // Set Chrome User-Agent instead of Electron default (safe anti-detection measure)
+      window.webContents.setUserAgent(getRandomUserAgent());
+      logger.debug(`Browser window ${i} using User-Agent: ${getRandomUserAgent()}`);
 
       // disable LinkedIn's passkey request, because it triggers an annoying popup
       window.webContents.session.webRequest.onBeforeRequest((details, callback) => {
