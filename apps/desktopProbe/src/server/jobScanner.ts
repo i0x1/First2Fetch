@@ -148,7 +148,7 @@ export class JobScanner {
 
                 // add a random delay before moving on to the next link
                 // to avoid being rate limited by cloudflare
-                await waitRandomBetween(1000, 4000);
+                await waitRandomBetween(5000, 15000);
 
                 return newJobs;
               },
@@ -276,7 +276,7 @@ export class JobScanner {
 
                   // add a random delay before moving on to the next link
                   // to avoid being rate limited by cloudflare
-                  await waitRandomBetween(300, 1000);
+                  await waitRandomBetween(2000, 5000);
 
                   return updatedJob;
                 },

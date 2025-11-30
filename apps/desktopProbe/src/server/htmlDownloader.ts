@@ -122,26 +122,51 @@ export class HtmlDownloader {
         const title = await window.webContents.executeJavaScript('document.title');
         if (statusCode === 429 || title?.toLowerCase().startsWith('just a moment')) {
           this._logger.debug(`429 status code detected: ${url}`);
-          await waitRandomBetween(20_000, 40_000);
+          await waitRandomBetween(30_000, 60_000);
           throw new Error('rate limit exceeded');
         }
 
-        // scroll to bottom a few times to trigger infinite loading
+        // scroll to bottom a few times to trigger infinite loading with human-like behavior
         for (let i = 0; i < scrollTimes; i++) {
+          // Random mouse movement
+          if (i > 0) {
+            const x = Math.floor(Math.random() * 800);
+            const y = Math.floor(Math.random() * 600);
+            window.webContents.sendInputEvent({ type: 'mouseMove', x, y });
+            await sleep(200 + Math.floor(Math.random() * 300));
+          }
+
           await window.webContents.executeJavaScript(
             `
-              Array.from(document.querySelectorAll('*'))
-                .filter(el => el.scrollHeight > el.clientHeight)
-                .forEach(el => {
-                  // Smooth scroll to the bottom
-                  el.scrollTo({
-                    top: el.scrollHeight,
-                    behavior: 'smooth'
-                  });
-                });
+              (async () => {
+                const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+                const elements = Array.from(document.querySelectorAll('*'))
+                  .filter(el => el.scrollHeight > el.clientHeight);
+                
+                for (const el of elements) {
+                   // Scroll to bottom in steps to simulate reading/scanning
+                   const target = el.scrollHeight;
+                   let current = el.scrollTop;
+                   
+                   // Don't scroll if already at bottom
+                   if (Math.abs(current + el.clientHeight - target) < 10) continue;
+
+                   // Scroll in chunks
+                   while (current + el.clientHeight < target) {
+                      const step = 300 + Math.floor(Math.random() * 400);
+                      current = Math.min(current + step, target - el.clientHeight);
+                      el.scrollTo({ top: current, behavior: 'smooth' });
+                      await sleep(100 + Math.floor(Math.random() * 150));
+                      
+                      // Occasional longer pause
+                      if (Math.random() > 0.9) await sleep(500);
+                   }
+                }
+              })();
             `,
           );
-          await sleep(2_000);
+          
+          await sleep(2_000 + Math.floor(Math.random() * 2000));
 
           // check if page was redirected to a login page
           const finalUrl = window.webContents.getURL();
@@ -154,7 +179,7 @@ export class HtmlDownloader {
       {
         jitter: 'full',
         numOfAttempts: 20,
-        maxDelay: 5_000,
+        maxDelay: 10_000,
         retry: () => {
           // perform retries only if the window is still running
           return this._isRunning;
@@ -196,6 +221,27 @@ class BrowserWindowPool {
       // Set Chrome User-Agent instead of Electron default (safe anti-detection measure)
       window.webContents.setUserAgent(getRandomUserAgent());
       logger.debug(`Browser window ${i} using User-Agent: ${getRandomUserAgent()}`);
+
+      // Apply stealth scripts using debugger
+      try {
+        if (!window.webContents.debugger.isAttached()) {
+          window.webContents.debugger.attach('1.3');
+        }
+        window.webContents.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
+          source: `
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            if (!window.chrome) window.chrome = { runtime: {} };
+            const originalQuery = window.navigator.permissions.query;
+            window.navigator.permissions.query = (parameters) => (
+              parameters.name === 'notifications' ?
+                Promise.resolve({ state: Notification.permission }) :
+                originalQuery(parameters)
+            );
+          `,
+        });
+      } catch (err) {
+        logger.error(`Failed to apply stealth scripts to window ${i}`, err);
+      }
 
       // disable LinkedIn's passkey request, because it triggers an annoying popup
       window.webContents.session.webRequest.onBeforeRequest((details, callback) => {
