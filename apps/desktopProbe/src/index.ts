@@ -24,6 +24,35 @@ import { TrayMenu } from './server/trayMenu';
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 
+// Suppress Electron/macOS deprecation warnings
+process.removeAllListeners('warning');
+process.on('warning', (warning) => {
+  // Suppress punycode deprecation warnings
+  if (warning.name === 'DeprecationWarning' && warning.message.includes('punycode')) {
+    return;
+  }
+  // Log other warnings normally
+  console.warn(warning.name, warning.message);
+});
+
+// Suppress stderr output for task_policy_set errors on macOS (these come from Electron Helper processes)
+const originalStderrWrite = process.stderr.write.bind(process.stderr);
+// Type assertion needed due to overloaded write method signatures
+process.stderr.write = function (chunk: string | Uint8Array, encoding?: BufferEncoding, callback?: (error?: Error | null) => void): boolean {
+  const message = typeof chunk === 'string' ? chunk : chunk.toString();
+  // Suppress task_policy_set and Continuity Camera warnings
+  if (
+    message.includes('task_policy_set') ||
+    message.includes('NSCameraUseContinuityCameraDeviceType') ||
+    message.includes('AVCaptureDeviceTypeExternal') ||
+    message.includes('AVCaptureDeviceTypeContinuityCamera')
+  ) {
+    return true;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (originalStderrWrite as any)(chunk, encoding, callback);
+} as typeof process.stderr.write;
+
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
   app.quit();
@@ -61,6 +90,19 @@ const createMainWindow = () => {
       partition: `persist:scraper`,
     },
     autoHideMenuBar: true,
+  });
+
+  // Suppress DevTools protocol warnings
+  mainWindow.webContents.on('console-message', (event, _level, message, _line, _sourceId) => {
+    // Suppress Autofill protocol warnings
+    if (
+      message.includes('Autofill.enable') ||
+      message.includes('Autofill.setAddresses') ||
+      message.includes("wasn't found")
+    ) {
+      event.preventDefault();
+      return;
+    }
   });
 
   // and load the index.html of the app.

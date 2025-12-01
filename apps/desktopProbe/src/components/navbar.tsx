@@ -9,7 +9,7 @@ import {
   QuestionMarkCircledIcon,
   SunIcon,
 } from '@radix-ui/react-icons';
-import { RefreshCw } from 'lucide-react';
+import { Activity, RefreshCw } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 import { Icons } from '@/components/icons';
@@ -50,6 +50,11 @@ export function Navbar() {
       icon: <Crosshair2Icon className="h-5 w-5" />,
     },
     {
+      name: 'Status',
+      path: '/status',
+      icon: <Activity className="h-5 w-5" />,
+    },
+    {
       name: 'Feedback',
       path: '/feedback',
       icon: <ChatBubbleIcon className="h-5 w-5" />,
@@ -81,7 +86,7 @@ export function Navbar() {
         <TooltipProvider delayDuration={500}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Link to={isScanning ? '/links' : '/'} className="flex items-center justify-center 2xl:justify-start gap-3 px-2 py-2">
+              <Link to={isScanning ? '/status' : '/'} className="flex items-center justify-center 2xl:justify-start gap-3 px-2 py-2">
                 <Logo />
                 <span className="hidden font-semibold tracking-tight 2xl:inline-block">{isScanning ? 'Scanning ...' : 'First 2 Apply'}</span>
               </Link>

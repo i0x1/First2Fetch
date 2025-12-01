@@ -6,7 +6,113 @@ import fs from 'fs';
 import { ScheduledTask, schedule } from 'node-cron';
 import path from 'path';
 
-import { AVAILABLE_CRON_RULES, JobScannerSettings } from '../lib/types';
+/**
+ * Calculate the next execution time for a cron expression.
+ * Supports the patterns we actually use in the app.
+ */
+function getNextCronTime(cronExpression: string): Date | null {
+  const now = new Date();
+  const [minute, hour, dayOfMonth, _month, dayOfWeek] = cronExpression.split(' ');
+
+  try {
+    // Handle minute-based intervals (e.g., */30 * * * *)
+    if (minute.startsWith('*/')) {
+      const interval = parseInt(minute.substring(2), 10);
+      if (isNaN(interval) || interval <= 0) return null;
+      
+      const currentMinute = now.getMinutes();
+      const nextMinute = Math.ceil((currentMinute + 1) / interval) * interval;
+      const next = new Date(now);
+      if (nextMinute >= 60) {
+        next.setHours(next.getHours() + 1);
+        next.setMinutes(0);
+      } else {
+        next.setMinutes(nextMinute);
+      }
+      next.setSeconds(0);
+      next.setMilliseconds(0);
+      
+      // Ensure we're not in the past (shouldn't happen, but safety check)
+      if (next <= now) {
+        next.setMinutes(next.getMinutes() + interval);
+        if (next.getMinutes() >= 60) {
+          next.setHours(next.getHours() + 1);
+          next.setMinutes(next.getMinutes() - 60);
+        }
+      }
+      return next;
+    }
+
+    // Handle hour-based patterns (e.g., 0 */2 * * *)
+    if (minute === '0' && hour.startsWith('*/')) {
+      const interval = parseInt(hour.substring(2), 10);
+      const currentHour = now.getHours();
+      const nextHour = Math.ceil((currentHour + 1) / interval) * interval;
+      const next = new Date(now);
+      if (nextHour >= 24) {
+        next.setDate(next.getDate() + 1);
+        next.setHours(0);
+      } else {
+        next.setHours(nextHour);
+      }
+      next.setMinutes(0);
+      next.setSeconds(0);
+      next.setMilliseconds(0);
+      return next;
+    }
+
+    // Handle daily at midnight (0 0 * * *)
+    if (minute === '0' && hour === '0') {
+      const next = new Date(now);
+      next.setDate(next.getDate() + 1);
+      next.setHours(0);
+      next.setMinutes(0);
+      next.setSeconds(0);
+      next.setMilliseconds(0);
+      return next;
+    }
+
+    // Handle every N days (0 0 */N * *)
+    if (minute === '0' && hour === '0' && dayOfMonth.startsWith('*/')) {
+      const interval = parseInt(dayOfMonth.substring(2), 10);
+      const next = new Date(now);
+      next.setDate(next.getDate() + interval);
+      next.setHours(0);
+      next.setMinutes(0);
+      next.setSeconds(0);
+      next.setMilliseconds(0);
+      return next;
+    }
+
+    // Handle weekly (0 0 * * 0)
+    if (minute === '0' && hour === '0' && dayOfWeek === '0') {
+      const next = new Date(now);
+      const daysUntilSunday = (7 - next.getDay()) % 7 || 7;
+      next.setDate(next.getDate() + daysUntilSunday);
+      next.setHours(0);
+      next.setMinutes(0);
+      next.setSeconds(0);
+      next.setMilliseconds(0);
+      return next;
+    }
+
+    // Handle hourly at minute 0 (0 * * * *)
+    if (minute === '0' && hour === '*') {
+      const next = new Date(now);
+      next.setHours(next.getHours() + 1);
+      next.setMinutes(0);
+      next.setSeconds(0);
+      next.setMilliseconds(0);
+      return next;
+    }
+
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
+import { AVAILABLE_CRON_RULES, JobScannerSettings, ScannerJobStatus, ScannerStatus } from '../lib/types';
 import { chunk, promiseAllSequence, waitRandomBetween } from './helpers';
 import { HtmlDownloader } from './htmlDownloader';
 import { ILogger } from './logger';
@@ -51,6 +157,10 @@ export class JobScanner {
   private _prowerSaveBlockerId: number | undefined;
   private _notificationsMap: Map<string, Notification> = new Map();
   private _runningScansCount = 0;
+  
+  // Status tracking for UI
+  private _statusLogs: string[] = [];
+  private _currentScanningJobs: Map<string, ScannerJobStatus> = new Map();
 
   constructor({
     logger,
@@ -93,6 +203,58 @@ export class JobScanner {
     this._applySettings(settingsToApply);
   }
 
+  private _logToUi(message: string) {
+    const timestamp = new Date().toLocaleTimeString();
+    const log = `[${timestamp}] ${message}`;
+    this._statusLogs.unshift(log);
+    // Keep last 100 logs
+    if (this._statusLogs.length > 100) {
+      this._statusLogs.pop();
+    }
+  }
+
+  getScannerStatus(): ScannerStatus {
+    // Debugging what's available on the cron job object
+    // if (this._cronJob) {
+    //   this._logger.info('cronJob keys', { keys: Object.keys(this._cronJob) });
+    // }
+
+    let linkedinCronRule: string | undefined;
+    if (
+      this._settings.linkedinScanIntervalMinutes &&
+      this._settings.linkedinScanIntervalMinutes > 0
+    ) {
+      linkedinCronRule = `*/${this._settings.linkedinScanIntervalMinutes} * * * *`;
+    }
+
+    // Calculate next run times
+    let nextScanTime: string | null = null;
+    if (this._settings.cronRule) {
+      const nextTime = getNextCronTime(this._settings.cronRule);
+      if (nextTime) {
+        nextScanTime = nextTime.toISOString();
+      }
+    }
+
+    let nextLinkedinScanTime: string | null = null;
+    if (linkedinCronRule) {
+      const nextTime = getNextCronTime(linkedinCronRule);
+      if (nextTime) {
+        nextLinkedinScanTime = nextTime.toISOString();
+      }
+    }
+
+    return {
+      isScanning: this.isScanning(),
+      nextScanTime,
+      nextLinkedinScanTime,
+      cronRule: this._settings.cronRule,
+      linkedinCronRule,
+      currentJobs: Array.from(this._currentScanningJobs.values()),
+      logs: this._statusLogs,
+    };
+  }
+
   /**
    * Check if there are any scans running.
    */
@@ -107,12 +269,14 @@ export class JobScanner {
     // if paused, skip the scan
     if (this._settings.isPaused) {
       this._logger.info('skipping scheduled scan because scraping is paused');
+      this._logToUi('Skipping scheduled scan because scraping is paused');
       return;
     }
 
     // if the scanner hasn't finished scanning the previous links, skip this scan
     if (this.isScanning()) {
       this._logger.info('skipping scheduled scan because the scanner is processing other links');
+      this._logToUi('Skipping scheduled scan because scanner is busy');
       return;
     }
 
@@ -126,8 +290,10 @@ export class JobScanner {
       const linkedinSiteIds = sites.filter(site => site.provider === 'linkedin').map(site => site.id);
       linksToScan = allLinks.filter(link => linkedinSiteIds.includes(link.site_id));
       this._logger.info(`found ${linksToScan.length} LinkedIn links to scan`);
+      this._logToUi(`Found ${linksToScan.length} LinkedIn links to scan`);
     } else {
       this._logger.info(`found ${allLinks.length} links`);
+      this._logToUi(`Found ${allLinks.length} links to scan`);
     }
 
     // start the scan
@@ -147,6 +313,7 @@ export class JobScanner {
   async scanLinks({ links, sendNotification = true }: { links: Link[]; sendNotification?: boolean }) {
     try {
       this._logger.info('scanning links ...');
+      this._logToUi('Starting to scan links...');
       this._analytics.trackEvent('scan_links_start', {
         links_count: links.length,
       });
@@ -155,6 +322,7 @@ export class JobScanner {
 
       await Promise.all(
         links.map(async (link) => {
+          this._logToUi(`Scanning link: ${link.title} (${link.url})`);
           const newJobs = await this._normalHtmlDownloader
             .loadUrl({
               url: link.url,
@@ -170,8 +338,13 @@ export class JobScanner {
                   this._logger.debug(`failed to parse html for link ${link.title}`, {
                     linkId: link.id,
                   });
+                  this._logToUi(`Failed to parse HTML for link: ${link.title}`);
 
                   throw new Error(`failed to parse html for link ${link.id}`);
+                }
+                
+                if (newJobs.length > 0) {
+                    this._logToUi(`Found ${newJobs.length} new jobs from link: ${link.title}`);
                 }
 
                 // add a random delay before moving on to the next link
@@ -187,6 +360,7 @@ export class JobScanner {
                 this._logger.error(`failed to scan link: ${errorMessage}`, {
                   linkId: link.id,
                 });
+                this._logToUi(`Error scanning link ${link.title}: ${errorMessage}`);
 
                 // when dealing with rate limits, bump the number of failed attempts for the link
                 await this._supabaseApi
@@ -210,6 +384,7 @@ export class JobScanner {
         }),
       );
       this._logger.info(`downloaded html for ${links.length} links`);
+      this._logToUi(`Finished downloading HTML for ${links.length} links`);
 
       // scan job descriptions for all pending jobs
       if (!this._isRunning) return;
@@ -218,19 +393,24 @@ export class JobScanner {
         limit: 300,
       });
       this._logger.info(`found ${jobs.length} jobs that need processing`);
+      if (jobs.length > 0) {
+        this._logToUi(`Found ${jobs.length} jobs that need detailed processing`);
+      }
       const scannedJobs = await this.scanJobs(jobs);
       const newJobs = scannedJobs.filter((job) => job.status === 'new');
 
       // run post scan hook
-      const newJobIds = newJobs.map((job) => job.id);
-      await this._supabaseApi
-        .runPostScanHook({
-          newJobIds: sendNotification ? newJobIds : [], // hacky way to supress email alerts
-          areEmailAlertsEnabled: this._settings.areEmailAlertsEnabled,
-        })
-        .catch((error) => {
-          this._logger.error(`failed to run post scan hook: ${getExceptionMessage(error)}`);
-        });
+      // TEMPORARILY COMMENTED OUT - Email feature disabled
+      // const newJobIds = newJobs.map((job) => job.id);
+      // await this._supabaseApi
+      //   .runPostScanHook({
+      //     newJobIds: sendNotification ? newJobIds : [], // hacky way to supress email alerts
+      //     areEmailAlertsEnabled: this._settings.areEmailAlertsEnabled,
+      //   })
+      //   .catch((error) => {
+      //     this._logger.error(`failed to run post scan hook: ${getExceptionMessage(error)}`);
+      //     this._logToUi(`Failed to run post-scan hook: ${getExceptionMessage(error)}`);
+      //   });
 
       // fire a notification if there are new jobs
       if (!this._isRunning) return;
@@ -239,12 +419,14 @@ export class JobScanner {
       const end = new Date().getTime();
       const took = (end - start) / 1000;
       this._logger.info(`scan complete in ${took.toFixed(0)} seconds`);
+      this._logToUi(`Scan session complete in ${took.toFixed(0)} seconds`);
       this._analytics.trackEvent('scan_links_complete', {
         links_count: links.length,
         new_jobs_count: newJobs.length,
       });
     } catch (error) {
       this._logger.error(getExceptionMessage(error));
+      this._logToUi(`Error during scan session: ${getExceptionMessage(error)}`);
     } finally {
       this._runningScansCount--;
     }
@@ -255,6 +437,7 @@ export class JobScanner {
    */
   async scanJobs(jobs: Job[]): Promise<Job[]> {
     this._logger.info(`scanning ${jobs.length} jobs descriptions...`);
+    this._logToUi(`Processing ${jobs.length} job descriptions...`);
 
     // figure out which jobs can be scanned in incognito mode
     const sites = await this._supabaseApi.listSites();
@@ -276,6 +459,15 @@ export class JobScanner {
         return Promise.all(
           chunkOfJobs.map(async (job) => {
             try {
+              // Add to current scanning jobs
+              this._currentScanningJobs.set(String(job.id), {
+                id: String(job.id),
+                title: job.title,
+                status: 'scanning_html',
+                startTime: new Date().toISOString(),
+              });
+              this._logToUi(`Fetching description for: ${job.title}`);
+
               return await htmlDownloader.loadUrl({
                 url: job.externalUrl,
                 scrollTimes: 1,
@@ -283,6 +475,13 @@ export class JobScanner {
                   this._logger.info(`downloaded html for ${job.title}`, {
                     jobId: job.id,
                   });
+                  
+                  // Update status to parsing
+                  if (this._currentScanningJobs.has(String(job.id))) {
+                      const status = this._currentScanningJobs.get(String(job.id))!;
+                      this._currentScanningJobs.set(String(job.id), { ...status, status: 'parsing_description' });
+                  }
+                  this._logToUi(`Parsing content for: ${job.title} with AI parser`);
 
                   // stop if the scanner is closed
                   if (!this._isRunning) return job;
@@ -298,6 +497,7 @@ export class JobScanner {
                     this._logger.debug(`failed to parse job description: ${job.title}`, {
                       jobId: job.id,
                     });
+                    this._logToUi(`Failed to parse job description for: ${job.title}`);
 
                     throw new Error(`failed to parse job description for ${job.id}`);
                   }
@@ -306,6 +506,7 @@ export class JobScanner {
                   // to avoid being rate limited by cloudflare
                   await waitRandomBetween(2000, 5000);
 
+                  this._logToUi(`Successfully processed: ${job.title}`);
                   return updatedJob;
                 },
               });
@@ -314,10 +515,14 @@ export class JobScanner {
                 this._logger.error(`failed to scan job description: ${getExceptionMessage(error)}`, {
                   jobId: job.id,
                 });
+              this._logToUi(`Error processing job ${job.title}: ${getExceptionMessage(error)}`);
 
               // intetionally return initial job if there is an error
               // in order to continue scanning the rest of the jobs
               return job;
+            } finally {
+                // Remove from current scanning jobs
+                this._currentScanningJobs.delete(String(job.id));
             }
           }),
         );
@@ -341,6 +546,7 @@ export class JobScanner {
     const updatedJobs = jobs.map((job) => allScannedJobs.find((j) => j.id === job.id) ?? throwError('job not found')); // preserve the order
 
     this._logger.info('finished scanning job descriptions');
+    this._logToUi('Finished processing all job descriptions in this batch');
 
     return updatedJobs;
   }
@@ -494,6 +700,7 @@ export class JobScanner {
     // Log pause state changes
     if (settings.isPaused !== this._settings.isPaused) {
       this._logger.info(`scraping ${settings.isPaused ? 'paused' : 'resumed'}`);
+      this._logToUi(`Scraping ${settings.isPaused ? 'paused' : 'resumed'}`);
     }
 
     this._settings = settings;

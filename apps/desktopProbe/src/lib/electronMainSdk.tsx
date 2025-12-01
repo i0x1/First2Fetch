@@ -12,7 +12,7 @@ import {
 } from '@first2apply/core';
 import { User } from '@supabase/supabase-js';
 
-import { JobScannerSettings, NewAppVersion, OverlayBrowserViewResult } from './types';
+import { JobScannerSettings, NewAppVersion, OverlayBrowserViewResult, ScannerStatus } from './types';
 
 async function _mainProcessApiCall<T>(channel: string, params?: object): Promise<T> {
   // @ts-expect-error Electron preload injects `window.electron` at runtime.
@@ -209,6 +209,13 @@ export async function updateProbeSettings(settings: JobScannerSettings): Promise
 export async function getProbeSettings(): Promise<JobScannerSettings> {
   const settings = await _mainProcessApiCall<JobScannerSettings>('get-job-scanner-settings', {});
   return settings;
+}
+
+/**
+ * Get the current status of the scanner.
+ */
+export async function getScannerStatus(): Promise<ScannerStatus> {
+  return await _mainProcessApiCall<ScannerStatus>('get-scanner-status', {});
 }
 
 /**

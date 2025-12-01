@@ -53,6 +53,7 @@
   "dependencies": {
     "@first2apply/core": "workspace:*",
     "@first2apply/ui": "workspace:*",
+    "cron-parser": "^5.4.0",
     "rehype-raw": "^7.0.0"
   }
 }

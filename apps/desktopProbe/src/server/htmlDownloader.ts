@@ -222,6 +222,19 @@ class BrowserWindowPool {
       window.webContents.setUserAgent(getRandomUserAgent());
       logger.debug(`Browser window ${i} using User-Agent: ${getRandomUserAgent()}`);
 
+      // Suppress DevTools protocol warnings
+      window.webContents.on('console-message', (event, level, message) => {
+        // Suppress Autofill protocol warnings
+        if (
+          message.includes('Autofill.enable') ||
+          message.includes('Autofill.setAddresses') ||
+          message.includes("wasn't found")
+        ) {
+          event.preventDefault();
+          return;
+        }
+      });
+
       // Apply stealth scripts using debugger
       try {
         if (!window.webContents.debugger.isAttached()) {

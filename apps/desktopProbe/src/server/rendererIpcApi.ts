@@ -150,6 +150,8 @@ export function initRendererIpcApi({
   // handler used to fetch the cron schedule
   ipcMain.handle('get-job-scanner-settings', async (_event) => _apiCall(async () => jobScanner.getSettings()));
 
+  ipcMain.handle('get-scanner-status', async (_event) => _apiCall(async () => jobScanner.getScannerStatus()));
+
   ipcMain.handle('open-external-url', async (_event, { url }) => _apiCall(async () => shell.openExternal(url)));
 
   ipcMain.handle('scan-job-description', async (_event, { job }) =>

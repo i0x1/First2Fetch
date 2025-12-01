@@ -59,3 +59,20 @@ export type OverlayBrowserViewResult = {
   title: string;
   html: string;
 };
+
+export type ScannerJobStatus = {
+  id: string;
+  title: string;
+  status: 'scanning_html' | 'parsing_description';
+  startTime: string; // ISO string
+};
+
+export type ScannerStatus = {
+  isScanning: boolean;
+  nextScanTime: string | null; // ISO string
+  nextLinkedinScanTime: string | null; // ISO string
+  cronRule: string | undefined;
+  linkedinCronRule: string | undefined;
+  currentJobs: ScannerJobStatus[];
+  logs: string[];
+};

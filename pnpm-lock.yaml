@@ -433,6 +433,9 @@ importers:
       '@first2apply/ui':
         specifier: workspace:*
         version: link:../../libraries/ui
+      cron-parser:
+        specifier: ^5.4.0
+        version: 5.4.0
       rehype-raw:
         specifier: ^7.0.0
         version: 7.0.0
@@ -764,6 +767,7 @@ packages:
   '@aws-sdk/credential-provider-web-identity@3.917.0':
     resolution: {integrity: sha512-pZncQhFbwW04pB0jcD5OFv3x2gAddDYCVxyJVixgyhSw7bKCYxqu6ramfq1NxyVpmm+qsw+ijwi/3cCmhUHF/A==}
     engines: {node: '>=18.0.0'}
+    deprecated: This version contains a compilation TypeScript error https://github.com/aws/aws-sdk-js-v3/issues/7457 - please use @aws-sdk/credential-providers@3.918.0 or higher
 
   '@aws-sdk/lib-storage@3.917.0':
     resolution: {integrity: sha512-Z8mRzfP6PgUoybJHx/tH40aop42yeh66cW7wLM8R88egB2UYQ0IgxDoRynqlLi5uceI21wss/CIDkhzO9p1cOg==}
@@ -5093,6 +5097,10 @@ packages:
 
   create-require@1.1.1:
     resolution: {integrity: sha512-dcKFX3jn0MpIaXjisoRvexIJVEKzaq7z2rZKxf+MSr9TkdmHmsU4m2lcLojrj/FHl8mk5VxMmYA+ftRkP/3oKQ==}
+
+  cron-parser@5.4.0:
+    resolution: {integrity: sha512-HxYB8vTvnQFx4dLsZpGRa0uHp6X3qIzS3ZJgJ9v6l/5TJMgeWQbLkR5yiJ5hOxGbc9+jCADDnydIe15ReLZnJA==}
+    engines: {node: '>=18'}
 
   cross-dirname@0.1.0:
     resolution: {integrity: sha512-+R08/oI0nl3vfPcqftZRpytksBXDzOUveBq/NBVx0sUp1axwzPQrKinNx5yd5sxPu8j1wIy8AfnVQ+5eFdha6Q==}
@@ -16849,6 +16857,10 @@ snapshots:
       - ts-node
 
   create-require@1.1.1: {}
+
+  cron-parser@5.4.0:
+    dependencies:
+      luxon: 3.7.2
 
   cross-dirname@0.1.0: {}
 
