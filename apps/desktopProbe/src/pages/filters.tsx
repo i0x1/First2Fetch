@@ -174,7 +174,9 @@ export function FiltersPage() {
       const blob = new Blob([json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
-      const timestamp = new Date().toISOString().split('T')[0];
+      // Format: YYYY-MM-DDTHH-MM-SS (filesystem-friendly, includes time and seconds)
+      const now = new Date();
+      const timestamp = now.toISOString().replace(/:/g, '-').split('.')[0]; // e.g., "2025-12-01T22-10-47"
       anchor.href = url;
       anchor.download = `first2fetch-settings-${timestamp}.json`;
       document.body.appendChild(anchor);
