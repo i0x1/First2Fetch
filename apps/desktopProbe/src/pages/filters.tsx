@@ -82,7 +82,10 @@ export function FiltersPage() {
     const providerValue = config.ai_provider;
     setAiProvider(providerValue === 'openai' || providerValue === 'google_gemini' ? providerValue : '');
     setAiModel(config.ai_model ?? '');
-    setHasStoredAiApiKey(Boolean(config.ai_api_key_encrypted));
+    // API key is cleared from response for security, so if there's a provider set,
+    // assume there's a stored key. Only set to false if provider is also null/cleared.
+    const hasProvider = providerValue === 'openai' || providerValue === 'google_gemini';
+    setHasStoredAiApiKey(hasProvider || Boolean(config.ai_api_key_encrypted));
   }, []);
 
   /**

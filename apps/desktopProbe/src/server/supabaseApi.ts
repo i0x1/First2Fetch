@@ -696,14 +696,28 @@ export class F2aSupabaseApi {
       throw new Error(`Unsupported settings version: ${settings.version ?? 'unknown'}`);
     }
 
+    // Get current config to preserve AI settings if not provided in import
+    const currentConfig = await this.getAdvancedMatchingConfig();
+
     const advancedMatching = settings.advanced_matching ?? {};
+
+    // Only update AI provider/model if explicitly provided in import (not undefined)
+    // This preserves existing AI settings when importing old backup files that don't have them
+    const aiProvider = advancedMatching.ai_provider !== undefined 
+      ? advancedMatching.ai_provider 
+      : currentConfig?.ai_provider ?? null;
+    const aiModel = advancedMatching.ai_model !== undefined 
+      ? advancedMatching.ai_model 
+      : currentConfig?.ai_model ?? null;
 
     const updatedConfig = await this.updateAdvancedMatchingConfig({
       chatgpt_prompt: advancedMatching.chatgpt_prompt ?? '',
       blacklisted_companies: this._ensureUniqueCompanies(advancedMatching.blacklisted_companies ?? []),
       favorite_companies: this._ensureUniqueCompanies(advancedMatching.favorite_companies ?? []),
-      ai_provider: advancedMatching.ai_provider ?? null,
-      ai_model: advancedMatching.ai_model ?? null,
+      ai_provider: aiProvider,
+      ai_model: aiModel,
+      // Explicitly don't pass ai_api_key_encrypted to preserve existing API key
+      // The database function will preserve it via coalesce
     });
 
     const savedSearches = settings.saved_searches ?? [];
