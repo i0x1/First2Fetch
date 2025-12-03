@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
@@ -11,6 +11,7 @@ import {
   addFavoriteCompany,
   getJobById,
   getAdvancedMatchingConfig,
+  getJobDatesSummary,
   listJobs,
   openExternalUrl,
   removeBlacklistedCompany,
@@ -33,7 +34,7 @@ import { JobListing } from './jobTabs';
 import { JobsList } from './jobsList';
 import { JobDetailsSkeleton, JobSummarySkeleton, JobsListSkeleton } from './jobsSkeleton';
 
-const JOB_BATCH_SIZE = 30;
+const JOB_BATCH_SIZE = 100;
 const ALL_JOB_STATUSES: JobStatus[] = ['new', 'applied', 'archived', 'excluded_by_advanced_matching'];
 
 /**
@@ -70,7 +71,21 @@ export function JobTabsContent({
   const browserWindowRefOther = useRef<BrowserWindowHandle>(null);
 
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
-  const selectedJob = listing.jobs.find((job) => job.id === selectedJobId);
+  
+  // Two-phase loading: date summaries + per-date jobs
+  const [dateSummaries, setDateSummaries] = useState<Array<{ date_key: string; total_count: number; favorite_count: number }>>([]);
+  const [jobsByDate, setJobsByDate] = useState<Record<string, { jobs: Job[]; hasMore: boolean; isLoading: boolean; nextPageToken?: string }>>({});
+  
+  // Get selected job from loaded jobs
+  const selectedJob = useMemo(() => {
+    if (!selectedJobId || !jobsByDate) return undefined;
+    for (const dateJobs of Object.values(jobsByDate)) {
+      if (!dateJobs || !dateJobs.jobs) continue;
+      const job = dateJobs.jobs.find((j) => j.id === selectedJobId);
+      if (job) return job;
+    }
+    return undefined;
+  }, [jobsByDate, selectedJobId]);
 
   const [favoriteCompanies, setFavoriteCompanies] = useState<string[]>([]);
   const [blacklistedCompanies, setBlacklistedCompanies] = useState<string[]>([]);
@@ -108,7 +123,16 @@ export function JobTabsContent({
     loadAdvancedMatching();
   }, [handleError]);
 
-  // Reload jobs when location changes
+  // Get user's timezone (detect once, use throughout)
+  const userTimezone = useMemo(() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    } catch {
+      return 'UTC';
+    }
+  }, []);
+
+  // Load date summaries when location changes (Phase 1: Fast summary load)
   useEffect(() => {
     const asyncLoad = async () => {
       try {
@@ -118,83 +142,135 @@ export function JobTabsContent({
           return;
         }
 
-        console.log(location.search);
         setListing((listing) => ({ ...listing, isLoading: true }));
-
-        const result = await listJobs({ status, search, siteIds, linkIds, labels, hideReposted, limit: JOB_BATCH_SIZE });
-        console.log('found jobs', result.jobs.length);
-
-        setListing({
-          ...result,
+        
+        // Load date summaries (fast - just counts) - grouped by LOCAL timezone
+        const summaries = await getJobDatesSummary({ status, search, siteIds, linkIds, labels, hideReposted, timezone: userTimezone });
+        
+        setDateSummaries(summaries);
+        
+        // Calculate total counts from summaries
+        const totalNew = summaries.reduce((sum, s) => sum + (status === 'new' ? s.total_count : 0), 0);
+        const totalApplied = summaries.reduce((sum, s) => sum + (status === 'applied' ? s.total_count : 0), 0);
+        const totalArchived = summaries.reduce((sum, s) => sum + (status === 'archived' ? s.total_count : 0), 0);
+        const totalFiltered = summaries.reduce((sum, s) => sum + (status === 'excluded_by_advanced_matching' ? s.total_count : 0), 0);
+        
+        setListing((listing) => ({
+          ...listing,
           isLoading: false,
-          hasMore: result.jobs.length === JOB_BATCH_SIZE,
-        });
-
-        const firstJob = result.jobs[0];
-        if (firstJob) {
-          scanJobAndSelect(firstJob);
-        } else {
-          setSelectedJobId(null);
-        }
+          new: totalNew,
+          applied: totalApplied,
+          archived: totalArchived,
+          filtered: totalFiltered,
+        }));
+        
+        // Reset jobs by date
+        setJobsByDate({});
+        setSelectedJobId(null);
       } catch (error) {
-        handleError({ error, title: 'Failed to load jobs' });
+        handleError({ error, title: 'Failed to load job summaries' });
       }
     };
     asyncLoad();
-  }, [location.search]); // using location.search to trigger the effect when the query parameter changes
+  }, [location.search, userTimezone]); // using location.search to trigger the effect when the query parameter changes
 
-  // Load a new batch of jobs after updating the status of a job if there are still jobs to load
-  useEffect(() => {
-    const asyncLoad = async () => {
-      try {
-        if (
-          !listing.isLoading &&
-          listing.jobs.length < JOB_BATCH_SIZE / 2 &&
-          listing.hasMore &&
-          listing.nextPageToken
-        ) {
-          setListing((l) => ({ ...l, isLoading: true }));
-          const result = await listJobs({
-            status,
-            limit: JOB_BATCH_SIZE,
-            after: listing.nextPageToken,
-            search,
-            siteIds,
-            labels,
-            linkIds,
-            hideReposted,
-          });
-          setListing((l) => {
-            // Deduplicate jobs by ID to prevent duplicate keys
-            const existingJobIds = new Set(l.jobs.map((job) => job.id));
-            const newJobs = result.jobs.filter((job) => !existingJobIds.has(job.id));
-            return {
-              ...result,
-              jobs: l.jobs.concat(newJobs),
-              isLoading: false,
-              hasMore: !!result.nextPageToken,
-            };
-          });
-        }
-      } catch (error) {
-        handleError({ error });
+  // Load jobs for a specific date (Phase 2: On-demand job loading)
+  const loadJobsForDate = async (dateKey: string, after?: string) => {
+    try {
+      setJobsByDate((prev) => {
+        const existing = prev?.[dateKey] || { jobs: [], hasMore: false, isLoading: false };
+        return {
+          ...(prev || {}),
+          [dateKey]: { ...existing, isLoading: true },
+        };
+      });
+
+      const result = await listJobs({
+        status,
+        search,
+        siteIds,
+        linkIds,
+        labels,
+        hideReposted,
+        limit: JOB_BATCH_SIZE,
+        after,
+        dateFilter: dateKey, // Local date (YYYY-MM-DD)
+        timezone: userTimezone,
+      });
+
+      setJobsByDate((prev) => {
+        const existing = prev?.[dateKey] || { jobs: [], hasMore: false, isLoading: false };
+        const existingJobIds = new Set(existing.jobs.map((job) => job.id));
+        const newJobs = result.jobs.filter((job) => !existingJobIds.has(job.id));
+        
+        return {
+          ...(prev || {}),
+          [dateKey]: {
+            jobs: [...existing.jobs, ...newJobs],
+            hasMore: !!result.nextPageToken && result.jobs.length === JOB_BATCH_SIZE,
+            isLoading: false,
+            nextPageToken: result.nextPageToken,
+          },
+        };
+      });
+
+      // Select first job if none selected
+      if (!selectedJobId && result.jobs.length > 0) {
+        scanJobAndSelect(result.jobs[0]);
       }
-    };
-
-    asyncLoad();
-  }, [listing]);
+    } catch (error) {
+      handleError({ error, title: `Failed to load jobs for ${dateKey}` });
+      setJobsByDate((prev) => {
+        if (!prev) return prev;
+        const existing = prev[dateKey];
+        if (!existing) return prev;
+        return {
+          ...prev,
+          [dateKey]: { ...existing, isLoading: false },
+        };
+      });
+    }
+  };
 
   // Update the status of a job and remove it from the list if necessary
   const updateListedJobStatus = async (jobId: number, newStatus: JobStatus) => {
     await updateJobStatus({ jobId, status: newStatus });
 
+    // Find and remove job from jobsByDate
+    let oldJob: Job | undefined;
+    let jobDateKey: string | undefined;
+    
+    if (jobsByDate) {
+      for (const [dateKey, dateJobs] of Object.entries(jobsByDate)) {
+        if (!dateJobs || !dateJobs.jobs) continue;
+        const job = dateJobs.jobs.find((j) => j.id === jobId);
+        if (job) {
+          oldJob = job;
+          jobDateKey = dateKey;
+          break;
+        }
+      }
+    }
+
+    if (jobDateKey) {
+      setJobsByDate((prev) => {
+        const dateJobs = prev[jobDateKey!];
+        if (!dateJobs || !dateJobs.jobs) return prev;
+        return {
+          ...prev,
+          [jobDateKey!]: {
+            ...dateJobs,
+            jobs: dateJobs.jobs.filter((job) => job.id !== jobId),
+          },
+        };
+      });
+    }
+
+    // Update counts
+    const tabToDecrement = oldJob?.status as JobStatus;
+    const tabToIncrement = newStatus;
+
     setListing((listing) => {
-      const oldJob = listing.jobs.find((job) => job.id === jobId);
-      const jobs = listing.jobs.filter((job) => job.id !== jobId);
-
-      const tabToDecrement = oldJob?.status as JobStatus;
-      const tabToIncrement = newStatus;
-
       const newCount =
         tabToIncrement === 'new' ? listing.new + 1 : tabToDecrement === 'new' ? listing.new - 1 : listing.new;
       const appliedCount =
@@ -214,7 +290,6 @@ export function JobTabsContent({
 
       return {
         ...listing,
-        jobs,
         new: newCount,
         applied: appliedCount,
         archived: archivedCount,
@@ -225,8 +300,18 @@ export function JobTabsContent({
 
   // Select the next job in the list
   const selectNextJob = (jobId: number) => {
-    const currentJobIndex = listing.jobs.findIndex((job) => job.id === jobId);
-    const nextJob = listing.jobs[currentJobIndex + 1] ?? listing.jobs[currentJobIndex - 1];
+    // Flatten all jobs from all dates
+    const allJobs: Job[] = [];
+    if (jobsByDate) {
+      for (const dateJobs of Object.values(jobsByDate)) {
+        if (dateJobs && dateJobs.jobs) {
+          allJobs.push(...dateJobs.jobs);
+        }
+      }
+    }
+    
+    const currentJobIndex = allJobs.findIndex((job) => job.id === jobId);
+    const nextJob = allJobs[currentJobIndex + 1] ?? allJobs[currentJobIndex - 1];
     if (nextJob) {
       scanJobAndSelect(nextJob);
     } else {
@@ -246,41 +331,22 @@ export function JobTabsContent({
   const onUpdateJobLabels = async (jobId: number, labels: JobLabel[]) => {
     try {
       const updatedJob = await updateJobLabels({ jobId, labels });
-      setListing((listing) => ({
-        ...listing,
-        jobs: listing.jobs.map((job) => (job.id === jobId ? updatedJob : job)),
-      }));
+      setJobsByDate((prev) => {
+        if (!prev) return prev;
+        const updated = { ...prev };
+        for (const dateKey in updated) {
+          const dateJobs = updated[dateKey];
+          if (dateJobs && dateJobs.jobs) {
+            updated[dateKey] = {
+              ...dateJobs,
+              jobs: dateJobs.jobs.map((job) => (job.id === jobId ? updatedJob : job)),
+            };
+          }
+        }
+        return updated;
+      });
     } catch (error) {
       handleError({ error, title: 'Failed to update job label' });
-    }
-  };
-
-  const onLoadMore = async () => {
-    try {
-      const result = await listJobs({
-        status,
-        limit: JOB_BATCH_SIZE,
-        after: listing.nextPageToken,
-        search,
-        siteIds,
-        hideReposted,
-        labels,
-        linkIds,
-      });
-
-      setListing((listing) => {
-        // Deduplicate jobs by ID to prevent duplicate keys
-        const existingJobIds = new Set(listing.jobs.map((job) => job.id));
-        const newJobs = result.jobs.filter((job) => !existingJobIds.has(job.id));
-        return {
-          ...result,
-          jobs: [...listing.jobs, ...newJobs],
-          isLoading: false,
-          hasMore: result.jobs.length === JOB_BATCH_SIZE,
-        };
-      });
-    } catch (error) {
-      handleError({ error, title: 'Failed to load more jobs' });
     }
   };
 
@@ -290,10 +356,19 @@ export function JobTabsContent({
 
     if (!job.description) {
       try {
-        // Set the job as loading
-        setListing((listing) => {
-          const jobs = listing.jobs.map((j) => (j.id === job.id ? { ...job, isLoadingJD: true } : j));
-          return { ...listing, jobs };
+        // Set the job as loading in jobsByDate
+        const jobDateKey = getDateKey(new Date(job.created_at));
+        setJobsByDate((prev) => {
+          if (!prev) return prev;
+          const dateJobs = prev[jobDateKey];
+          if (!dateJobs || !dateJobs.jobs) return prev;
+          return {
+            ...prev,
+            [jobDateKey]: {
+              ...dateJobs,
+              jobs: dateJobs.jobs.map((j) => (j.id === job.id ? { ...j, isLoadingJD: true } as Job & { isLoadingJD?: boolean } : j)),
+            },
+          };
         });
 
         // fetch job again, just in case the JD was scrapped in the background
@@ -304,16 +379,30 @@ export function JobTabsContent({
           updatedJob = await scanJob(updatedJob);
         }
 
-        // Update the job in the list
-        setListing((listing) => {
-          const jobs = listing.jobs.map((j) => (j.id === updatedJob.id ? updatedJob : j));
-          return { ...listing, jobs };
+        // Update the job in jobsByDate
+        setJobsByDate((prev) => {
+          if (!prev) return prev;
+          const dateJobs = prev[jobDateKey];
+          if (!dateJobs || !dateJobs.jobs) return prev;
+          return {
+            ...prev,
+            [jobDateKey]: {
+              ...dateJobs,
+              jobs: dateJobs.jobs.map((j) => (j.id === updatedJob.id ? updatedJob : j)),
+            },
+          };
         });
       } catch (error) {
         handleError({ error, title: 'Failed to scan job' });
       }
     }
   };
+  
+  // Helper to get date key
+  function getDateKey(date: Date): string {
+    const d = new Date(date);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
 
   // Open a job in the default browser
   const onViewJob = (job: Job) => {
@@ -527,7 +616,7 @@ export function JobTabsContent({
                 id="jobsList"
                 className="no-scrollbar h-[calc(100vh-100px)] w-1/2 overflow-y-scroll lg:w-2/5"
               >
-                <div className="sticky top-0 z-50 bg-background/95 backdrop-blur-sm pb-4 pt-2">
+                <div className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl pb-5 pt-3">
                   <JobFilters
                     search={search}
                     siteIds={siteIds}
@@ -540,13 +629,12 @@ export function JobTabsContent({
 
                 {listing.isLoading || statusItem !== status ? (
                   <JobsListSkeleton />
-                ) : listing.jobs.length > 0 ? (
+                ) : dateSummaries.length > 0 ? (
                   <JobsList
-                    jobs={listing.jobs}
+                    dateSummaries={dateSummaries}
+                    jobsByDate={jobsByDate}
                     selectedJobId={selectedJobId}
-                    hasMore={listing.hasMore}
-                    parentContainerId="jobsList"
-                    onLoadMore={onLoadMore}
+                    onLoadMoreForDate={loadJobsForDate}
                     onSelect={(job) => scanJobAndSelect(job)}
                     onArchive={(j) => {
                       onUpdateJobStatus(j.id, 'archived');
@@ -569,14 +657,14 @@ export function JobTabsContent({
 
               {/* Job description side */}
               {listing.isLoading || statusItem !== status ? (
-                <div className="no-scrollbar h-[calc(100vh-100px)] w-1/2 animate-pulse space-y-6 overflow-scroll border-l border-border/50 pl-4 lg:w-3/5 lg:space-y-8">
+                <div className="no-scrollbar h-[calc(100vh-100px)] w-1/2 animate-pulse space-y-6 overflow-scroll border-l border-border/30 pl-6 lg:w-3/5 lg:space-y-8">
                   <JobSummarySkeleton />
                   <JobDetailsSkeleton />
                 </div>
-              ) : listing.jobs.length > 0 ? (
+              ) : Object.values(jobsByDate).some((dateJobs) => dateJobs?.jobs?.length > 0) || selectedJob ? (
                 <div
                   ref={jobDescriptionRef}
-                  className="no-scrollbar h-[calc(100vh-100px)] w-1/2 space-y-6 overflow-y-scroll border-l border-border/50 pl-4 lg:w-3/5 lg:space-y-8"
+                  className="no-scrollbar h-[calc(100vh-100px)] w-1/2 space-y-6 overflow-y-scroll border-l border-border/30 pl-6 lg:w-3/5 lg:space-y-8"
                 >
                   {selectedJob && (
                     <>
@@ -599,15 +687,15 @@ export function JobTabsContent({
                         isCompanyPreferencesLoaded={isAdvancedMatchingLoaded}
                       />
                       <JobNotes jobId={selectedJobId} />
-                      <hr className="border-t border-border/50" />
-                      <JobDetails job={selectedJob} isScrapingDescription={!!selectedJob.isLoadingJD}></JobDetails>
+                      <hr className="border-t border-border/30" />
+                      <JobDetails job={selectedJob} isScrapingDescription={!!(selectedJob as Job & { isLoadingJD?: boolean }).isLoadingJD}></JobDetails>
                     </>
                   )}
                 </div>
               ) : (
                 <div
                   ref={jobDescriptionRef}
-                  className="flex h-[calc(100vh-100px)] w-1/2 items-center justify-center overflow-scroll border-l border-border/50 pl-4 lg:w-3/5"
+                  className="flex h-[calc(100vh-100px)] w-1/2 items-center justify-center overflow-scroll border-l border-border/30 pl-6 lg:w-3/5"
                 >
                   {/* Light mode svg */}
                   <svg

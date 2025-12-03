@@ -166,7 +166,59 @@ export class F2aSupabaseApi {
   }
 
   /**
+   * Get job date summaries (counts per date) for efficient UI rendering.
+   * Groups by LOCAL timezone date.
+   */
+  async getJobDatesSummary({
+    status,
+    search,
+    siteIds,
+    linkIds,
+    labels,
+    hideReposted,
+    timezone,
+  }: {
+    status: JobStatus;
+    search?: string;
+    siteIds?: number[];
+    linkIds?: number[];
+    labels?: string[];
+    hideReposted?: boolean;
+    timezone?: string; // User's timezone (e.g., 'America/Los_Angeles')
+  }) {
+    const jobs_search = search || undefined;
+    const jobs_site_ids = siteIds?.length > 0 ? siteIds : undefined;
+    const jobs_link_ids = linkIds?.length > 0 ? linkIds : undefined;
+    const jobs_labels = labels?.length > 0 ? labels : undefined;
+    // Get timezone from parameter or detect from browser
+    const timezone_name = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+
+    return this._supabaseApiCall<
+      Array<{
+        date_key: string;
+        total_count: number;
+        favorite_count: number;
+      }>,
+      PostgrestError
+    >(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (this._supabase.rpc as unknown as any)('get_job_dates_summary', {
+        jobs_status: status,
+        jobs_search: jobs_search,
+        jobs_site_ids: jobs_site_ids,
+        jobs_link_ids: jobs_link_ids,
+        jobs_labels: jobs_labels,
+        hide_reposted: hideReposted ?? false,
+        timezone_name: timezone_name,
+      });
+
+      return { data, error };
+    });
+  }
+
+  /**
    * List all jobs for the current user.
+   * Filters by LOCAL timezone date if dateFilter is provided.
    */
   async listJobs({
     status,
@@ -177,6 +229,8 @@ export class F2aSupabaseApi {
     hideReposted,
     limit = 50,
     after,
+    dateFilter,
+    timezone,
   }: {
     status: JobStatus;
     search?: string;
@@ -186,11 +240,15 @@ export class F2aSupabaseApi {
     hideReposted?: boolean;
     limit?: number;
     after?: string;
+    dateFilter?: string; // YYYY-MM-DD format (LOCAL date)
+    timezone?: string; // User's timezone (e.g., 'America/Los_Angeles')
   }) {
     const jobs_search = search || undefined;
     const jobs_site_ids = siteIds?.length > 0 ? siteIds : undefined;
     const jobs_link_ids = linkIds?.length > 0 ? linkIds : undefined;
     const jobs_labels = labels?.length > 0 ? labels : undefined;
+    // Get timezone from parameter or detect from browser
+    const timezone_name = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
     const [jobs, counters] = await Promise.all([
       this._supabaseApiCall<Job[], PostgrestError>(async () => {
         const res = await this._supabase.rpc('list_jobs', {
@@ -202,6 +260,8 @@ export class F2aSupabaseApi {
           jobs_link_ids,
           jobs_labels,
           hide_reposted: hideReposted ?? false,
+          date_filter: dateFilter || null,
+          timezone_name: timezone_name,
         });
 
         return res;
@@ -227,9 +287,9 @@ export class F2aSupabaseApi {
 
     let nextPageToken: string | undefined;
     if (jobs.length === limit) {
-      // the next page token will include the last id as well as it's last updated_at
+      // the next page token will include the last id as well as it's last created_at
       const lastJob = jobs[jobs.length - 1];
-      nextPageToken = `${lastJob.id}!${lastJob.updated_at}`;
+      nextPageToken = `${lastJob.id}!${lastJob.created_at}`;
     }
 
     const countersMap = new Map(counters.map((c) => [c.status, c.job_count]));

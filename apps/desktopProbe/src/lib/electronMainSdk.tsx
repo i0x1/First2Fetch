@@ -131,6 +131,45 @@ export async function deleteLink(linkId: number): Promise<void> {
 }
 
 /**
+ * Get job date summaries (counts per date) for efficient UI rendering.
+ */
+export async function getJobDatesSummary({
+  status,
+  search,
+  siteIds,
+  linkIds,
+  labels,
+  hideReposted,
+  timezone,
+}: {
+  status: JobStatus;
+  search?: string;
+  siteIds?: number[];
+  linkIds?: number[];
+  labels?: string[];
+  hideReposted?: boolean;
+  timezone?: string; // User's timezone (e.g., 'America/Los_Angeles')
+}) {
+  const result = await _mainProcessApiCall<
+    Array<{
+      date_key: string;
+      total_count: number;
+      favorite_count: number;
+    }>
+  >('get-job-dates-summary', {
+    status,
+    search,
+    siteIds,
+    linkIds,
+    labels,
+    hideReposted,
+    timezone,
+  });
+
+  return result;
+}
+
+/**
  * List all jobs.
  */
 export async function listJobs({
@@ -142,6 +181,8 @@ export async function listJobs({
   hideReposted,
   limit,
   after,
+  dateFilter,
+  timezone,
 }: {
   status: JobStatus;
   search?: string;
@@ -151,6 +192,8 @@ export async function listJobs({
   hideReposted?: boolean;
   limit?: number;
   after?: string;
+  dateFilter?: string; // YYYY-MM-DD format (LOCAL date)
+  timezone?: string; // User's timezone (e.g., 'America/Los_Angeles')
 }) {
   const result = await _mainProcessApiCall<{
     jobs: Job[];
@@ -168,6 +211,8 @@ export async function listJobs({
     hideReposted,
     limit,
     after,
+    dateFilter,
+    timezone,
   });
 
   return result;
