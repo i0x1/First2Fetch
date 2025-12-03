@@ -555,6 +555,7 @@ export class F2aSupabaseApi {
     chatgpt_prompt: string;
     blacklisted_companies: string[];
     favorite_companies: string[];
+    watched_companies?: string[];
     ai_provider?: string | null;
     ai_model?: string | null;
     ai_api_key_encrypted?: string | null;
@@ -565,6 +566,7 @@ export class F2aSupabaseApi {
       p_chatgpt_prompt: config.chatgpt_prompt,
       p_blacklisted_companies: config.blacklisted_companies,
       p_favorite_companies: config.favorite_companies,
+      p_watched_companies: config.watched_companies || null,
       p_ai_provider: config.ai_provider || null,
       p_ai_model: config.ai_model || null,
       p_ai_api_key: config.ai_api_key_encrypted || null, // This will be encrypted in the function
@@ -608,6 +610,7 @@ export class F2aSupabaseApi {
       chatgpt_prompt: '',
       blacklisted_companies: [],
       favorite_companies: [],
+      watched_companies: [],
       ai_provider: null,
       ai_model: null,
       ai_api_key_encrypted: null,
@@ -621,12 +624,36 @@ export class F2aSupabaseApi {
       return config;
     }
 
-    const updatedFavorites = this._ensureUniqueCompanies([...config.favorite_companies, normalizedName]);
+    const normalizedLower = normalizedName.toLowerCase();
+    const isInFavorites = config.favorite_companies.some(
+      (c: string) => c.toLowerCase() === normalizedLower
+    );
+    const isInWatched = (config.watched_companies || []).some(
+      (c: string) => c.toLowerCase() === normalizedLower
+    );
+
+    let updatedFavorites = [...config.favorite_companies];
+    let updatedWatched = [...(config.watched_companies || [])];
+
+    if (isInFavorites) {
+      // Already in favorites, do nothing
+      return config;
+    } else if (isInWatched) {
+      // Move from watched to favorites
+      updatedWatched = updatedWatched.filter(
+        (c: string) => c.toLowerCase() !== normalizedLower
+      );
+      updatedFavorites = this._ensureUniqueCompanies([...updatedFavorites, normalizedName]);
+    } else {
+      // Not in either, add to watched
+      updatedWatched = this._ensureUniqueCompanies([...updatedWatched, normalizedName]);
+    }
 
     return this.updateAdvancedMatchingConfig({
       chatgpt_prompt: config.chatgpt_prompt,
       blacklisted_companies: config.blacklisted_companies,
       favorite_companies: updatedFavorites,
+      watched_companies: updatedWatched,
       ai_provider: config.ai_provider,
       ai_model: config.ai_model,
     });
@@ -635,14 +662,17 @@ export class F2aSupabaseApi {
   async removeFavoriteCompany(companyName: string) {
     const config = await this._getOrCreateAdvancedMatchingConfig();
     const normalizedName = this._normalizeCompanyName(companyName);
+    const normalizedLower = normalizedName.toLowerCase();
+    
     const updatedFavorites = config.favorite_companies.filter(
-      (company: string) => company.toLowerCase() !== normalizedName.toLowerCase(),
+      (company: string) => company.toLowerCase() !== normalizedLower,
     );
 
     return this.updateAdvancedMatchingConfig({
       chatgpt_prompt: config.chatgpt_prompt,
       blacklisted_companies: config.blacklisted_companies,
       favorite_companies: updatedFavorites,
+      watched_companies: config.watched_companies || [],
       ai_provider: config.ai_provider,
       ai_model: config.ai_model,
     });
@@ -655,15 +685,20 @@ export class F2aSupabaseApi {
       return config;
     }
 
+    const normalizedLower = normalizedName.toLowerCase();
     const updatedBlacklist = this._ensureUniqueCompanies([...config.blacklisted_companies, normalizedName]);
     const updatedFavorites = config.favorite_companies.filter(
-      (company: string) => company.toLowerCase() !== normalizedName.toLowerCase(),
+      (company: string) => company.toLowerCase() !== normalizedLower,
+    );
+    const updatedWatched = (config.watched_companies || []).filter(
+      (company: string) => company.toLowerCase() !== normalizedLower,
     );
 
     return this.updateAdvancedMatchingConfig({
       chatgpt_prompt: config.chatgpt_prompt,
       blacklisted_companies: updatedBlacklist,
       favorite_companies: updatedFavorites,
+      watched_companies: updatedWatched,
       ai_provider: config.ai_provider,
       ai_model: config.ai_model,
     });
@@ -680,6 +715,60 @@ export class F2aSupabaseApi {
       chatgpt_prompt: config.chatgpt_prompt,
       blacklisted_companies: updatedBlacklist,
       favorite_companies: config.favorite_companies,
+      watched_companies: config.watched_companies || [],
+      ai_provider: config.ai_provider,
+      ai_model: config.ai_model,
+    });
+  }
+
+  async addWatchedCompany(companyName: string) {
+    const config = await this._getOrCreateAdvancedMatchingConfig();
+    const normalizedName = this._normalizeCompanyName(companyName);
+    if (!normalizedName) {
+      return config;
+    }
+
+    const normalizedLower = normalizedName.toLowerCase();
+    // If company is already in favorites, move it to favorites (promote it)
+    const isInFavorites = config.favorite_companies.some(
+      (c: string) => c.toLowerCase() === normalizedLower
+    );
+    
+    if (isInFavorites) {
+      // Already in favorites, do nothing
+      return config;
+    }
+
+    // Remove from watched if exists, then add to watched
+    const updatedWatched = this._ensureUniqueCompanies([
+      ...(config.watched_companies || []).filter(
+        (c: string) => c.toLowerCase() !== normalizedLower
+      ),
+      normalizedName,
+    ]);
+
+    return this.updateAdvancedMatchingConfig({
+      chatgpt_prompt: config.chatgpt_prompt,
+      blacklisted_companies: config.blacklisted_companies,
+      favorite_companies: config.favorite_companies,
+      watched_companies: updatedWatched,
+      ai_provider: config.ai_provider,
+      ai_model: config.ai_model,
+    });
+  }
+
+  async removeWatchedCompany(companyName: string) {
+    const config = await this._getOrCreateAdvancedMatchingConfig();
+    const normalizedName = this._normalizeCompanyName(companyName);
+    const updatedWatched = (config.watched_companies || []).filter(
+      (company: string) => company.toLowerCase() !== normalizedName.toLowerCase(),
+    );
+
+    return this.updateAdvancedMatchingConfig({
+      chatgpt_prompt: config.chatgpt_prompt,
+      blacklisted_companies: config.blacklisted_companies,
+      favorite_companies: config.favorite_companies,
+      watched_companies: updatedWatched,
       ai_provider: config.ai_provider,
       ai_model: config.ai_model,
     });

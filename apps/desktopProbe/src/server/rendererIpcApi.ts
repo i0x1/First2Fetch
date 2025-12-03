@@ -314,6 +314,14 @@ export function initRendererIpcApi({
     _apiCall(() => supabaseApi.removeBlacklistedCompany(companyName)),
   );
 
+  ipcMain.handle('add-watched-company', async (_, { companyName }) =>
+    _apiCall(() => supabaseApi.addWatchedCompany(companyName)),
+  );
+
+  ipcMain.handle('remove-watched-company', async (_, { companyName }) =>
+    _apiCall(() => supabaseApi.removeWatchedCompany(companyName)),
+  );
+
   ipcMain.handle('export-user-settings', async (_) => _apiCall(() => supabaseApi.exportUserSettings()));
 
   ipcMain.handle('import-user-settings', async (_, { settings }) =>

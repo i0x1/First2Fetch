@@ -424,6 +424,7 @@ export async function deleteNote(noteId: number): Promise<void> {
 
 export type AdvancedMatchingConfigWithAI = AdvancedMatchingConfig & {
   favorite_companies: string[];
+  watched_companies: string[];
   ai_provider?: string | null;
   ai_model?: string | null;
   ai_api_key_encrypted?: string | null;
@@ -443,6 +444,7 @@ type AdvancedMatchingUpdatePayload = {
   chatgpt_prompt: string;
   blacklisted_companies: string[];
   favorite_companies: string[];
+  watched_companies?: string[];
   ai_provider?: string | null;
   ai_model?: string | null;
   ai_api_key_encrypted?: string | null;
@@ -468,6 +470,14 @@ export async function addBlacklistedCompany(companyName: string) {
 
 export async function removeBlacklistedCompany(companyName: string) {
   return await _mainProcessApiCall<AdvancedMatchingConfigWithAI>('remove-blacklisted-company', { companyName });
+}
+
+export async function addWatchedCompany(companyName: string) {
+  return await _mainProcessApiCall<AdvancedMatchingConfigWithAI>('add-watched-company', { companyName });
+}
+
+export async function removeWatchedCompany(companyName: string) {
+  return await _mainProcessApiCall<AdvancedMatchingConfigWithAI>('remove-watched-company', { companyName });
 }
 
 export type UserSettingsExport = {

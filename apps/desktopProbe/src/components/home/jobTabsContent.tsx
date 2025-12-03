@@ -88,6 +88,7 @@ export function JobTabsContent({
   }, [jobsByDate, selectedJobId]);
 
   const [favoriteCompanies, setFavoriteCompanies] = useState<string[]>([]);
+  const [watchedCompanies, setWatchedCompanies] = useState<string[]>([]);
   const [blacklistedCompanies, setBlacklistedCompanies] = useState<string[]>([]);
   const [isAdvancedMatchingLoaded, setIsAdvancedMatchingLoaded] = useState(false);
   const [pendingFavoriteCompany, setPendingFavoriteCompany] = useState<string | null>(null);
@@ -111,6 +112,7 @@ export function JobTabsContent({
         const config = await getAdvancedMatchingConfig();
         if (config) {
           setFavoriteCompanies(config.favorite_companies ?? []);
+          setWatchedCompanies(config.watched_companies ?? []);
           setBlacklistedCompanies(config.blacklisted_companies ?? []);
         }
       } catch (error) {
@@ -542,6 +544,7 @@ export function JobTabsContent({
     const key = normalized.toLowerCase();
     setPendingFavoriteCompany(key);
     const alreadyFavorite = isFavoriteCompany(normalized);
+    const isWatched = watchedCompanies.some((c) => c.toLowerCase() === key);
 
     try {
       const updatedConfig = alreadyFavorite
@@ -549,10 +552,20 @@ export function JobTabsContent({
         : await addFavoriteCompany(normalized);
 
       setFavoriteCompanies(updatedConfig.favorite_companies ?? []);
+      setWatchedCompanies(updatedConfig.watched_companies ?? []);
       setBlacklistedCompanies(updatedConfig.blacklisted_companies ?? []);
 
+      let toastMessage = '';
+      if (alreadyFavorite) {
+        toastMessage = `${normalized} removed from favorites`;
+      } else if (isWatched) {
+        toastMessage = `${normalized} promoted to favorites`;
+      } else {
+        toastMessage = `${normalized} added to watched companies`;
+      }
+
       toast({
-        title: alreadyFavorite ? `${normalized} removed from favorites` : `${normalized} added to favorites`,
+        title: toastMessage,
         variant: 'success',
       });
     } catch (error) {
@@ -643,6 +656,7 @@ export function JobTabsContent({
                       onUpdateJobStatus(j.id, 'deleted');
                     }}
                     favoriteCompanies={favoriteCompanies}
+                    watchedCompanies={watchedCompanies}
                   />
                 ) : (
                   <p className="px-4 pt-20 text-center">
@@ -675,6 +689,7 @@ export function JobTabsContent({
                         onUpdateLabels={onUpdateJobLabels}
                         onOpenUrl={onOpenUrl}
                         isFavoriteCompany={isFavoriteCompany(selectedJob.companyName)}
+                        isWatchedCompany={watchedCompanies.some((c) => c.toLowerCase() === (selectedJob.companyName || '').toLowerCase())}
                         isBlacklistedCompany={isBlacklistedCompany(selectedJob.companyName)}
                         onToggleFavorite={toggleFavoriteCompany}
                         onToggleBlacklist={toggleBlacklistedCompany}

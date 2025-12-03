@@ -18,6 +18,7 @@ import { Icons } from '@/components/icons';
 import { useLinks } from '@/hooks/links';
 import { useSites } from '@/hooks/sites';
 import { LABEL_COLOR_CLASSES } from '@/lib/labels';
+import { cn } from '@/lib/utils';
 import { JOB_LABELS, Job, JobLabel, JobStatus } from '@first2apply/core';
 import { Avatar, AvatarImage } from '@first2apply/ui';
 import { Button } from '@first2apply/ui';
@@ -41,6 +42,7 @@ export function JobSummary({
   onUpdateLabels,
   onOpenUrl,
   isFavoriteCompany = false,
+  isWatchedCompany = false,
   isBlacklistedCompany = false,
   onToggleFavorite,
   onToggleBlacklist,
@@ -54,6 +56,7 @@ export function JobSummary({
   onUpdateLabels: (jobId: number, labels: JobLabel[]) => void;
   onOpenUrl: (url: string) => void;
   isFavoriteCompany?: boolean;
+  isWatchedCompany?: boolean;
   isBlacklistedCompany?: boolean;
   onToggleFavorite?: (companyName?: string | null) => void | Promise<void>;
   onToggleBlacklist?: (companyName?: string | null) => void | Promise<void>;
@@ -97,11 +100,21 @@ export function JobSummary({
 
           {/* Company name & location */}
           <div className="mb-6 flex items-center gap-2">
-            <p className="text-base font-medium text-foreground/90">
+            <p className={cn(
+              "text-base font-medium",
+              isWatchedCompany && !isFavoriteCompany
+                ? "text-blue-500/90 font-semibold"
+                : "text-foreground/90"
+            )}>
               {job.companyName}
             </p>
             {isFavoriteCompany && (
               <HeartFilledIcon className="h-4 w-4 text-rose-500" />
+            )}
+            {isWatchedCompany && !isFavoriteCompany && (
+              <span title="Watched company">
+                <HeartFilledIcon className="h-4 w-4 text-blue-500" />
+              </span>
             )}
             {job.location && (
               <span className="text-base text-muted-foreground/80">
@@ -310,7 +323,7 @@ export function JobSummary({
           </Tooltip>
         </TooltipProvider>
 
-        {/* Favorite company button */}
+        {/* Favorite/Watched company button */}
         {onToggleFavorite && job.companyName && (
           <TooltipProvider delayDuration={300}>
             <Tooltip>
@@ -321,7 +334,9 @@ export function JobSummary({
                   className={`h-10 w-10 rounded-xl transition-all duration-200 ${
                     isFavoriteCompany
                       ? 'bg-rose-500/10 text-rose-500 hover:bg-rose-500/20'
-                      : 'hover:bg-muted'
+                      : isWatchedCompany
+                        ? 'bg-blue-500/10 text-blue-500 hover:bg-blue-500/20'
+                        : 'hover:bg-muted'
                   }`}
                   disabled={!isCompanyPreferencesLoaded || favoriteActionPending}
                   onClick={() => onToggleFavorite(job.companyName)}
@@ -329,12 +344,22 @@ export function JobSummary({
                   {favoriteActionPending ? (
                     <Icons.spinner2 className="h-5 w-5 animate-spin" />
                   ) : (
-                    <HeartFilledIcon className="h-5 w-5" />
+                    <HeartFilledIcon className={`h-5 w-5 ${
+                      isFavoriteCompany
+                        ? 'text-rose-500'
+                        : isWatchedCompany
+                          ? 'text-blue-500'
+                          : ''
+                    }`} />
                   )}
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="text-sm">
-                {isFavoriteCompany ? 'Remove from favorites' : 'Add to favorites'}
+                {isFavoriteCompany
+                  ? 'Remove from favorites'
+                  : isWatchedCompany
+                    ? 'Promote to favorites'
+                    : 'Add to watched'}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

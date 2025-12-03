@@ -152,6 +152,7 @@ export type AdvancedMatchingConfig = {
   user_id: string;
   blacklisted_companies: string[];
   favorite_companies: string[];
+  watched_companies: string[];
   chatgpt_prompt: string;
   ai_api_cost: number;
   ai_api_input_tokens_used: number;

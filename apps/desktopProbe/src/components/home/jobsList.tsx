@@ -81,6 +81,7 @@ export function JobsList({
   onArchive,
   onDelete,
   favoriteCompanies = [],
+  watchedCompanies = [],
 }: {
   dateSummaries: DateSummary[];
   jobsByDate: Record<string, { jobs: Job[]; hasMore: boolean; isLoading: boolean }>;
@@ -90,6 +91,7 @@ export function JobsList({
   onArchive: (job: Job) => void;
   onDelete: (job: Job) => void;
   favoriteCompanies?: string[];
+  watchedCompanies?: string[];
 }) {
   const { siteLogos, siteMap } = useSites();
   const { links } = useLinks();
@@ -104,6 +106,14 @@ export function JobsList({
     }
     const normalized = companyName.trim().toLowerCase();
     return favoriteCompanies.some((company) => company.toLowerCase() === normalized);
+  };
+
+  const isWatchedCompany = (companyName?: string | null) => {
+    if (!companyName) {
+      return false;
+    }
+    const normalized = companyName.trim().toLowerCase();
+    return watchedCompanies.some((company) => company.toLowerCase() === normalized);
   };
 
   // Build date groups from summaries and loaded jobs
@@ -139,7 +149,7 @@ export function JobsList({
       // Sort by date descending (newest dates first)
       return b.dateKey.localeCompare(a.dateKey);
     });
-  }, [dateSummaries, jobsByDate, favoriteCompanies]);
+  }, [dateSummaries, jobsByDate, favoriteCompanies, watchedCompanies]);
 
   // Expand Today by default - date_key is now in local timezone
   useEffect(() => {
@@ -406,11 +416,21 @@ export function JobsList({
                           {/* Company & Location Row */}
                           <div className="mb-3.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
                             <div className="flex items-center gap-1.5">
-                              <span className="text-sm font-medium text-foreground/90">
+                              <span className={cn(
+                                "text-sm font-medium",
+                                isWatchedCompany(job.companyName) && !isJobFavorite
+                                  ? "text-blue-500/90 font-semibold"
+                                  : "text-foreground/90"
+                              )}>
                                 {job.companyName}
                               </span>
                               {isJobFavorite && (
                                 <HeartFilledIcon className="h-3.5 w-3.5 text-rose-500/80 flex-shrink-0" />
+                              )}
+                              {isWatchedCompany(job.companyName) && !isJobFavorite && (
+                                <span title="Watched company">
+                                  <HeartFilledIcon className="h-3.5 w-3.5 text-blue-500/80 flex-shrink-0" />
+                                </span>
                               )}
                             </div>
                             

@@ -17,6 +17,8 @@ import {
   openExternalUrl,
   importUserSettings,
   updateAdvancedMatchingConfig,
+  addWatchedCompany,
+  removeWatchedCompany,
 } from '@/lib/electronMainSdk';
 import { StripeBillingPlan, SubscriptionTier } from '@first2apply/core';
 import {
@@ -46,10 +48,13 @@ export function FiltersPage() {
   const [addBlacklistedCompany, setAddBlacklistedCompany] = useState<string>('');
   const [favoriteCompanies, setFavoriteCompanies] = useState<string[]>([]);
   const [addFavoriteCompany, setAddFavoriteCompany] = useState<string>('');
+  const [watchedCompanies, setWatchedCompanies] = useState<string[]>([]);
+  const [addWatchedCompanyInput, setAddWatchedCompanyInput] = useState<string>('');
   const [isSubscriptionDialogOpen, setSubscriptionDialogOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [showAllBlacklistedCompanies, setShowAllBlacklistedCompanies] = useState(false);
   const [showAllFavoriteCompanies, setShowAllFavoriteCompanies] = useState(false);
+  const [showAllWatchedCompanies, setShowAllWatchedCompanies] = useState(false);
   const [isExportingSettings, setIsExportingSettings] = useState(false);
   const [isImportingSettings, setIsImportingSettings] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -79,6 +84,7 @@ export function FiltersPage() {
     setUserAiInput(config.chatgpt_prompt);
     setBlacklistedCompanies(config.blacklisted_companies);
     setFavoriteCompanies(config.favorite_companies ?? []);
+    setWatchedCompanies(config.watched_companies ?? []);
     const providerValue = config.ai_provider;
     setAiProvider(providerValue === 'openai' || providerValue === 'google_gemini' ? providerValue : '');
     setAiModel(config.ai_model ?? '');
@@ -150,7 +156,7 @@ export function FiltersPage() {
     setAddBlacklistedCompany('');
   };
 
-  const handleAddFavoriteCompany = () => {
+  const handleAddFavoriteCompany = async () => {
     const normalized = normalizeCompany(addFavoriteCompany);
     if (!normalized) {
       return;
@@ -161,9 +167,50 @@ export function FiltersPage() {
       return;
     }
 
-    setFavoriteCompanies([...favoriteCompanies, normalized]);
-    setBlacklistedCompanies((companies) => filterCompanyFromList(companies, normalized));
-    setAddFavoriteCompany('');
+    try {
+      // If company is in watched, it will be moved to favorites by the API
+      const updatedConfig = await updateAdvancedMatchingConfig({
+        chatgpt_prompt: userAiInput,
+        blacklisted_companies: filterCompanyFromList(blacklistedCompanies, normalized),
+        favorite_companies: [...favoriteCompanies, normalized],
+        watched_companies: filterCompanyFromList(watchedCompanies, normalized),
+        ai_provider: aiProvider || null,
+        ai_model: aiModel || null,
+      });
+      hydrateConfigFromResponse(updatedConfig);
+      setAddFavoriteCompany('');
+    } catch (error) {
+      handleError({ error, title: 'Failed to add favorite company' });
+    }
+  };
+
+  const handleAddWatchedCompany = async () => {
+    const normalized = normalizeCompany(addWatchedCompanyInput);
+    if (!normalized) {
+      return;
+    }
+
+    if (companyListHas(watchedCompanies, normalized) || companyListHas(favoriteCompanies, normalized)) {
+      setAddWatchedCompanyInput('');
+      return;
+    }
+
+    try {
+      const updatedConfig = await addWatchedCompany(normalized);
+      hydrateConfigFromResponse(updatedConfig);
+      setAddWatchedCompanyInput('');
+    } catch (error) {
+      handleError({ error, title: 'Failed to add watched company' });
+    }
+  };
+
+  const handleRemoveWatchedCompany = async (company: string) => {
+    try {
+      const updatedConfig = await removeWatchedCompany(company);
+      hydrateConfigFromResponse(updatedConfig);
+    } catch (error) {
+      handleError({ error, title: 'Failed to remove watched company' });
+    }
   };
 
   const handleExportSettings = async () => {
@@ -254,6 +301,7 @@ export function FiltersPage() {
         chatgpt_prompt: userAiInput,
         blacklisted_companies: blacklistedCompanies,
         favorite_companies: favoriteCompanies,
+        watched_companies: watchedCompanies,
         ai_provider: aiProvider || null,
         ai_model: aiModel || null,
         ai_api_key_encrypted: aiApiKey || null, // This will be encrypted on the backend
@@ -471,6 +519,79 @@ export function FiltersPage() {
                 )}
                 {showAllFavoriteCompanies && (
                   <Button variant="secondary" className="py-2" onClick={() => setShowAllFavoriteCompanies(false)}>
+                    Show Less
+                  </Button>
+                )}
+              </div>
+            </TooltipProvider>
+          )}
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-4 text-lg font-medium">Watched companies</h2>
+        <p className="mb-4 text-sm text-muted-foreground">
+          Watched companies are highlighted in job listings but don't affect sorting. Click the favorite button twice to promote a watched company to favorites.
+        </p>
+
+        <div className="flex w-full gap-2">
+          <div className="relative flex-1">
+            <Input
+              value={addWatchedCompanyInput}
+              placeholder="E.g. Microsoft"
+              onChange={(evt) => setAddWatchedCompanyInput(evt.target.value)}
+              maxLength={100}
+              className="bg-card px-6 pr-20 text-base ring-ring placeholder:text-base focus-visible:ring-2"
+              onKeyDown={(evt) => {
+                if (evt.key === 'Enter') {
+                  handleAddWatchedCompany();
+                }
+              }}
+            />
+            <span className="absolute bottom-2 right-4 text-sm text-muted-foreground">
+              {addWatchedCompanyInput.length}/100
+            </span>
+          </div>
+
+          <Button variant="secondary" className="w-36 border border-border" onClick={handleAddWatchedCompany}>
+            Add watched
+          </Button>
+        </div>
+
+        <div className="mt-4">
+          {watchedCompanies.length === 0 ? (
+            <p>You haven't added any watched companies yet</p>
+          ) : (
+            <TooltipProvider delayDuration={500}>
+              <div className="flex flex-wrap gap-2">
+                {(showAllWatchedCompanies ? watchedCompanies : watchedCompanies.slice(0, 10)).map((company) => (
+                  <Badge
+                    key={company}
+                    className="flex items-center gap-2 border border-border bg-card py-1 pl-4 pr-2 text-base hover:bg-card"
+                  >
+                    {company}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          className="inline-flex items-center justify-center"
+                          onClick={() => handleRemoveWatchedCompany(company)}
+                        >
+                          <Cross2Icon className="h-4 w-4 text-foreground" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="mt-2 text-sm">
+                        Remove
+                      </TooltipContent>
+                    </Tooltip>
+                  </Badge>
+                ))}
+                {watchedCompanies.length > 10 && !showAllWatchedCompanies && (
+                  <Button variant="secondary" className="py-2" onClick={() => setShowAllWatchedCompanies(true)}>
+                    See All
+                  </Button>
+                )}
+                {showAllWatchedCompanies && (
+                  <Button variant="secondary" className="py-2" onClick={() => setShowAllWatchedCompanies(false)}>
                     Show Less
                   </Button>
                 )}
