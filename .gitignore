@@ -139,3 +139,6 @@ ssl
 
 # Development environment PID files
 .dev-pids/
+
+# Supabase local state (do not commit)
+**/supabase/.branches/
