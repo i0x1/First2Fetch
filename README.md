@@ -1,9 +1,14 @@
-# First 2 Apply
+# First 2 Fetch
 
-First 2 Apply (https://first2apply.com/) is an open-source job board aggregator that centralizes listings from platforms like LinkedIn, Indeed, Dice, and more, helping job seekers find opportunities faster.
-Watch demo [video](https://www.youtube.com/watch?v=9-OYPBhwYG8).
+First 2 Fetch is a community-maintained fork and improvement of the original **First 2 Apply** project.
 
-## Installation
+- Original project and creators: [First 2 Apply](https://first2apply.com/)
+- This repository: **first2fetch** (open-source fork, with additional improvements and customizations)
+
+First 2 Fetch is a job board aggregator that centralizes listings from platforms like LinkedIn, Indeed, Dice, and more, helping job seekers find opportunities faster.
+You can still watch the original demo [video](https://www.youtube.com/watch?v=9-OYPBhwYG8) for a great overview of the core experience.
+
+## Installation (from GitHub)
 
 This is a monorepo containing multiple applications and shared libraries. Follow these steps to set up the development environment:
 
@@ -79,7 +84,7 @@ This is a monorepo containing multiple applications and shared libraries. Follow
 
 5. **Run applications**
 
-   **Desktop Application:**
+   **Desktop Application (First 2 Fetch desktop client):**
    ```bash
    cd apps/desktopProbe
    npm start
@@ -90,11 +95,51 @@ This is a monorepo containing multiple applications and shared libraries. Follow
    npx supabase functions serve
    ```
 
-   **Landing Page (optional):**
+   **Landing Page / Static Site (optional):**
    ```bash
    cd apps/landingPage
    npm run dev
    ```
+
+## Downloading & Running from GitHub
+
+You can either **clone** this repository or **download a ZIP** from GitHub:
+
+1. **Clone the repo**
+   ```bash
+   git clone https://github.com/<your-username>/first2fetch.git
+   cd first2fetch
+   ```
+   Or download the ZIP from the GitHub UI and extract it.
+
+2. **Install and build**
+   - Follow the steps in the **Installation (from GitHub)** section above.
+
+3. **Run the desktop app**
+   ```bash
+   cd apps/desktopProbe
+   npm start
+   ```
+
+If you later add GitHub Releases with packaged binaries (e.g. `.dmg`, `.exe`, `.deb`), users will be able to download them directly from the **Releases** page without building from source.
+
+## Static Website (GitHub Pages / Marketing Site)
+
+The `apps/landingPage` app is a marketing site for First 2 Fetch. It can be:
+
+- Run locally (for development) via:
+  ```bash
+  cd apps/landingPage
+  npm run dev
+  ```
+- Deployed as a static site (e.g. GitHub Pages, Vercel, Netlify) by building the app:
+  ```bash
+  cd apps/landingPage
+  npm run build
+  npm start   # or use your chosen hosting platform's deployment flow
+  ```
+
+When publishing this site publicly, please keep the attribution that First 2 Fetch is **forked and adapted from First 2 Apply**.
 
 ## Release
 

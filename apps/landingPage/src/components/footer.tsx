@@ -286,21 +286,41 @@ export function Footer() {
           </a>
         </div>
 
-        <div className="mx-auto mt-4 flex w-fit gap-3">
-          <a href="https://first2apply.com/blog" className="underline">
-            Blog
-          </a>
-          <Link href="/privacy-policy" className="underline">
-            Privacy Policy
-          </Link>
-          <Link href="/terms-of-service" className="underline">
-            Terms of Service
-          </Link>
+        <div className="mx-auto mt-4 flex w-fit flex-col items-center gap-2 text-center text-sm">
+          <p>
+            <span className="font-semibold">First 2 Fetch</span> is an open-source fork and improvement of{' '}
+            <a href="https://first2apply.com" className="underline" target="_blank" rel="noreferrer">
+              First 2 Apply
+            </a>
+            .
+          </p>
+          <p>
+            Get the code on{' '}
+            <a
+              href="https://github.com/<your-username>/first2fetch"
+              className="underline"
+              target="_blank"
+              rel="noreferrer"
+            >
+              GitHub
+            </a>
+            . Clone or download from the repo to run the desktop app locally.
+          </p>
+          <div className="mt-2 flex gap-3">
+            <a href="https://first2apply.com/blog" className="underline">
+              Blog
+            </a>
+            <Link href="/privacy-policy" className="underline">
+              Privacy Policy
+            </Link>
+            <Link href="/terms-of-service" className="underline">
+              Terms of Service
+            </Link>
+          </div>
+          <p className="text-muted-foreground mt-3">
+            © {new Date().getFullYear()} First 2 Apply &amp; First 2 Fetch contributors. All Rights Reserved.
+          </p>
         </div>
-
-        <p className="text-muted-foreground mt-7 text-center text-sm">
-          © {new Date().getFullYear()} First 2 Apply. All Rights Reserved.
-        </p>
       </div>
     </footer>
   );
