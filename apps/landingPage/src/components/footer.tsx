@@ -297,7 +297,7 @@ export function Footer() {
           <p>
             Get the code on{' '}
             <a
-              href="https://github.com/<your-username>/first2fetch"
+              href="https://github.com/i0x1/First2Fetch"
               className="underline"
               target="_blank"
               rel="noreferrer"

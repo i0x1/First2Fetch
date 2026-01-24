@@ -2,8 +2,8 @@
 
 First 2 Fetch is a community-maintained fork and improvement of the original **First 2 Apply** project.
 
-- Original project and creators: [First 2 Apply](https://first2apply.com/)
-- This repository: **first2fetch** (open-source fork, with additional improvements and customizations)
+- **Original project and creators**: [First 2 Apply](https://first2apply.com/) - [GitHub Repository](https://github.com/beastx-ro/first2apply)
+- **This repository**: [First 2 Fetch](https://github.com/i0x1/First2Fetch) (independent fork with additional improvements and customizations)
 
 First 2 Fetch is a job board aggregator that centralizes listings from platforms like LinkedIn, Indeed, Dice, and more, helping job seekers find opportunities faster.
 You can still watch the original demo [video](https://www.youtube.com/watch?v=9-OYPBhwYG8) for a great overview of the core experience.
@@ -107,7 +107,7 @@ You can either **clone** this repository or **download a ZIP** from GitHub:
 
 1. **Clone the repo**
    ```bash
-   git clone https://github.com/<your-username>/first2fetch.git
+   git clone https://github.com/i0x1/First2Fetch.git
    cd first2fetch
    ```
    Or download the ZIP from the GitHub UI and extract it.
@@ -140,6 +140,49 @@ The `apps/landingPage` app is a marketing site for First 2 Fetch. It can be:
   ```
 
 When publishing this site publicly, please keep the attribution that First 2 Fetch is **forked and adapted from First 2 Apply**.
+
+## Syncing with Upstream (Original Repository)
+
+This repository is set up as an independent repository (not a GitHub fork) but can pull updates from the original [First 2 Apply repository](https://github.com/beastx-ro/first2apply) when needed.
+
+### Fetching Updates from Upstream
+
+To pull the latest changes from the original repository:
+
+```bash
+# Fetch the latest changes from upstream
+git fetch upstream
+
+# View what branches are available
+git branch -r
+
+# Merge a specific branch (e.g., master) into your current branch
+git merge upstream/master
+
+# Or create a new branch from upstream
+git checkout -b sync-upstream upstream/master
+```
+
+### Recommended Workflow
+
+1. **Check what's new in upstream:**
+   ```bash
+   git fetch upstream
+   git log HEAD..upstream/master --oneline
+   ```
+
+2. **Merge specific changes:**
+   ```bash
+   git merge upstream/master
+   # Resolve any conflicts if they occur
+   ```
+
+3. **Push your merged changes:**
+   ```bash
+   git push origin <your-branch>
+   ```
+
+**Note:** This repository is independent, so you control when and what to merge from upstream. You're not required to stay in sync, but this setup allows you to pull improvements from the original project when desired.
 
 ## Release
 
