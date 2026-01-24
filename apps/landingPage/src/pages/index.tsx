@@ -16,7 +16,7 @@ export default function Home() {
     <>
       <F2aHead
         title="First 2 Fetch - New job alerts from 10+ most popular sites"
-        description="First 2 Fetch is an improved, open-source fork of First 2 Apply. Land more interviews by being the first to know when new jobs are posted across LinkedIn, Indeed, Dice and other job boards."
+        description="First 2 Fetch - An upgraded job board aggregator with performance optimizations. Land more interviews by being the first to know when new jobs are posted across LinkedIn, Indeed, Dice and other job boards."
         path="/"
       />
 

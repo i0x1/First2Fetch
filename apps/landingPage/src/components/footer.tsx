@@ -288,11 +288,7 @@ export function Footer() {
 
         <div className="mx-auto mt-4 flex w-fit flex-col items-center gap-2 text-center text-sm">
           <p>
-            <span className="font-semibold">First 2 Fetch</span> is an open-source fork and improvement of{' '}
-            <a href="https://first2apply.com" className="underline" target="_blank" rel="noreferrer">
-              First 2 Apply
-            </a>
-            .
+            <span className="font-semibold">First 2 Fetch</span> - An upgraded and personalized job board aggregator
           </p>
           <p>
             Get the code on{' '}
@@ -318,7 +314,13 @@ export function Footer() {
             </Link>
           </div>
           <p className="text-muted-foreground mt-3">
-            © {new Date().getFullYear()} First 2 Apply &amp; First 2 Fetch contributors. All Rights Reserved.
+            © {new Date().getFullYear()} First 2 Fetch. All Rights Reserved.
+          </p>
+          <p className="text-muted-foreground mt-2 text-center text-xs">
+            Inspired by{' '}
+            <a href="https://first2apply.com" className="underline" target="_blank" rel="noreferrer">
+              First 2 Apply
+            </a>
           </p>
         </div>
       </div>
