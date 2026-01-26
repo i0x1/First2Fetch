@@ -1,0 +1,49 @@
+name: Sync Upstream Repository
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Allow manual triggering
+
+permissions:
+  contents: write
+
+jobs:
+  sync-upstream:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/beastx-ro/first2apply.git || true
+          git fetch upstream
+
+      - name: Checkout upstream-sync branch
+        run: |
+          git checkout upstream-sync || git checkout -b upstream-sync upstream/master
+
+      - name: Merge upstream/master into upstream-sync
+        run: |
+          git merge upstream/master --no-edit || echo "No changes to merge"
+
+      - name: Push upstream-sync branch
+        run: |
+          git push origin upstream-sync || echo "Nothing to push"
+
+      - name: Create summary
+        run: |
+          echo "## Upstream Sync Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Synced from: https://github.com/beastx-ro/first2apply" >> $GITHUB_STEP_SUMMARY
+          echo "- Branch: upstream-sync" >> $GITHUB_STEP_SUMMARY
+          echo "- Status: ✅ Complete" >> $GITHUB_STEP_SUMMARY
