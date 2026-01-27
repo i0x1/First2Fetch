@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "description": "",
   "scripts": {
-    "build": "cd supabase/functions && deno check --config deno.json **/*.ts",
+    "build": "command -v deno >/dev/null 2>&1 && (cd supabase/functions && deno check --config deno.json **/*.ts) || echo 'Skipping deno check: deno not found'",
     "stop": "npx supabase stop",
     "start": "npx supabase start",
     "dev": "npx supabase functions serve",

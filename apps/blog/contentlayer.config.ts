@@ -2,7 +2,7 @@ import { ComputedFields, defineDocumentType, makeSource } from 'contentlayer/sou
 import { writeFileSync } from 'fs';
 import { slug } from 'github-slugger';
 import path from 'path';
-import extractTocHeadings from 'pliny/mdx-plugins/extractTocHeadings';
+import { extractTocHeadings } from 'pliny/mdx-plugins/remark-toc-headings';
 import remarkCodeTitles from 'pliny/mdx-plugins/remarkCodeTitles';
 import remarkExtractFrontmatter from 'pliny/mdx-plugins/remarkExtractFrontmatter';
 import remarkImgToJsx from 'pliny/mdx-plugins/remarkImgToJsx';
@@ -38,7 +38,7 @@ const computedFields: ComputedFields = {
     type: 'string',
     resolve: (doc) => doc._raw.sourceFilePath,
   },
-  toc: { type: 'string', resolve: (doc) => extractTocHeadings(doc.body.raw) },
+  toc: { type: 'string', resolve: async (doc) => JSON.stringify(await extractTocHeadings(doc.body.raw)) },
 };
 
 /**
