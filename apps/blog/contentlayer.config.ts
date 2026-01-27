@@ -2,7 +2,10 @@ import { ComputedFields, defineDocumentType, makeSource } from 'contentlayer/sou
 import { writeFileSync } from 'fs';
 import { slug } from 'github-slugger';
 import path from 'path';
-import { extractTocHeadings, remarkCodeTitles, remarkExtractFrontmatter, remarkImgToJsx } from 'pliny/mdx-plugins';
+import extractTocHeadings from 'pliny/mdx-plugins/extractTocHeadings';
+import remarkCodeTitles from 'pliny/mdx-plugins/remarkCodeTitles';
+import remarkExtractFrontmatter from 'pliny/mdx-plugins/remarkExtractFrontmatter';
+import remarkImgToJsx from 'pliny/mdx-plugins/remarkImgToJsx';
 import { allCoreContent, sortPosts } from 'pliny/utils/contentlayer';
 import readingTime from 'reading-time';
 import rehypeAutolinkHeadings from 'rehype-autolink-headings';
