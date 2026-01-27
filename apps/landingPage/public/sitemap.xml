@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
-        <loc>https://first2apply.com/</loc>
+        <loc>https://i0x1.github.io/First2Fetch/</loc>
         <changefreq>daily</changefreq>
         <priority>1.0</priority>
     </url>
     <url>
-        <loc>https://first2apply.com/download</loc>
+        <loc>https://i0x1.github.io/First2Fetch/download</loc>
         <priority>0.8</priority>
     </url>
     <url>
-        <loc>https://first2apply.com/blog</loc>
+        <loc>https://i0x1.github.io/First2Fetch/changelog</loc>
         <priority>0.8</priority>
     </url>
 </urlset>

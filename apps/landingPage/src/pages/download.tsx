@@ -7,7 +7,7 @@ export default function Download() {
   return (
     <>
       <F2aHead
-        title="Download First 2 Apply"
+        title="Download First 2 Fetch"
         description="Experience the convenience of monitoring and managing job
           applications from top platforms, all in one place. Dive into a 7-day
           free trial, no credit card required."
@@ -17,7 +17,7 @@ export default function Download() {
       <DefaultLayout>
         <section className="mx-auto flex min-h-[calc(100vh-56px)] w-full max-w-7xl flex-col items-center justify-center px-6 pb-14 sm:px-10 md:min-h-[calc(100vh-64px)] md:pb-16">
           <h1 className="w-full text-balance text-3xl font-semibold sm:text-center sm:text-5xl lg:text-6xl">
-            Download First 2 Apply
+            Download First 2 Fetch
           </h1>
           <h2 className="mt-2 text-sm font-medium text-foreground/70 sm:text-balance sm:text-center sm:tracking-wide lg:text-xl">
             Experience the convenience of monitoring and managing job applications from top platforms, all in one place.

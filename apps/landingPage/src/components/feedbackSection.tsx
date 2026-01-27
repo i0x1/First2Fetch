@@ -20,7 +20,7 @@ const reviews: Review[] = [
     },
   },
   {
-    title: 'Where can I leave a review for First2Apply?',
+    title: 'Where can I leave a review for First 2 Fetch?',
     details:
       "I want to leave a review as this App has been a powerful tool for me over the past several months. I just recommended it to my FB group for women in tech and I know several have downloaded it. I want to spread the word further. I start a new role on 12/2/24 and it was because I was one of the first resume's in the recruiters pile. Wouldn't have happened without this application. Where can I leave a review? Everyone whose searching for work should be using First2Apply. For real.",
     source: {
@@ -29,7 +29,7 @@ const reviews: Review[] = [
     },
   },
   {
-    title: 'First 2 Apply worked for me!',
+    title: 'First 2 Fetch worked for me!',
     details: `I GOT A JOB! It took a long time to find the right program that didn't "mass apply" and that gave you results quickly and orderly. The application helped me a lot to be able to filter and apply quickly and efficiently. My trick was to use the application to search and find jobs quickly then use Simplify to be able to tailor my resume quickly. It was a win-win and I HIGHLY recommend this program. It was a game changer getting ahead of a lot of applications and having the frequent notifications when things came in were great. I think this is how I was able to increase my interview rate and I was able to finally land a job after 12 months and thousands of applications. For the record, I applied to 329 jobs manually with this program. They listen to feedback as well and are very quick with any issues you might have. I think this is the best app out there to get. Thank you again. I will be recommending this program!`,
     source: {
       href: 'https://www.reddit.com/r/first2apply/comments/1h83xgm/first_2_apply_worked_for_me/',

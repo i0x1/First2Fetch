@@ -87,7 +87,7 @@ export function Navbar() {
               />
             </g>
           </svg>
-          <span className="text-lg font-medium">First 2 Apply</span>
+          <span className="text-lg font-medium">First 2 Fetch</span>
         </button>
 
         {/* Burger menu */}
@@ -175,7 +175,7 @@ export function Navbar() {
                 />
               </g>
             </svg>
-            <span className="text-lg font-medium">First 2 Apply</span>
+            <span className="text-lg font-medium">First 2 Fetch</span>
           </button>
 
           <div className="flex items-center gap-10">

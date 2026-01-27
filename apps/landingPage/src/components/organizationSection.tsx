@@ -15,7 +15,7 @@ export function OrganizationSection() {
         </h2>
 
         <p className="mt-2 text-balance sm:mt-4 sm:text-lg md:text-right">
-          Ditch the spreadsheets. First 2 Apply brings seamless organization to your job search, with intuitive labeling
+          Ditch the spreadsheets. First 2 Fetch brings seamless organization to your job search, with intuitive labeling
           and tracking at each application stage, right within the app.
         </p>
       </div>

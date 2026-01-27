@@ -151,8 +151,8 @@ export default function Changelog() {
   return (
     <>
       <F2aHead
-        title="Changelog - First 2 Apply"
-        description="Discover the latest updates and improvements to First 2 Apply. Stay informed about new features and enhancements."
+        title="Changelog - First 2 Fetch"
+        description="Discover the latest updates and improvements to First 2 Fetch. Stay informed about new features and enhancements."
         path="/changelog"
       />
 

@@ -13,7 +13,7 @@ export function AlertsSection() {
           Get ahead with real-time job notifications
         </h2>
         <p className="mt-2 text-balance sm:mt-4 sm:text-lg md:text-left">
-          Set alerts your way - from as often as every 30 minutes to as spaced out as weekly. With First 2 Apply you can
+          Set alerts your way - from as often as every 30 minutes to as spaced out as weekly. With First 2 Fetch you can
           ensure your application is top of the pile, where recruiters look first.
         </p>
       </div>

@@ -9,19 +9,6 @@ export function ProductSection() {
   return (
     <section id="product">
       <div className="mx-auto flex h-[calc(55vh-56px)] w-full max-w-7xl flex-col items-start justify-end px-6 sm:px-10 md:h-[calc(50vh-64px)] md:flex-row md:items-end md:justify-between md:gap-10 lg:gap-20">
-        <div id="embed02" className="absolute top-20 md:top-[calc(25vh-27px)]">
-          <a
-            href="https://www.producthunt.com/posts/first-2-apply?utm_source=badge-featured&amp;utm_medium=badge&amp;utm_souce=badge-first-2-apply"
-            target="_blank"
-          >
-            <img
-              src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=443975&amp;theme=dark"
-              alt="First 2 Apply - New job alerts from 10+ most popular sites  | Product Hunt"
-              width="250"
-              height="54"
-            />
-          </a>
-        </div>
 
         <h1 className="z-10 text-3xl font-semibold sm:text-5xl md:text-nowrap lg:text-6xl">
           First 2 Fetch
@@ -74,7 +61,7 @@ export function ProductSection() {
             allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media; web-share"
             referrerPolicy="strict-origin-when-cross-origin"
             style={{ position: 'absolute', top: '0', left: '0', width: '100%', height: '100%' }}
-            title="How to Add Job Searches in First 2 Apply"
+            title="How to Add Job Searches in First 2 Fetch"
           ></iframe>
         </div>
         <script src="https://player.vimeo.com/api/player.js"></script>

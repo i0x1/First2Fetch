@@ -63,9 +63,9 @@ export function Faqs() {
       <div className="mt-6 flex flex-wrap items-center justify-center gap-2 sm:mt-[10vh]">
         <p className="text-base">Didn&apos;t find what you need?</p>
 
-        <a href="mailto:contact@first2apply.com" className="text-foreground">
-          Email us at&nbsp;
-          <span className="hover:text-primary underline">contact@first2apply.com</span>
+        <a href="https://github.com/i0x1/First2Fetch" target="_blank" rel="noreferrer" className="text-foreground">
+          Contact us on&nbsp;
+          <span className="hover:text-primary underline">GitHub</span>
         </a>
       </div>
     </section>
