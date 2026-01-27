@@ -5,8 +5,7 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  basePath: process.env.NODE_ENV === 'production' ? '/First2Fetch' : '',
-  assetPrefix: process.env.NODE_ENV === 'production' ? '/First2Fetch' : '',
+  trailingSlash: true,
 };
 
 export default nextConfig;

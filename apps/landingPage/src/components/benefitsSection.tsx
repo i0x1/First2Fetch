@@ -29,18 +29,16 @@ export function BenefitsSection() {
       className="mx-auto mt-[20vh] flex max-w-7xl flex-col items-center gap-4 px-6 sm:px-10 md:flex-row"
     >
       <div className="w-full md:w-1/2">
-        <h2 className="text-balance text-2xl font-semibold sm:text-4xl">More jobs, less hassle</h2>
+        <h2 className="text-balance text-2xl font-semibold sm:text-4xl">Supported Platforms</h2>
 
         <p className="mt-2 text-balance sm:mt-4 sm:text-lg">
-          Venture beyond LinkedIn to seize every opportunity. But manual searching across multiple platforms can be
-          overwhelming... Let First 2 Apply automate the process, fetching roles from{' '}
+          Aggregates job listings from{' '}
           {showAllPlatforms ? `${sites.join(', ')}.` : `${sites.slice(0, 3).join(', ')}, and `}
           {!showAllPlatforms && (
             <button onClick={() => setShowAllPlatforms(true)} className="text-blue-500">
-              {sites.length - 3} other job platforms.
+              {sites.length - 3} other platforms.
             </button>
-          )}{' '}
-          Just sit back, relax and let us curate the perfect job list for you.
+          )}
         </p>
       </div>
 

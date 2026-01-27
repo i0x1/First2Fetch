@@ -24,15 +24,11 @@ export function ProductSection() {
         </div>
 
         <h1 className="z-10 text-3xl font-semibold sm:text-5xl md:text-nowrap lg:text-6xl">
-          New job alerts from&nbsp;
-          <br className="hidden md:inline-block" />
-          10+ most popular sites.
+          First 2 Fetch
         </h1>
 
         <h2 className="mt-2 text-sm text-foreground/70 md:hidden">
-          Land more interviews by being the first to know when new jobs are posted.&nbsp;
-          <br className="hidden sm:inline-block" />
-          Stop wasting time manually browsing LinkedIn, Indeed, Dice or other job boards.
+          Job board aggregator with performance optimizations and database improvements.
         </h2>
 
         <Link href="/download" passHref className="self-center md:self-end">
@@ -47,9 +43,7 @@ export function ProductSection() {
       <div className="relative hidden h-[50vh] bg-gradient-to-t from-muted to-background dark:from-card/60 md:block">
         <div className="mx-auto max-w-7xl px-6 pt-3 sm:px-10">
           <h2 className="text-md text-foreground/70 lg:text-lg">
-            Land more interviews by being the first to know when new jobs are posted.
-            <br />
-            Stop wasting time manually browsing LinkedIn, Indeed, Dice or other job boards.
+            Job board aggregator with performance optimizations and database improvements.
           </h2>
 
           <Image
