@@ -60,16 +60,28 @@ export async function getEdgeFunctionContext({
   if (checkAuthorization) {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
+      logger.error('Missing Authorization header');
       throw new Error('Missing Authorization header');
     }
 
-    supabaseClient = createClient<DbSchema>(env.supabaseUrl, env.supabaseServiceRoleKey, {
+    logger.info(`Authorization header present, length: ${authHeader.length}`);
+
+    // Create admin client for database operations (uses service role key)
+    // But create a separate client for auth verification (uses anon key with user's JWT)
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? env.supabaseServiceRoleKey;
+    const authClient = createClient<DbSchema>(env.supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
     });
 
-    const { data: userData, error: getUserError } = await supabaseClient.auth.getUser();
+    const { data: userData, error: getUserError } = await authClient.auth.getUser();
     if (getUserError) {
+      logger.error(`getUser error: ${getUserError.message}`, { error: getUserError });
       throw new Error(getUserError.message);
+    }
+
+    if (!userData?.user) {
+      logger.error('getUser returned no user data', { userData });
+      throw new Error('Invalid authentication token');
     }
 
     user = {
@@ -78,6 +90,11 @@ export async function getEdgeFunctionContext({
     };
     logger.addMeta('user_id', user?.id ?? '');
     logger.addMeta('user_email', user?.email ?? '');
+    logger.info(`User authenticated successfully: ${user.id}`);
+    
+    // Keep a user-scoped client for regular DB operations so auth.uid() and RLS work as expected.
+    // Use supabaseAdminClient explicitly only where elevated privileges are required.
+    supabaseClient = authClient;
   }
 
   return {

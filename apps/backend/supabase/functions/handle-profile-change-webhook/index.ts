@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
     logger.info('Processing user profile change webhook ...');
 
     // check webhook signature
-    const webhookSecret = env.f2aWebhookSecret;
+    const webhookSecret = env.f2aWebhookSecret ?? throwError('F2A_WEBHOOK_SECRET is not set');
     const signature = req.headers.get('x-f2a-webhook-secret');
     if (signature !== webhookSecret) {
       throw new Error('Invalid webhook signature');

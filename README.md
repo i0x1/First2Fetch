@@ -36,6 +36,22 @@ Create `.env` files from `.env.example` in:
 
 ## Supabase Setup
 
+### Option A: Supabase Cloud (Recommended for persistent data)
+
+Using Supabase Cloud avoids data loss from local Docker issues. See **[docs/SUPABASE_CLOUD_MIGRATION.md](docs/SUPABASE_CLOUD_MIGRATION.md)** for full migration steps.
+
+```bash
+cd apps/backend
+npx supabase login
+npx supabase link --project-ref YOUR_PROJECT_REF
+npx supabase db push --include-seed
+npx supabase functions deploy
+```
+
+Then set `SUPABASE_URL` and `SUPABASE_KEY` in `.env` to your Cloud project values.
+
+### Option B: Local (Docker)
+
 ```bash
 cd apps/backend
 npx supabase init

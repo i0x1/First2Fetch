@@ -207,8 +207,15 @@ function onHideToSystemTray() {
 // globals
 const analytics = new AmplitudeAnalyticsClient();
 const autoUpdater = new F2aAutoUpdater(logger, quit, analytics);
-const supabase = createClient<DbSchema>(ENV.supabase.url, ENV.supabase.key);
-const supabaseApi = new F2aSupabaseApi(supabase);
+const supabase = createClient<DbSchema>(ENV.supabase.url, ENV.supabase.key, {
+  auth: {
+    // Disable automatic persistence since we handle it manually in Electron
+    autoRefreshToken: true,
+    persistSession: false, // We handle session persistence manually with encrypted storage
+    detectSessionInUrl: false, // Not relevant in Electron
+  },
+});
+const supabaseApi = new F2aSupabaseApi(supabase, ENV.supabase.key);
 const htmlDownloaders = [
   new HtmlDownloader({
     logger,

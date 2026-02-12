@@ -1,11 +1,9 @@
 import { AdvancedMatchingConfig, DbSchema, Job, JobStatus, throwError } from '@first2apply/core';
 import { SupabaseClient } from '@supabase/supabasefork';
-import { zodResponseFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 
 import { buildAIProviderFromUserConfig, logAiUsage } from './aiProvider.ts';
 import { ILogger } from './logger.ts';
-import { buildOpenAiClient } from './openAI.ts';
 import { checkUserSubscription } from './subscription.ts';
 
 /**
@@ -135,73 +133,39 @@ async function promptAI({
     logger,
   });
 
-  let provider: any;
-  let llmConfig: any;
-  let response: any;
-
-  if (userProvider) {
-    // Use user's configured provider
-    provider = userProvider.provider;
-    llmConfig = userProvider.config;
-
-    const aiResponse = await provider.createChatCompletion({
-      messages: [
-        {
-          role: 'system',
-          content: SYSTEM_PROMPT,
-        },
-        {
-          role: 'user',
-          content: generateUserPrompt({
-            prompt,
-            job,
-          }),
-        },
-      ],
-      maxCompletionTokens: 3000,
-      responseFormat: { type: 'json_object' },
-    });
-
-    response = {
-      usage: aiResponse.usage,
-      content: aiResponse.content,
-    };
-  } else {
-    // Fall back to default OpenAI client
-    const { llmConfig: defaultConfig, openAi } = buildOpenAiClient({
-      modelName: 'o3-mini',
-    });
-    llmConfig = defaultConfig;
-
-    const openAiResponse = await openAi.chat.completions.create({
-      model: llmConfig.model,
-      messages: [
-        {
-          role: 'system',
-          content: SYSTEM_PROMPT,
-        },
-        {
-          role: 'user',
-          content: generateUserPrompt({
-            prompt,
-            job,
-          }),
-        },
-      ],
-      max_tokens: 3000,
-      response_format: zodResponseFormat(JobExclusionFormat, 'JobExclusion'),
-    });
-
-    const choice = openAiResponse.choices[0];
-    if (choice.finish_reason !== 'stop') {
-      throw new Error(`AI response did not finish: ${choice.finish_reason}`);
-    }
-
-    response = {
-      usage: openAiResponse.usage,
-      content: choice.message.content ?? throwError('missing content'),
-    };
+  // User must provide their own API key - no fallback to Azure
+  if (!userProvider) {
+    throw new Error(
+      'No AI provider configured. Please configure your AI API key in Settings to use advanced job matching.',
+    );
   }
+
+  // Use user's configured provider
+  const provider = userProvider.provider;
+  const llmConfig = userProvider.config;
+
+  const aiResponse = await provider.createChatCompletion({
+    messages: [
+      {
+        role: 'system',
+        content: SYSTEM_PROMPT,
+      },
+      {
+        role: 'user',
+        content: generateUserPrompt({
+          prompt,
+          job,
+        }),
+      },
+    ],
+    maxCompletionTokens: 3000,
+    responseFormat: { type: 'json_object' },
+  });
+
+  const response = {
+    usage: aiResponse.usage,
+    content: aiResponse.content,
+  };
 
   // Parse the response
   const exclusionDecision = JobExclusionFormat.parse(JSON.parse(response.content));

@@ -7,7 +7,10 @@ import * as luxon from 'luxon';
  * Class used to interact with our Supabase API.
  */
 export class F2aSupabaseApi {
-  constructor(private _supabase: SupabaseClient<DbSchema>) {}
+  constructor(
+    private _supabase: SupabaseClient<DbSchema>,
+    private _supabasePublishableKey: string | undefined,
+  ) {}
 
   /**
    * Create a new user account using an email and password.
@@ -61,19 +64,14 @@ export class F2aSupabaseApi {
    * Create a new link.
    */
   async createLink({ title, url, html }: { title: string; url: string; html: string }) {
-    // for debugging, use a test.html file
-    // const htmlFixture = fs.readFileSync(path.join(__dirname, '../../../test.html'), 'utf-8');
-    // html = htmlFixture;
-
-    const { link, newJobs } = await this._supabaseApiCall(() =>
-      this._supabase.functions.invoke<{ link: Link; newJobs: Job[] }>('create-link', {
-        body: {
-          title,
-          url,
-          html,
-        },
-      }),
-    );
+    const { link, newJobs } = await this._invokeEdgeFunction<
+      { title: string; url: string; html: string },
+      { link: Link; newJobs: Job[] }
+    >('create-link', {
+      title,
+      url,
+      html,
+    });
 
     return { link, newJobs };
   }
@@ -108,7 +106,7 @@ export class F2aSupabaseApi {
   /**
    * Scan a list of htmls for new jobs.
    */
-  scanHtmls(
+  async scanHtmls(
     htmls: {
       linkId: number;
       content: string;
@@ -116,19 +114,16 @@ export class F2aSupabaseApi {
       retryCount: number;
     }[],
   ) {
-    return this._supabaseApiCall(() =>
-      this._supabase.functions.invoke<{ newJobs: Job[]; parseFailed: boolean }>('scan-urls', {
-        body: {
-          htmls,
-        },
-      }),
-    );
+    return this._invokeEdgeFunction<
+      { htmls: typeof htmls },
+      { newJobs: Job[]; parseFailed: boolean }
+    >('scan-urls', { htmls });
   }
 
   /**
    * Scan HTML for a job description.
    */
-  scanJobDescription({
+  async scanJobDescription({
     jobId,
     html,
     maxRetries,
@@ -139,30 +134,25 @@ export class F2aSupabaseApi {
     maxRetries: number;
     retryCount: number;
   }) {
-    return this._supabaseApiCall(() =>
-      this._supabase.functions.invoke<{ job: Job; parseFailed: boolean }>('scan-job-description', {
-        body: {
-          jobId,
-          html,
-          maxRetries,
-          retryCount,
-        },
-      }),
-    );
+    return this._invokeEdgeFunction<
+      { jobId: number; html: string; maxRetries: number; retryCount: number },
+      { job: Job; parseFailed: boolean }
+    >('scan-job-description', {
+      jobId,
+      html,
+      maxRetries,
+      retryCount,
+    });
   }
 
   /**
    * Run the post scan hook edge function.
    */
-  runPostScanHook({ newJobIds, areEmailAlertsEnabled }: { newJobIds: number[]; areEmailAlertsEnabled: boolean }) {
-    return this._supabaseApiCall(() =>
-      this._supabase.functions.invoke('post-scan-hook', {
-        body: {
-          newJobIds,
-          areEmailAlertsEnabled,
-        },
-      }),
-    );
+  async runPostScanHook({ newJobIds, areEmailAlertsEnabled }: { newJobIds: number[]; areEmailAlertsEnabled: boolean }) {
+    return this._invokeEdgeFunction<{ newJobIds: number[]; areEmailAlertsEnabled: boolean }, unknown>('post-scan-hook', {
+      newJobIds,
+      areEmailAlertsEnabled,
+    });
   }
 
   /**
@@ -369,6 +359,151 @@ export class F2aSupabaseApi {
   }
 
   /**
+   * Get authorization headers for edge function calls.
+   * In Electron, we need to explicitly pass the auth header to edge functions.
+   * 
+   * When verify_jwt is enabled on edge functions, Supabase gateway expects:
+   * - Authorization: Bearer <user_jwt_token>
+   * - apikey: <anon_key> (the public API key)
+   */
+  private async _getAuthHeaders(): Promise<Record<string, string>> {
+    const {
+      data: { session },
+      error: sessionError,
+    } = await this._supabase.auth.getSession();
+
+    if (sessionError) {
+      console.error('[_getAuthHeaders] Failed to get session:', sessionError);
+      throw new Error(`Failed to get session: ${sessionError.message}`);
+    }
+
+    if (!session?.access_token) {
+      console.error('[_getAuthHeaders] No access token in session:', session);
+      throw new Error('No active session found. Please sign in again.');
+    }
+
+    this._validateSessionProject(session.access_token);
+    console.log('[_getAuthHeaders] Successfully retrieved auth token, length:', session.access_token.length);
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${session.access_token}`,
+    };
+
+    const publishableKey = this._supabasePublishableKey?.trim();
+    if (publishableKey) {
+      headers.apikey = publishableKey;
+    } else {
+      // Let supabase-js include the key automatically, but log for diagnostics.
+      console.warn('[_getAuthHeaders] Missing explicit Supabase publishable key, relying on default SDK headers');
+    }
+
+    return headers;
+  }
+
+  private async _invokeEdgeFunction<TBody extends object, TResponse>(
+    functionName: string,
+    body: TBody,
+  ): Promise<TResponse> {
+    const invoke = async (headers: Record<string, string>) =>
+      this._supabaseApiCall(() =>
+        this._supabase.functions.invoke<TResponse>(functionName, {
+          body,
+          headers,
+        }),
+      );
+
+    const initialHeaders = await this._getAuthHeaders();
+    try {
+      return await invoke(initialHeaders);
+    } catch (error) {
+      if (!this._isUnauthorizedFunctionError(error)) {
+        throw error;
+      }
+
+      console.warn(
+        `[_invokeEdgeFunction] ${functionName} returned 401. Attempting a one-time session refresh and retry.`,
+      );
+      await this._refreshSessionForEdgeFunctionCall();
+      const refreshedHeaders = await this._getAuthHeaders();
+      return await invoke(refreshedHeaders);
+    }
+  }
+
+  private async _refreshSessionForEdgeFunctionCall() {
+    const {
+      data: { session },
+      error: getSessionError,
+    } = await this._supabase.auth.getSession();
+
+    if (getSessionError) {
+      throw new Error(`Failed to refresh session: ${getSessionError.message}`);
+    }
+
+    if (!session?.refresh_token) {
+      throw new Error('Session is invalid or expired. Please sign out and sign in again.');
+    }
+
+    const { error: refreshError } = await this._supabase.auth.refreshSession({
+      refresh_token: session.refresh_token,
+    });
+    if (refreshError) {
+      throw new Error(`Session refresh failed: ${refreshError.message}. Please sign in again.`);
+    }
+  }
+
+  private _isUnauthorizedFunctionError(error: unknown): boolean {
+    return error instanceof FunctionsHttpError && error.context?.status === 401;
+  }
+
+  private _validateSessionProject(accessToken: string) {
+    const payload = this._decodeJwtPayload(accessToken);
+    const tokenProjectRef = typeof payload?.ref === 'string' ? payload.ref : undefined;
+    const currentProjectRef = this._extractProjectRefFromUrl();
+
+    if (!tokenProjectRef || !currentProjectRef) {
+      return;
+    }
+
+    if (tokenProjectRef !== currentProjectRef) {
+      throw new Error(
+        `Session token project mismatch (token ref: ${tokenProjectRef}, app ref: ${currentProjectRef}). ` +
+          `Please sign out and sign in again.`,
+      );
+    }
+  }
+
+  private _extractProjectRefFromUrl(): string | undefined {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const url = (this._supabase as any)?.supabaseUrl;
+    if (!url || typeof url !== 'string') {
+      return undefined;
+    }
+
+    try {
+      const parsed = new URL(url);
+      return parsed.hostname.split('.')[0];
+    } catch {
+      return undefined;
+    }
+  }
+
+  private _decodeJwtPayload(token: string): Record<string, unknown> | null {
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      return null;
+    }
+
+    const payload = parts[1];
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+
+    try {
+      return JSON.parse(Buffer.from(padded, 'base64').toString('utf-8')) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Wrapper around a Supabase method that handles errors.
    */
   private async _supabaseApiCall<T, E extends Error | PostgrestError | FunctionsHttpError>(
@@ -378,12 +513,8 @@ export class F2aSupabaseApi {
       async () => {
         const result = await method();
         if (result.error) {
-          // Log more details about the error for debugging
-          console.error('[supabaseApiCall] Edge function error:', {
-            errorType: result.error.constructor.name,
-            errorMessage: result.error.message,
-            error: result.error,
-          });
+          const errorInfo = await this._formatErrorForLogging(result.error);
+          console.error('[supabaseApiCall] Supabase call error:', errorInfo);
           throw result.error;
         }
 
@@ -393,6 +524,7 @@ export class F2aSupabaseApi {
         numOfAttempts: 5,
         jitter: 'full',
         startingDelay: 300,
+        retry: (error) => this._isRetriableError(error),
       },
     );
 
@@ -414,6 +546,48 @@ export class F2aSupabaseApi {
     }
 
     return data;
+  }
+
+  private _isRetriableError(error: unknown): boolean {
+    if (error instanceof FunctionsHttpError) {
+      const status = error.context?.status ?? 0;
+      if (status === 408 || status === 429) {
+        return true;
+      }
+      if (status >= 400 && status < 500) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private async _formatErrorForLogging(error: unknown) {
+    if (!(error instanceof FunctionsHttpError)) {
+      return {
+        errorType: error instanceof Error ? error.constructor.name : 'UnknownError',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        error,
+      };
+    }
+
+    let responseBody: string | null = null;
+    try {
+      if (error.context && !error.context.bodyUsed) {
+        responseBody = await error.context.clone().text();
+      }
+    } catch {
+      responseBody = null;
+    }
+
+    return {
+      errorType: error.constructor.name,
+      errorMessage: error.message,
+      status: error.context?.status,
+      statusText: error.context?.statusText,
+      requestUrl: error.context?.url,
+      responseBody,
+    };
   }
 
   /**

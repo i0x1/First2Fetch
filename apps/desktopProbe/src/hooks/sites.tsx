@@ -35,15 +35,21 @@ export const SitesProvider = ({ children }: React.PropsWithChildren<{}>) => {
   const [isLoading, setIsLoading] = useState(true);
   const [sites, setSites] = useState<JobSite[]>([]);
 
-  // Load the job sites list on mount
+  // Load the job sites list on mount (only when logged in - RLS requires authenticated user)
   useEffect(() => {
     const asyncLoad = async () => {
       try {
-        if (!isLoggedIn) return;
+        if (!isLoggedIn) {
+          setSites([]);
+          setIsLoading(false);
+          return;
+        }
         setSites(await listSites());
-        setIsLoading(false);
       } catch (error) {
         handleError({ error });
+        setSites([]);
+      } finally {
+        setIsLoading(false);
       }
     };
 

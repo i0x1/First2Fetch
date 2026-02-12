@@ -39,7 +39,7 @@ export function CreateLink() {
 
   const { handleError } = useError();
   const { createLink } = useLinks();
-  const { sites } = useSites();
+  const { sites, isLoading } = useSites();
   const { toast } = useToast();
 
   // sort sites by name
@@ -146,7 +146,14 @@ export function CreateLink() {
           <div className="bg-muted/30 p-6 border-t border-border/40">
             <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">Supported Job Boards</h3>
             <div className="flex flex-wrap gap-2">
-                {sortedSites.map((site) => (
+                {isLoading ? (
+                  <p className="text-sm text-muted-foreground">Loading job boards...</p>
+                ) : sortedSites.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No job boards available. Make sure you&apos;re signed in and your app is connected to the correct Supabase project.
+                  </p>
+                ) : (
+                sortedSites.map((site) => (
                 <Badge
                     key={site.id}
                     variant="outline"
@@ -157,7 +164,8 @@ export function CreateLink() {
                 >
                     {site.name}
                 </Badge>
-                ))}
+                ))
+                )}
             </div>
           </div>
         </DialogContent>

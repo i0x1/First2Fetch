@@ -6,7 +6,7 @@
     "npm:mailersend": "npm:mailersend@2.6.0",
     "openai": "npm:openai@6.7.0",
     "npm:stripe": "npm:stripe@15.1.0",
-    "@supabase/supabasefork": "npm:@supabase/supabase-js@2.48.1",
+    "@supabase/supabasefork": "npm:@supabase/supabase-js@2.76.1",
     "turndown": "npm:turndown@7.1.2",
     "zod": "npm:zod@3.25.1"
   }

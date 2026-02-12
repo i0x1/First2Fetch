@@ -166,3 +166,15 @@ verify_jwt = false
 
 [functions.handle-profile-change-webhook]
 verify_jwt = false
+
+[functions.create-link]
+verify_jwt = false
+
+[functions.scan-urls]
+verify_jwt = false
+
+[functions.scan-job-description]
+verify_jwt = false
+
+[functions.post-scan-hook]
+verify_jwt = false
