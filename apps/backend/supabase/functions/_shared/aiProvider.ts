@@ -244,7 +244,7 @@ export async function buildAIProviderFromUserConfig({
     .from('advanced_matching')
     .select('ai_provider, ai_model, ai_api_key_encrypted')
     .eq('user_id', userId)
-    .single();
+    .maybeSingle();
 
   if (error || !advancedMatching) {
     logger.warn(`No AI provider config found for user ${userId}, using defaults`);

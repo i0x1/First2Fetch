@@ -1,4 +1,4 @@
-import { DbSchema, Job, Link } from '@first2apply/core';
+import { DbSchema, Job, Link, WebPageRuntimeData } from '@first2apply/core';
 import { getExceptionMessage } from '@first2apply/core';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.48.1';
 
@@ -25,10 +25,12 @@ Deno.serve(async (req) => {
     });
     const { user, supabaseClient } = context;
 
-    const { title, url, html } = (await req.json()) as {
+    const { title, url, html, webPageRuntimeData, force } = (await req.json()) as {
       title: string;
       url: string;
       html?: string;
+      webPageRuntimeData?: WebPageRuntimeData;
+      force?: boolean;
     };
     logger.info(`Creating link: ${title} - ${url}`);
 
@@ -106,49 +108,54 @@ Deno.serve(async (req) => {
         allJobSites,
         link,
         html,
+        webPageRuntimeData,
         context,
       });
 
-      if (parseFailed) {
-        // save the html dump for debugging
-        const { error: htmlDumpError } = await supabaseClient.from('html_dumps').insert([{ url: link.url, html }]);
+      if (parseFailed && !force) {
+        const { error: htmlDumpError } = await supabaseClient.from('html_dumps').insert([
+          {
+            url: link.url,
+            html,
+            webpage_runtime_data: webPageRuntimeData ?? null,
+          },
+        ]);
         if (htmlDumpError) {
           logger.error(`failed to save html dump for link ${inFlightLink.id}: ${htmlDumpError.message}`);
         }
 
         throw new Error(
-          `No jobs found on the ${site.name} page you are trying to save. Make sure the page you're on is a job list, not just the description of a single job. If you think this is a mistake, please contact our support team.`,
+          `Hmm, we couldn't detect any jobs on this ${site.name} page. This usually means you're viewing a single job instead of a list of jobs. If that's not the case, the site layout may have changed. You can still save the link anyway (use "Save anyway" below) while we improve detection.`,
         );
       }
 
       logger.info(`parsed ${jobs.length} jobs from ${link.url}`);
 
-      // add the link id to the jobs
       jobs.forEach((job) => {
         job.link_id = link.id;
       });
 
-      const { data: upsertedJobs, error: insertError } = await supabaseClient
-        .from('jobs')
-        .upsert(
-          jobs.map((job) => ({
-            ...job,
-            status: 'processing' as const,
+      if (jobs.length > 0) {
+        const { data: upsertedJobs, error: insertError } = await supabaseClient
+          .from('jobs')
+          .upsert(
+            jobs.map((job) => ({
+              ...job,
+              status: 'processing' as const,
 
-            // make sure tags is not null
-            tags: job.tags || [],
-            // ensure posting date fields are included
-            posted_at_raw: job.posted_at_raw || null,
-            is_repost: job.is_repost || false,
-          })),
-          { onConflict: 'user_id, externalId', ignoreDuplicates: true },
-        )
-        .select('*');
-      if (insertError) throw new Error(insertError.message);
+              tags: job.tags || [],
+              posted_at_raw: job.posted_at_raw || null,
+              is_repost: job.is_repost || false,
+            })),
+            { onConflict: 'user_id, externalId', ignoreDuplicates: true },
+          )
+          .select('*');
+        if (insertError) throw new Error(insertError.message);
 
-      logger.info(`upserted ${upsertedJobs?.length} jobs for link ${link.id}`);
-      newJobs = upsertedJobs?.filter((job) => job.status === 'processing') ?? [];
-      logger.info(`found ${newJobs.length} new jobs`);
+        logger.info(`upserted ${upsertedJobs?.length} jobs for link ${link.id}`);
+        newJobs = upsertedJobs?.filter((job) => job.status === 'processing') ?? [];
+        logger.info(`found ${newJobs.length} new jobs`);
+      }
     }
 
     logger.info(`successfully created link: ${link.id}`);

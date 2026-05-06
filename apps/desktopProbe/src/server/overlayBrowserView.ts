@@ -1,6 +1,8 @@
 import { OverlayBrowserViewResult } from '@/lib/types';
 import { BrowserWindow, WebContentsView } from 'electron';
 
+import { consumeRuntimeData } from './browserHelpers';
+
 /**
  * Class used to render a WebContentsView on top of the main window
  * to be used as a browser window. The UI (back/forward buttons, URL bar, etc)
@@ -154,6 +156,7 @@ export class OverlayBrowserView {
     const html = await this._searchView.webContents.executeJavaScript('document.documentElement.outerHTML');
     const title = await this._searchView.webContents.executeJavaScript('document.title');
     const url = this._searchView.webContents.getURL();
+    const webPageRuntimeData = consumeRuntimeData(url);
 
     this.close();
 
@@ -161,6 +164,7 @@ export class OverlayBrowserView {
       url,
       title,
       html,
+      webPageRuntimeData,
     };
   }
 

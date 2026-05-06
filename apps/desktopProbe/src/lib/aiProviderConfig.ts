@@ -31,6 +31,9 @@ export const AI_PROVIDER_CONFIG: Record<ProviderName, ProviderOption> = {
     value: 'openai',
     label: 'OpenAI',
     models: [
+      { value: 'gpt-5.2', label: 'GPT-5.2' },
+      { value: 'gpt-5-mini', label: 'GPT-5 mini (Budget)', isBudget: true },
+      { value: 'gpt-5-nano', label: 'GPT-5 nano (Budget)', isBudget: true },
       { value: 'gpt-4o', label: 'GPT-4o' },
       { value: 'gpt-4o-mini', label: 'GPT-4o Mini (Budget)', isBudget: true },
       { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo (Budget)', isBudget: true },

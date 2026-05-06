@@ -93,16 +93,18 @@ export function CreateLink() {
     }
   };
 
-  const onSaveSearch = async ({ title, url }: { title: string; url: string }) => {
+  const onSaveSearch = async ({ title, url, force }: { title: string; url: string; force?: boolean }) => {
     if (!jobBoardModalResponse) {
       handleError({ error: new Error('No job search data'), title: 'Error saving job search' });
       return;
     }
 
     const createdLink = await createLink({
-      url, // use the URL provided by the user (potentially modified)
-      title, // use the title provided by the user
+      url,
+      title,
       html: jobBoardModalResponse.html,
+      webPageRuntimeData: jobBoardModalResponse.webPageRuntimeData,
+      force,
     });
     toast({
       title: 'Link created',
@@ -204,10 +206,11 @@ const JobSearchSubmitDialog = ({
   title: string;
   url: string;
   isOpen: boolean;
-  onSaveJobSearch: (data: { title: string; url: string }) => Promise<Link>;
+  onSaveJobSearch: (data: { title: string; url: string; force?: boolean }) => Promise<Link>;
   onCancel: () => void;
 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [forceSave, setForceSave] = useState(false);
   const [currentUrl, setCurrentUrl] = useState(url);
   const [validationResult, setValidationResult] = useState<ReturnType<typeof validateJobSearchUrl> | null>(null);
   const { handleError } = useError();
@@ -244,10 +247,16 @@ const JobSearchSubmitDialog = ({
     setCurrentUrl(url);
   }, [title, url, form]);
 
+  useEffect(() => {
+    if (isOpen) {
+      setForceSave(false);
+    }
+  }, [isOpen]);
+
   const onSubmit = async (data: { title: string; url: string }) => {
     setIsSubmitting(true);
     try {
-      await onSaveJobSearch({ title: data.title, url: currentUrl });
+      await onSaveJobSearch({ title: data.title, url: currentUrl, force: forceSave });
       toast({
         title: 'Job search created',
         description: `Job search ${data.title} created successfully`,
@@ -418,9 +427,19 @@ const JobSearchSubmitDialog = ({
                 </Tabs>
             </div>
 
-            <div className="flex flex-row items-center justify-between p-6 border-t bg-muted/20 shrink-0">
-              {/* Cancel button */}
-              <Button variant="outline" onClick={onCancel} disabled={isSubmitting}>
+            <div className="flex flex-col gap-3 p-6 border-t bg-muted/20 shrink-0">
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={forceSave}
+                  onChange={(e) => setForceSave(e.target.checked)}
+                  disabled={isSubmitting}
+                  className="h-4 w-4 rounded border"
+                />
+                Save anyway if no jobs were detected (use when the page layout changed)
+              </label>
+              <div className="flex flex-row items-center justify-between">
+              <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
                 Cancel
               </Button>
               {/* Submit button */}
@@ -442,6 +461,7 @@ const JobSearchSubmitDialog = ({
                   'Save Search'
                 )}
               </Button>
+              </div>
             </div>
           </form>
         </Form>

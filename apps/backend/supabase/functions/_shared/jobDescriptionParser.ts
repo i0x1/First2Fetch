@@ -1,7 +1,7 @@
 import { DbSchema, Job, JobSite, SiteProvider, User } from '@first2apply/core';
 import { SupabaseClient } from '@supabase/supabasefork';
 import { DOMParser, Element } from 'https://deno.land/x/deno_dom@v0.1.43/deno-dom-wasm.ts';
-import turndown from 'npm:turndown@7.1.2';
+import turndown from 'turndown';
 
 import { parseCustomJobDescription } from './customJobsParser.ts';
 import { ILogger } from './logger.ts';
@@ -17,16 +17,18 @@ const SITE_PROVIDER_QUERY_SELECTORS: Record<SiteProvider, SiteProviderQuerySelec
       '.jobs-box__html-content > .job-details-module__content',
       '.jobs-description__container .jobs-box__html-content',
       '.job-details-module.artdeco-card',
+      'div[data-sdui-component="com.linkedin.sdui.generated.jobseeker.dsl.impl.aboutTheJob"]',
     ],
   },
   [SiteProvider.glassdoor]: {
     description: [
       '[data-brandviews*="jobview-description"]',
-      '.JobDetails_JobDescriptionUpdates__uW_fK', // fallback
+      '.JobDetails_JobDescriptionUpdates__uW_fK',
+      '.JobDetails_jobDescription__uW_fK',
     ],
   },
   [SiteProvider.indeed]: {
-    description: ['#JobDescriptionUpdatesText'],
+    description: ['#JobDescriptionUpdatesText', '#jobDescriptionText'],
   },
   [SiteProvider.remoteok]: {
     description: ['.description'],
@@ -38,7 +40,7 @@ const SITE_PROVIDER_QUERY_SELECTORS: Record<SiteProvider, SiteProviderQuerySelec
     description: ['#job-description'], // paywalled
   },
   [SiteProvider.dice]: {
-    description: [`[data-testid="jobDescriptionHtml"]`],
+    description: [`#jobDescription`, '.job-description', '[class*="job-detail-description-module"]'],
   },
   [SiteProvider.bestjobs]: {
     description: ['div.relative.bg-surface div.p-4 div.mt-8.pt-8.border-t.border-input.prose'],
@@ -50,7 +52,7 @@ const SITE_PROVIDER_QUERY_SELECTORS: Record<SiteProvider, SiteProviderQuerySelec
     description: ['section div.tw-mt-8 > div.left > div'],
   },
   [SiteProvider.remoteio]: {
-    description: ['#job-description'],
+    description: ['#job-description', '[data-testid="text-job-description"]'],
   },
   [SiteProvider.builtin]: {
     description: ['.job-post-item .container.py-lg .row > .col-12 > .position-relative'],

@@ -1,4 +1,4 @@
-import { DbSchema, Job, JobLabel, JobStatus, Link } from '@first2apply/core';
+import { DbSchema, Job, JobLabel, JobStatus, Link, WebPageRuntimeData } from '@first2apply/core';
 import { FunctionsHttpError, PostgrestError, SupabaseClient, User } from '@supabase/supabase-js';
 import { backOff } from 'exponential-backoff';
 import * as luxon from 'luxon';
@@ -63,14 +63,28 @@ export class F2aSupabaseApi {
   /**
    * Create a new link.
    */
-  async createLink({ title, url, html }: { title: string; url: string; html: string }) {
+  async createLink({
+    title,
+    url,
+    html,
+    webPageRuntimeData,
+    force,
+  }: {
+    title: string;
+    url: string;
+    html: string;
+    webPageRuntimeData: WebPageRuntimeData;
+    force?: boolean;
+  }) {
     const { link, newJobs } = await this._invokeEdgeFunction<
-      { title: string; url: string; html: string },
+      { title: string; url: string; html: string; webPageRuntimeData: WebPageRuntimeData; force?: boolean },
       { link: Link; newJobs: Job[] }
     >('create-link', {
       title,
       url,
       html,
+      webPageRuntimeData,
+      force,
     });
 
     return { link, newJobs };
@@ -110,6 +124,7 @@ export class F2aSupabaseApi {
     htmls: {
       linkId: number;
       content: string;
+      webPageRuntimeData: WebPageRuntimeData;
       maxRetries: number;
       retryCount: number;
     }[],

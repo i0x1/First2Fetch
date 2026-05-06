@@ -17,6 +17,7 @@ type OpenAIResponse = {
 const env = parseEnv();
 
 const SUPPORTED_MODELS = [
+  'gpt-5.2',
   'gpt-5-mini',
   'gpt-5-nano',
   'gpt-4o',
@@ -28,6 +29,7 @@ const SUPPORTED_MODELS = [
 type SupportedModel = (typeof SUPPORTED_MODELS)[number];
 
 const COST_PER_MODEL: Record<SupportedModel, { input: number; output: number }> = {
+  'gpt-5.2': { input: 1.75, output: 14 },
   'gpt-5-mini': { input: 0.25, output: 2 },
   'gpt-5-nano': { input: 0.05, output: 0.4 },
   'gpt-4o': { input: 2.5, output: 10 },

@@ -99,6 +99,15 @@ export type Job = {
   is_repost?: boolean;     // Extracted from "Reposted" keyword
 };
 
+export type LinkedinRuntimeData = {
+  type: SiteProvider.linkedin;
+  comoRehydration: string;
+};
+
+export type ProviderRuntimeData = LinkedinRuntimeData;
+
+export type WebPageRuntimeData = Partial<Record<SiteProvider, ProviderRuntimeData>>;
+
 export type Review = {
   id: number;
   user_id: string;
@@ -113,6 +122,7 @@ export type HtmlDump = {
   url: string;
   html: string;
   created_at: Date;
+  webpage_runtime_data?: WebPageRuntimeData;
 };
 export type Note = {
   id: number;
@@ -214,7 +224,7 @@ export type DbSchema = {
       };
       html_dumps: {
         Row: HtmlDump;
-        Insert: Pick<HtmlDump, 'url' | 'html'>;
+        Insert: Pick<HtmlDump, 'url' | 'html'> & { webpage_runtime_data?: WebPageRuntimeData };
         Update: never;
         Relationships: [];
       };

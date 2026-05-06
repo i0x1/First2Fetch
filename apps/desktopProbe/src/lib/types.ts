@@ -1,3 +1,5 @@
+import type { WebPageRuntimeData } from '@first2apply/core';
+
 export const AVAILABLE_CRON_RULES = [
   {
     name: 'Every 30 minutes',
@@ -58,6 +60,7 @@ export type OverlayBrowserViewResult = {
   url: string;
   title: string;
   html: string;
+  webPageRuntimeData: WebPageRuntimeData;
 };
 
 export type ScannerJobStatus = {

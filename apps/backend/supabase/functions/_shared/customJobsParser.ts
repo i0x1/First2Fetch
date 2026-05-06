@@ -8,7 +8,7 @@ import { z } from 'npm:zod';
 import { buildAIProviderFromUserConfig, logAiUsage } from './aiProvider.ts';
 import { denoHashString } from './deno.ts';
 import { JobDescriptionUpdates } from './jobDescriptionParser.ts';
-import { JobSiteParseResult, ParsedJob } from './jobListParser.ts';
+import { JobSiteParseResult, ParsedJob } from './parsers/parserTypes.ts';
 import { ILogger } from './logger.ts';
 
 /**
@@ -149,7 +149,7 @@ ${htmlContent}
         jobType: job.jobType || undefined,
         location: job.location || undefined,
         salary: job.salary || undefined,
-        tags: job.tags || undefined,
+        tags: job.tags ?? [],
         // associate with the site
         siteId,
         labels: [],
@@ -157,7 +157,7 @@ ${htmlContent}
     ),
   ).then((jobs) => {
     // filter out invalid jobs
-    return jobs.filter((job) => !!job.externalId && !!job.externalUrl);
+    return jobs.filter((job) => !!job.externalId && !!job.externalUrl?.startsWith('https://'));
   });
 
   return {

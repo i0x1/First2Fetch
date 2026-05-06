@@ -1,6 +1,8 @@
+import { WebPageRuntimeData } from '@first2apply/core';
 import { BrowserWindow } from 'electron';
 import { backOff } from 'exponential-backoff';
 
+import { consumeRuntimeData } from './browserHelpers';
 import { sleep, waitRandomBetween } from './helpers';
 import { ILogger } from './logger';
 import { WorkerQueue } from './workerQueue';
@@ -53,6 +55,11 @@ export class HtmlDownloader {
     this._isRunning = true;
   }
 
+  getSession() {
+    if (!this._pool) throw new Error('Pool not initialized');
+    return this._pool.getSession();
+  }
+
   /**
    * Load the HTML of a given URL with concurrency support.
    *
@@ -67,7 +74,12 @@ export class HtmlDownloader {
   }: {
     url: string;
     scrollTimes?: number;
-    callback: (_: { html: string; maxRetries: number; retryCount: number }) => Promise<T>;
+    callback: (_: {
+      html: string;
+      webPageRuntimeData: WebPageRuntimeData;
+      maxRetries: number;
+      retryCount: number;
+    }) => Promise<T>;
   }): Promise<T> {
     if (!this._pool) throw new Error('Pool not initialized');
 
@@ -79,7 +91,9 @@ export class HtmlDownloader {
       return backOff(
         async () => {
           const html: string = await window.webContents.executeJavaScript('document.documentElement.innerHTML');
-          return callback({ html, maxRetries, retryCount: retryCount++ });
+          const finalUrl = window.webContents.getURL();
+          const webPageRuntimeData = consumeRuntimeData(finalUrl);
+          return callback({ html, webPageRuntimeData, maxRetries, retryCount: retryCount++ });
         },
         {
           jitter: 'full',
@@ -289,6 +303,12 @@ class BrowserWindowPool {
         worker.isAvailable = true;
       });
     });
+  }
+
+  getSession() {
+    const first = this._pool[0];
+    if (!first) throw new Error('No browser windows in pool');
+    return first.window.webContents.session;
   }
 
   /**

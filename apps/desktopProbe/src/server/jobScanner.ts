@@ -113,6 +113,7 @@ function getNextCronTime(cronExpression: string): Date | null {
 }
 
 import { AVAILABLE_CRON_RULES, JobScannerSettings, ScannerJobStatus, ScannerStatus } from '../lib/types';
+import { installLinkedInDecorator } from './browserHelpers';
 import { chunk, promiseAllSequence, waitRandomBetween } from './helpers';
 import { HtmlDownloader } from './htmlDownloader';
 import { ILogger } from './logger';
@@ -201,6 +202,8 @@ export class JobScanner {
     }
 
     this._applySettings(settingsToApply);
+
+    installLinkedInDecorator(this._normalHtmlDownloader.getSession());
   }
 
   private _logToUi(message: string) {
@@ -327,11 +330,11 @@ export class JobScanner {
             .loadUrl({
               url: link.url,
               scrollTimes: 5,
-              callback: async ({ html, maxRetries, retryCount }) => {
+              callback: async ({ html, webPageRuntimeData, maxRetries, retryCount }) => {
                 if (!this._isRunning) return []; // stop if the scanner is closed
 
                 const { newJobs, parseFailed } = await this._supabaseApi.scanHtmls([
-                  { linkId: link.id, content: html, maxRetries, retryCount },
+                  { linkId: link.id, content: html, webPageRuntimeData, maxRetries, retryCount },
                 ]);
 
                 if (parseFailed) {

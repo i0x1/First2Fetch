@@ -1,4 +1,4 @@
-import { JobSite, Link, SiteProvider } from '@first2apply/core';
+import { JobSite, Link, SiteProvider, WebPageRuntimeData } from '@first2apply/core';
 import { getExceptionMessage } from '@first2apply/core';
 
 import { CORS_HEADERS } from '../_shared/cors.ts';
@@ -10,6 +10,7 @@ import { checkUserSubscription } from '../_shared/subscription.ts';
 type HtmlParseRequest = {
   linkId: number;
   content: string;
+  webPageRuntimeData?: WebPageRuntimeData;
   maxRetries?: number;
   retryCount?: number;
 };
@@ -158,6 +159,7 @@ async function parseHtmlToJobsList({
     allJobSites,
     link,
     html: html.content,
+    webPageRuntimeData: html.webPageRuntimeData,
     context,
   });
 
@@ -221,7 +223,9 @@ async function handleParsingFailureForLink({
     });
 
     // save the html dump for debugging
-    await supabaseClient.from('html_dumps').insert([{ url: link.url, html: html.content }]);
+    await supabaseClient.from('html_dumps').insert([
+      { url: link.url, html: html.content, webpage_runtime_data: html.webPageRuntimeData ?? null },
+    ]);
   }
 }
 

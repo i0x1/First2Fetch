@@ -1,5 +1,4 @@
-import { getExceptionMessage } from '@first2apply/core';
-import { Job } from '@first2apply/core';
+import { getExceptionMessage, Job, WebPageRuntimeData } from '@first2apply/core';
 import { dialog, ipcMain, shell } from 'electron';
 import fs from 'fs';
 import { json2csv } from 'json-2-csv';
@@ -80,12 +79,31 @@ export function initRendererIpcApi({
 
   ipcMain.handle('get-user', async (_) => _apiCall(() => supabaseApi.getUser()));
 
-  ipcMain.handle('create-link', async (_, { title, url, html }) =>
+  ipcMain.handle(
+    'create-link',
+    async (
+      _,
+      {
+        title,
+        url,
+        html,
+        webPageRuntimeData,
+        force,
+      }: {
+        title: string;
+        url: string;
+        html: string;
+        webPageRuntimeData: WebPageRuntimeData;
+        force?: boolean;
+      },
+    ) =>
     _apiCall(async () => {
       const { link, newJobs } = await supabaseApi.createLink({
         title,
         url,
         html,
+        webPageRuntimeData,
+        force,
       });
 
       // intentionally not awaited to not have the user wait until JDs are in
