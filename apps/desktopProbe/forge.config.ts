@@ -12,8 +12,8 @@ import path from 'path';
 import { mainConfig } from './webpack.main.config';
 import { rendererConfig } from './webpack.renderer.config';
 
-// load env vars
-loadEnvVars({ path: path.join(__dirname, '..', 'desktopProbe', '.env') });
+// load env vars for Forge / webpack (must match `.env` next to this file)
+loadEnvVars({ path: path.join(__dirname, '.env') });
 
 const config: ForgeConfig = {
   packagerConfig: {

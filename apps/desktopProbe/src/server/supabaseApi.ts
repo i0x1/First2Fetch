@@ -518,6 +518,10 @@ export class F2aSupabaseApi {
     }
   }
 
+  private _isExpectedMissingSession(error: unknown): boolean {
+    return error instanceof Error && error.message === 'Auth session missing!';
+  }
+
   /**
    * Wrapper around a Supabase method that handles errors.
    */
@@ -528,8 +532,10 @@ export class F2aSupabaseApi {
       async () => {
         const result = await method();
         if (result.error) {
-          const errorInfo = await this._formatErrorForLogging(result.error);
-          console.error('[supabaseApiCall] Supabase call error:', errorInfo);
+          if (!this._isExpectedMissingSession(result.error)) {
+            const errorInfo = await this._formatErrorForLogging(result.error);
+            console.error('[supabaseApiCall] Supabase call error:', errorInfo);
+          }
           throw result.error;
         }
 
@@ -564,6 +570,9 @@ export class F2aSupabaseApi {
   }
 
   private _isRetriableError(error: unknown): boolean {
+    if (this._isExpectedMissingSession(error)) {
+      return false;
+    }
     if (error instanceof FunctionsHttpError) {
       const status = error.context?.status ?? 0;
       if (status === 408 || status === 429) {

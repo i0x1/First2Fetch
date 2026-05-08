@@ -1,7 +1,7 @@
 import { ENV } from './env';
 
 import { DbSchema, getExceptionMessage } from '@first2apply/core';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { BrowserWindow, Notification, app, dialog, nativeTheme, safeStorage, shell } from 'electron';
 import Storage from 'electron-store';
 import fs from 'fs';
@@ -92,18 +92,20 @@ const createMainWindow = () => {
     autoHideMenuBar: true,
   });
 
-  // Suppress DevTools protocol warnings
-  mainWindow.webContents.on('console-message', (event, _level, message, _line, _sourceId) => {
-    // Suppress Autofill protocol warnings
-    if (
-      message.includes('Autofill.enable') ||
-      message.includes('Autofill.setAddresses') ||
-      message.includes("wasn't found")
-    ) {
-      event.preventDefault();
-      return;
-    }
-  });
+  // Suppress DevTools protocol noise (uses Electron event shape, not deprecated callback args).
+  mainWindow.webContents.on(
+    'console-message',
+    (details: Electron.Event<Electron.WebContentsConsoleMessageEventParams>) => {
+      const { message } = details;
+      if (
+        message.includes('Autofill.enable') ||
+        message.includes('Autofill.setAddresses') ||
+        message.includes("wasn't found")
+      ) {
+        details.preventDefault();
+      }
+    },
+  );
 
   // and load the index.html of the app.
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
@@ -207,15 +209,48 @@ function onHideToSystemTray() {
 // globals
 const analytics = new AmplitudeAnalyticsClient();
 const autoUpdater = new F2aAutoUpdater(logger, quit, analytics);
-const supabase = createClient<DbSchema>(ENV.supabase.url, ENV.supabase.key, {
-  auth: {
-    // Disable automatic persistence since we handle it manually in Electron
-    autoRefreshToken: true,
-    persistSession: false, // We handle session persistence manually with encrypted storage
-    detectSessionInUrl: false, // Not relevant in Electron
-  },
-});
-const supabaseApi = new F2aSupabaseApi(supabase, ENV.supabase.key);
+
+type SupabaseInit =
+  | { ok: true; supabase: SupabaseClient<DbSchema>; supabaseApi: F2aSupabaseApi }
+  | { ok: false; message: string };
+
+function configureSupabase(): SupabaseInit {
+  const url = ENV.supabase.url?.trim();
+  const key = ENV.supabase.key?.trim();
+  if (!url || !key) {
+    return {
+      ok: false,
+      message:
+        'Missing SUPABASE_URL or SUPABASE_KEY. Copy apps/desktopProbe/.env.example to apps/desktopProbe/.env and paste your hosted project URL and anon key from Supabase Dashboard → Settings → API.',
+    };
+  }
+  try {
+    const parsed = new URL(url);
+    if (!/^https?:$/i.test(parsed.protocol)) {
+      return {
+        ok: false,
+        message: 'SUPABASE_URL must begin with https:// or http:// (hosted projects use https).',
+      };
+    }
+  } catch {
+    return { ok: false, message: 'SUPABASE_URL is not a valid URL.' };
+  }
+  const supabaseClient = createClient<DbSchema>(url, key, {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  });
+  return {
+    ok: true,
+    supabase: supabaseClient,
+    supabaseApi: new F2aSupabaseApi(supabaseClient, key),
+  };
+}
+
+let supabase: SupabaseClient<DbSchema> | undefined;
+let supabaseApi!: F2aSupabaseApi;
 const htmlDownloaders = [
   new HtmlDownloader({
     logger,
@@ -356,6 +391,7 @@ async function forceQuit() {
 async function handleDeepLink(url: string) {
   try {
     if (!url.startsWith(APP_PROTOCOL)) return;
+    if (!supabase) return;
 
     onActivate();
     const path = url.replace(`${APP_PROTOCOL}:/`, '');
@@ -394,6 +430,19 @@ async function bootstrap() {
     if (process.platform === 'win32') {
       app.setAppUserModelId(ENV.appBundleId);
     }
+
+    const supabaseConfig = configureSupabase();
+    if (supabaseConfig.ok === false) {
+      dialog.showMessageBoxSync({
+        type: 'error',
+        title: 'First 2 Fetch — configuration',
+        message: supabaseConfig.message,
+      });
+      app.quit();
+      return;
+    }
+    supabase = supabaseConfig.supabase;
+    supabaseApi = supabaseConfig.supabaseApi;
 
     // track the app start event
     analytics.trackEvent('app_start');

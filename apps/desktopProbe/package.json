@@ -5,7 +5,7 @@
   "description": "First 2 Apply - Job Alert App | Instant Notifications for New Job Listings",
   "main": ".webpack/main",
   "scripts": {
-    "start": "electron-forge start",
+    "start": "NODE_OPTIONS=--dns-result-order=ipv4first electron-forge start",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
     "build": "tsc --noEmit",
@@ -54,6 +54,7 @@
     "@first2apply/core": "workspace:*",
     "@first2apply/ui": "workspace:*",
     "cron-parser": "^5.4.0",
+    "dotenv": "^16.4.5",
     "rehype-raw": "^7.0.0"
   }
 }

@@ -12,10 +12,10 @@ export const plugins = [
   new ForkTsCheckerWebpackPlugin({
     logger: 'webpack-infrastructure',
   }),
+  // SUPABASE_* are read at runtime from `.env` (see `src/env.ts`); embedding them via
+  // EnvironmentPlugin bakes stale values whenever webpack runs outside the Forge process.
   new webpack.EnvironmentPlugin([
     'APP_BUNDLE_ID',
-    'SUPABASE_URL',
-    'SUPABASE_KEY',
     'MEZMO_API_KEY',
     'AMPLITUDE_API_KEY',
   ]),
