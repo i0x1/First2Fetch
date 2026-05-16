@@ -33,10 +33,12 @@ export function installLinkedInDecorator(session: Session): void {
     const rehydrationScript = extractRehydrationScript(rawHtml);
 
     if (rehydrationScript) {
-      const hash = getStoreHashFromUrl(request.url);
-      runtimeDataStore.set(hash, {
+      const runtimeData: WebPageRuntimeData = {
         linkedin: { type: SiteProvider.linkedin, comoRehydration: rehydrationScript },
-      });
+      };
+
+      storeRuntimeData(request.url, runtimeData);
+      storeRuntimeData(response.url, runtimeData);
 
       if (runtimeDataStore.size > MAX_STORE_SIZE) {
         const oldestKey = runtimeDataStore.keys().next().value;
@@ -53,25 +55,61 @@ export function installLinkedInDecorator(session: Session): void {
 }
 
 export function consumeRuntimeData(url: string): WebPageRuntimeData {
-  const hash = getStoreHashFromUrl(url);
-  const data = runtimeDataStore.get(hash);
-  if (data) runtimeDataStore.delete(hash);
-  return data ?? {};
+  for (const hash of getStoreHashesFromUrl(url)) {
+    const data = runtimeDataStore.get(hash);
+    if (data) {
+      runtimeDataStore.delete(hash);
+      return data;
+    }
+  }
+
+  return {};
 }
 
 export function getStoreHashFromUrl(url: string): string {
-  let urlToHash = url;
-  if (url.includes('linkedin.com/jobs/search-results')) {
+  return createHash('sha256')
+    .update(getRuntimeUrlVariants(url)[0] ?? url)
+    .digest('hex');
+}
+
+function storeRuntimeData(url: string, data: WebPageRuntimeData): void {
+  for (const hash of getStoreHashesFromUrl(url)) {
+    runtimeDataStore.set(hash, data);
+  }
+}
+
+function getStoreHashesFromUrl(url: string): string[] {
+  return getRuntimeUrlVariants(url).map((urlToHash) => createHash('sha256').update(urlToHash).digest('hex'));
+}
+
+function getRuntimeUrlVariants(url: string): string[] {
+  const variants = new Set<string>([url]);
+
+  try {
     const urlObj = new URL(url);
-    const ignoredParams = ['currentJobId'];
-    const filteredParams = new URLSearchParams(
-      [...urlObj.searchParams].filter(([key]) => !ignoredParams.includes(key)),
-    );
-    urlObj.search = filteredParams.toString();
-    urlToHash = urlObj.toString();
+    if (!urlObj.hostname.includes('linkedin.com') || !urlObj.pathname.startsWith('/jobs')) {
+      return Array.from(variants);
+    }
+
+    const cleanUrl = new URL(urlObj.toString());
+    cleanUrl.hash = '';
+    ['currentJobId', 'selectedJobId'].forEach((param) => cleanUrl.searchParams.delete(param));
+    variants.add(cleanUrl.toString());
+
+    if (cleanUrl.pathname.startsWith('/jobs/search') || cleanUrl.pathname.startsWith('/jobs/search-results')) {
+      const searchUrl = new URL(cleanUrl.toString());
+      searchUrl.pathname = '/jobs/search/';
+      variants.add(searchUrl.toString());
+
+      const searchResultsUrl = new URL(cleanUrl.toString());
+      searchResultsUrl.pathname = '/jobs/search-results/';
+      variants.add(searchResultsUrl.toString());
+    }
+  } catch {
+    // Keep the original URL variant if parsing fails.
   }
 
-  return createHash('sha256').update(urlToHash).digest('hex');
+  return Array.from(variants);
 }
 
 export function getLinkedinReactContextBuilder(): string {

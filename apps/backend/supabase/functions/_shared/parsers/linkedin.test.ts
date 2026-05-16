@@ -221,3 +221,45 @@ Deno.test('parseLinkedInJobs parses currentJobId anchor cards', () => {
   }
   if (result.jobs[0]?.jobType !== 'remote') throw new Error(`Unexpected job type: ${result.jobs[0]?.jobType}`);
 });
+
+Deno.test('parseLinkedInJobs skips non-job scaffold list items and falls back to generic job view anchors', () => {
+  const result = parseLinkedInJobs({
+    siteId: 10,
+    html: `
+      <html>
+        <body>
+          <div class="scaffold-layout__list">
+            <ul>
+              <li>Filter chip</li>
+              <li>
+                <div class="new-card-wrapper">
+                  <a href="/jobs/view/4415178113/?refId=abc" aria-label="Product Engineer with verification">
+                    Product Engineer
+                  </a>
+                  <div class="job-card-container__primary-description">Acme</div>
+                  <div class="job-card-container__metadata-item">United States (Remote)</div>
+                  <div>Promoted</div>
+                </div>
+              </li>
+            </ul>
+          </div>
+        </body>
+      </html>
+    `,
+    logger,
+  });
+
+  if (!result.listFound) throw new Error('Expected list to be found');
+  if (result.elementsCount !== 1) throw new Error(`Unexpected element count: ${result.elementsCount}`);
+  if (result.jobs[0]?.externalId !== '4415178113') {
+    throw new Error(`Unexpected externalId: ${result.jobs[0]?.externalId}`);
+  }
+  if (result.jobs[0]?.title !== 'Product Engineer') throw new Error(`Unexpected title: ${result.jobs[0]?.title}`);
+  if (result.jobs[0]?.companyName !== 'Acme') {
+    throw new Error(`Unexpected company: ${result.jobs[0]?.companyName}`);
+  }
+  if (result.jobs[0]?.location !== 'United States') {
+    throw new Error(`Unexpected location: ${result.jobs[0]?.location}`);
+  }
+  if (result.jobs[0]?.jobType !== 'remote') throw new Error(`Unexpected job type: ${result.jobs[0]?.jobType}`);
+});

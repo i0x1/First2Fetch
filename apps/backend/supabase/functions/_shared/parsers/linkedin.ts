@@ -51,7 +51,9 @@ export function parseLinkedInJobs({
 
     if (jobsList) {
       parserVersion = 2;
-      jobElements = Array.from(jobsList.querySelectorAll('li')) as Element[];
+      jobElements = (Array.from(jobsList.querySelectorAll('li')) as Element[]).filter(
+        (el) => el.hasAttribute('data-occludable-job-id') || !!el.querySelector('div[data-job-id]'),
+      );
       listFound = jobElements.length > 0;
     }
   }
@@ -133,6 +135,15 @@ export function parseLinkedInJobs({
     parserVersion = 7;
     jobElements = uniqueLinkedInCurrentJobIdAnchors(
       Array.from(document.querySelectorAll('a[href*="currentJobId="]')) as Element[],
+    );
+    listFound = jobElements.length > 0;
+  }
+  if (!listFound) {
+    // Generic logged-in search card fallback. LinkedIn regularly changes wrapper classes, but cards
+    // still include job detail links with stable /jobs/view/<id> URLs.
+    parserVersion = 8;
+    jobElements = uniqueLinkedInJobViewAnchors(
+      Array.from(document.querySelectorAll('a[href*="/jobs/view/"]')) as Element[],
     );
     listFound = jobElements.length > 0;
   }
@@ -660,6 +671,64 @@ export function parseLinkedInJobs({
       tags,
     };
   };
+  const parseElementV8 = (el: Element): ParsedJob | null => {
+    const href = el.getAttribute('href')?.trim();
+    if (!href) return null;
+
+    const url = parseLinkedInUrl(href);
+    if (!url) return null;
+    const externalId = extractLinkedInJobId(url);
+    if (!externalId) return null;
+
+    const card = getLinkedInJobCardContainer(el);
+    const title =
+      cleanLinkedInTitle(el.getAttribute('aria-label')) ??
+      cleanLinkedInTitle(el.querySelector('[aria-hidden="true"]')?.textContent) ??
+      cleanLinkedInTitle(el.textContent);
+    if (!title) return null;
+
+    const companyName =
+      cleanLinkedInText(
+        card.querySelector('.artdeco-entity-lockup__subtitle, .job-card-container__primary-description')?.textContent,
+      ) ?? getLinkedInCardTextLines(card, title)[0];
+    if (!companyName) return null;
+
+    const rawLocation =
+      cleanLinkedInText(
+        card.querySelector('.artdeco-entity-lockup__caption, .job-card-container__metadata-item')?.textContent,
+      ) ?? getLinkedInCardTextLines(card, title).find((line) => looksLikeLinkedInLocation(line));
+
+    const location = rawLocation
+      ?.replace(/\(remote\)/i, '')
+      .replace(/\(on-site\)/i, '')
+      .replace(/\(hybrid\)/i, '')
+      .trim();
+
+    const jobType = rawLocation?.toLowerCase().includes('remote')
+      ? 'remote'
+      : rawLocation?.toLowerCase().includes('hybrid')
+        ? 'hybrid'
+        : 'onsite';
+
+    const companyLogo = card.querySelector('img')?.getAttribute('src')?.trim() || undefined;
+    const tags = getLinkedInCardTextLines(card, title)
+      .slice(1)
+      .filter((line) => line !== rawLocation)
+      .filter((line) => !/^(promoted|viewed|with verification)$/i.test(line));
+
+    return {
+      siteId,
+      externalId,
+      externalUrl: `https://www.linkedin.com/jobs/view/${externalId}`,
+      title,
+      companyName,
+      companyLogo,
+      location,
+      jobType,
+      labels: [],
+      tags,
+    };
+  };
 
   let jobs: Array<ParsedJob | null> = [];
   if (parserVersion === 1) {
@@ -676,6 +745,8 @@ export function parseLinkedInJobs({
     jobs = jobElements.map((el): ParsedJob | null => parseElementV6(el));
   } else if (parserVersion === 7) {
     jobs = jobElements.map((el): ParsedJob | null => parseElementV7(el));
+  } else if (parserVersion === 8) {
+    jobs = jobElements.map((el): ParsedJob | null => parseElementV8(el));
   }
 
   const validJobs = jobs
@@ -779,12 +850,42 @@ function uniqueLinkedInCurrentJobIdAnchors(anchors: Element[]): Element[] {
   return uniqueAnchors;
 }
 
+function uniqueLinkedInJobViewAnchors(anchors: Element[]): Element[] {
+  const seenIds = new Set<string>();
+  const uniqueAnchors: Element[] = [];
+
+  for (const anchor of anchors) {
+    const href = anchor.getAttribute('href')?.trim();
+    if (!href) continue;
+
+    const url = parseLinkedInUrl(href);
+    const jobId = url ? extractLinkedInJobId(url) : null;
+    if (!jobId || seenIds.has(jobId)) continue;
+
+    const text = anchor.textContent?.trim().replace(/\s+/g, ' ') ?? '';
+    if (!text || /^(view job|apply|save)$/i.test(text)) continue;
+
+    seenIds.add(jobId);
+    uniqueAnchors.push(anchor);
+  }
+
+  return uniqueAnchors;
+}
+
 function parseLinkedInUrl(href: string): URL | null {
   try {
     return new URL(href, 'https://www.linkedin.com');
   } catch {
     return null;
   }
+}
+
+function extractLinkedInJobId(url: URL): string | null {
+  const currentJobId = url.searchParams.get('currentJobId')?.trim();
+  if (currentJobId) return currentJobId;
+
+  const match = url.pathname.match(/\/jobs\/view\/(\d+)/);
+  return match?.[1] ?? null;
 }
 
 function cleanLinkedInTitle(title: string | null | undefined): string | null {
@@ -795,4 +896,44 @@ function cleanLinkedInTitle(title: string | null | undefined): string | null {
     .trim();
 
   return cleaned || null;
+}
+
+function cleanLinkedInText(text: string | null | undefined): string | null {
+  const cleaned = text?.replace(/\s+/g, ' ').trim();
+  return cleaned || null;
+}
+
+function getLinkedInJobCardContainer(anchor: Element): Element {
+  return (
+    anchor.closest('li') ??
+    anchor.closest('[data-job-id]') ??
+    anchor.closest('[data-occludable-job-id]') ??
+    anchor.parentElement ??
+    anchor
+  );
+}
+
+function getLinkedInCardTextLines(card: Element, title: string): string[] {
+  const titleLower = title.toLowerCase();
+  const seen = new Set<string>();
+
+  return (card.textContent ?? '')
+    .split('\n')
+    .map((line) => cleanLinkedInText(line))
+    .filter((line): line is string => !!line)
+    .filter((line) => line !== '•' && line !== '·')
+    .filter((line) => {
+      const normalized = line.toLowerCase();
+      if (normalized === titleLower || normalized === `${titleLower} with verification`) return false;
+      if (seen.has(normalized)) return false;
+      seen.add(normalized);
+      return true;
+    });
+}
+
+function looksLikeLinkedInLocation(text: string): boolean {
+  return (
+    /\b(remote|hybrid|on-site|onsite)\b/i.test(text) ||
+    /\b(united states|san francisco|new york|seattle|austin|boston|chicago|london|canada|india)\b/i.test(text)
+  );
 }
