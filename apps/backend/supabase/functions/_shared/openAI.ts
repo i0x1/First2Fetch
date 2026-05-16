@@ -17,6 +17,10 @@ type OpenAIResponse = {
 const env = parseEnv();
 
 const SUPPORTED_MODELS = [
+  'gpt-5.5',
+  'gpt-5.4',
+  'gpt-5.4-mini',
+  'gpt-5.4-nano',
   'gpt-5.2',
   'gpt-5-mini',
   'gpt-5-nano',
@@ -29,6 +33,10 @@ const SUPPORTED_MODELS = [
 type SupportedModel = (typeof SUPPORTED_MODELS)[number];
 
 const COST_PER_MODEL: Record<SupportedModel, { input: number; output: number }> = {
+  'gpt-5.5': { input: 5, output: 30 },
+  'gpt-5.4': { input: 2.5, output: 15 },
+  'gpt-5.4-mini': { input: 0.75, output: 4.5 },
+  'gpt-5.4-nano': { input: 0.2, output: 1.25 },
   'gpt-5.2': { input: 1.75, output: 14 },
   'gpt-5-mini': { input: 0.25, output: 2 },
   'gpt-5-nano': { input: 0.05, output: 0.4 },
@@ -52,7 +60,7 @@ export function buildOpenAiClient({ modelName }: { modelName?: SupportedModel })
   const openAi = new AzureOpenAI({
     apiKey: env.azureFoundryConfig.apiKey,
     endpoint: env.azureFoundryConfig.apiEndpoint,
-    apiVersion: '2024-12-01-preview',
+    apiVersion: '2025-04-01-preview',
   });
 
   const model = modelName ?? 'gpt-4o';

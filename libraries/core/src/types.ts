@@ -16,6 +16,7 @@ export enum SiteProvider {
   zipRecruiter = 'zipRecruiter',
   usaJobs = 'usaJobs',
   talent = 'talent',
+  hiringCafe = 'hiringCafe',
 
   // generic provider for sites not in the list above
   custom = 'custom',
@@ -95,8 +96,8 @@ export type Job = {
   exclude_reason?: string;
 
   // LinkedIn posting date fields
-  posted_at_raw?: string;  // "8 hours ago", "Reposted 1 week ago"
-  is_repost?: boolean;     // Extracted from "Reposted" keyword
+  posted_at_raw?: string; // "8 hours ago", "Reposted 1 week ago"
+  is_repost?: boolean; // Extracted from "Reposted" keyword
 };
 
 export type LinkedinRuntimeData = {
@@ -247,10 +248,23 @@ export type DbSchema = {
         Row: AdvancedMatchingConfig;
         Insert: Pick<
           AdvancedMatchingConfig,
-          'blacklisted_companies' | 'favorite_companies' | 'chatgpt_prompt' | 'ai_provider' | 'ai_model' | 'ai_api_key_encrypted'
+          | 'blacklisted_companies'
+          | 'favorite_companies'
+          | 'chatgpt_prompt'
+          | 'ai_provider'
+          | 'ai_model'
+          | 'ai_api_key_encrypted'
         >;
         Update: Partial<
-          Pick<AdvancedMatchingConfig, 'blacklisted_companies' | 'favorite_companies' | 'chatgpt_prompt' | 'ai_provider' | 'ai_model' | 'ai_api_key_encrypted'>
+          Pick<
+            AdvancedMatchingConfig,
+            | 'blacklisted_companies'
+            | 'favorite_companies'
+            | 'chatgpt_prompt'
+            | 'ai_provider'
+            | 'ai_model'
+            | 'ai_api_key_encrypted'
+          >
         >;
         Relationships: [];
       };

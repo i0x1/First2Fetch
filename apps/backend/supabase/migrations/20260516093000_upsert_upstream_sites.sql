@@ -1,11 +1,17 @@
--- Seed data for First2Apply database
--- This file contains initial data that will be loaded after all migrations
--- As per Supabase best practices, this file should ONLY contain data insertions
--- Schema changes should be in migration files
-
--- Insert sites data
--- Using ON CONFLICT to handle cases where data already exists (e.g., on db reset)
-INSERT INTO public.sites (id, name, urls, created_at, "queryParamsToRemove", logo_url, blacklisted_paths, provider, deprecated, incognito_support)
+-- Keep the runtime provider list aligned with upstream seed data.
+-- This is intentionally idempotent so hosted projects and local resets converge.
+INSERT INTO public.sites (
+  id,
+  name,
+  urls,
+  created_at,
+  "queryParamsToRemove",
+  logo_url,
+  blacklisted_paths,
+  provider,
+  deprecated,
+  incognito_support
+)
 VALUES
   (1, 'LinkedIn', ARRAY['https://www.linkedin.com'], '2024-01-20 15:02:02.723394+00'::timestamptz, ARRAY['currentJobId'], 'https://vnawaforiamopaudfefi.supabase.co/storage/v1/object/public/first2apply-public/linkedin.png', ARRAY['/', '/jobs/', '/feed/'], 'linkedin', false, true),
   (2, 'Glassdoor', ARRAY['https://www.glassdoor.com', 'https://www.glassdoor.it'], '2024-01-20 15:04:01.815691+00'::timestamptz, NULL, 'https://vnawaforiamopaudfefi.supabase.co/storage/v1/object/public/first2apply-public/glassdoor.png', ARRAY['/', '/index.htm/', '/job/index.htm/'], 'glassdoor', false, false),
@@ -34,3 +40,5 @@ ON CONFLICT (id) DO UPDATE SET
   provider = EXCLUDED.provider,
   deprecated = EXCLUDED.deprecated,
   incognito_support = EXCLUDED.incognito_support;
+
+SELECT setval(pg_get_serial_sequence('public.sites', 'id'), (SELECT max(id) FROM public.sites));

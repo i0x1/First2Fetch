@@ -38,6 +38,10 @@ export const AI_PROVIDER_CONFIG: Record<ProviderName, ProviderConfig> = {
     name: 'openai',
     displayName: 'OpenAI',
     models: {
+      'gpt-5.5': { input: 5, output: 30, label: 'GPT-5.5' },
+      'gpt-5.4': { input: 2.5, output: 15, label: 'GPT-5.4' },
+      'gpt-5.4-mini': { input: 0.75, output: 4.5, label: 'GPT-5.4 mini', isBudget: true },
+      'gpt-5.4-nano': { input: 0.2, output: 1.25, label: 'GPT-5.4 nano', isBudget: true },
       'gpt-5.2': { input: 1.75, output: 14, label: 'GPT-5.2' },
       'gpt-5-mini': { input: 0.25, output: 2, label: 'GPT-5 mini', isBudget: true },
       'gpt-5-nano': { input: 0.05, output: 0.4, label: 'GPT-5 nano', isBudget: true },

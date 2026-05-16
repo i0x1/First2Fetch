@@ -1,7 +1,7 @@
 import { OverlayBrowserViewResult } from '@/lib/types';
 import { BrowserWindow, WebContentsView } from 'electron';
 
-import { consumeRuntimeData } from './browserHelpers';
+import { consumeRuntimeData, getLinkedinReactContextBuilder } from './browserHelpers';
 
 /**
  * Class used to render a WebContentsView on top of the main window
@@ -94,14 +94,14 @@ export class OverlayBrowserView {
    */
   canGoBack(): boolean {
     if (!this._searchView) {
-      throw new Error('Search view is not ready');
+      return false;
     }
 
     return this._searchView.webContents.navigationHistory.canGoBack();
   }
   goBack() {
     if (!this._searchView) {
-      throw new Error('Search view is not ready');
+      return;
     }
 
     if (this._searchView.webContents.navigationHistory.canGoBack()) {
@@ -114,14 +114,14 @@ export class OverlayBrowserView {
    */
   canGoForward(): boolean {
     if (!this._searchView) {
-      throw new Error('Search view is not ready');
+      return false;
     }
 
     return this._searchView.webContents.navigationHistory.canGoForward();
   }
   goForward() {
     if (!this._searchView) {
-      throw new Error('Search view is not ready');
+      return;
     }
 
     if (this._searchView.webContents.navigationHistory.canGoForward()) {
@@ -153,9 +153,15 @@ export class OverlayBrowserView {
       throw new Error('Search view is not set');
     }
 
+    const url = this._searchView.webContents.getURL();
+    if (url.includes('linkedin.com')) {
+      await this._searchView.webContents
+        .executeJavaScript(getLinkedinReactContextBuilder())
+        .catch((): undefined => undefined);
+    }
+
     const html = await this._searchView.webContents.executeJavaScript('document.documentElement.outerHTML');
     const title = await this._searchView.webContents.executeJavaScript('document.title');
-    const url = this._searchView.webContents.getURL();
     const webPageRuntimeData = consumeRuntimeData(url);
 
     this.close();

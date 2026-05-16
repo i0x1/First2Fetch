@@ -3,7 +3,6 @@ import {
   formatConsoleLog,
   resolveLogLevel,
   shouldLog,
-  throwError,
 } from '@first2apply/core';
 import { Logger as MezmoLogger, createLogger } from 'npm:@logdna/logger';
 
@@ -20,14 +19,21 @@ export interface ILogger {
   flush(): void;
 }
 
+function isTruthyEnv(value: string | undefined): boolean {
+  const v = (value ?? '').trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
 /**
  * Custom logger class that wraps the Mezmo logger.
+ * When `_mezmo` is null, only console logging is used (safe for hosted Edge: @logdna/logger
+ * can throw uncaught connection errors in the event loop and take down the isolate).
  */
 class Logger implements ILogger {
   private _consoleMeta: Record<string, string>;
 
   constructor(
-    private _logger: MezmoLogger,
+    private _mezmo: MezmoLogger | null,
     private _consoleLevel: LogLevel,
     meta: Record<string, string>,
   ) {
@@ -57,43 +63,32 @@ class Logger implements ILogger {
 
   debug(message: string, data?: Record<string, any>) {
     this.writeToConsole('debug', message, data);
-    this._logger.debug &&
-      this._logger.debug(message, {
-        meta: data,
-      });
+    this._mezmo?.debug?.(message, { meta: data });
   }
 
   info(message: string, data?: Record<string, any>) {
     this.writeToConsole('info', message, data);
-    this._logger.info &&
-      this._logger.info(message, {
-        meta: data,
-      });
+    this._mezmo?.info?.(message, { meta: data });
   }
 
   warn(message: string, data?: Record<string, any>) {
     this.writeToConsole('warn', message, data);
-    (this._logger as MezmoLoggerWithWarn).warn &&
-      (this._logger as MezmoLoggerWithWarn).warn(message, {
-        meta: data,
-      });
+    const w = this._mezmo as MezmoLoggerWithWarn | null;
+    w?.warn?.(message, { meta: data });
   }
 
   error(message: string, data?: Record<string, any>) {
     this.writeToConsole('error', message, data);
-    this._logger.error &&
-      this._logger.error(message, {
-        meta: data,
-      });
+    this._mezmo?.error?.(message, { meta: data });
   }
 
   addMeta(key: string, value: string) {
     this._consoleMeta[key] = value;
-    this._logger.addMetaProperty(key, value);
+    this._mezmo?.addMetaProperty?.(key, value);
   }
 
   flush() {
-    this._logger.flush();
+    this._mezmo?.flush?.();
   }
 }
 
@@ -103,14 +98,21 @@ export const createLoggerWithMeta = (meta: Record<string, string>) => {
     'info',
   );
 
-  const mezmoLogger = createLogger(Deno.env.get('MEZMO_API_KEY') ?? throwError(''), {
-    level: 'info',
-    app: 'first2apply',
-    env: 'all',
-    hostname: 'edge-functions',
-    meta,
-    indexMeta: true,
-  });
+  const mezmoKey = Deno.env.get('MEZMO_API_KEY')?.trim() ?? '';
+  // Opt-in: @logdna/logger opens persistent connections; on Supabase Edge it can throw
+  // uncaught "connection-based error" in the event loop (503 for clients). Default off.
+  const useMezmo = mezmoKey.length > 0 && isTruthyEnv(Deno.env.get('MEZMO_ENABLE_EDGE'));
+
+  const mezmoLogger = useMezmo
+    ? createLogger(mezmoKey, {
+        level: 'info',
+        app: 'first2apply',
+        env: 'all',
+        hostname: 'edge-functions',
+        meta,
+        indexMeta: true,
+      })
+    : null;
 
   return new Logger(mezmoLogger, consoleLevel, meta);
 };

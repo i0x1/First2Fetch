@@ -1,7 +1,7 @@
 import { ENV } from './env';
 
 import { DbSchema, getExceptionMessage } from '@first2apply/core';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { SupabaseClient, createClient } from '@supabase/supabase-js';
 import { BrowserWindow, Notification, app, dialog, nativeTheme, safeStorage, shell } from 'electron';
 import Storage from 'electron-store';
 import fs from 'fs';
@@ -38,7 +38,11 @@ process.on('warning', (warning) => {
 // Suppress stderr output for task_policy_set errors on macOS (these come from Electron Helper processes)
 const originalStderrWrite = process.stderr.write.bind(process.stderr);
 // Type assertion needed due to overloaded write method signatures
-process.stderr.write = function (chunk: string | Uint8Array, encoding?: BufferEncoding, callback?: (error?: Error | null) => void): boolean {
+process.stderr.write = function (
+  chunk: string | Uint8Array,
+  encoding?: BufferEncoding,
+  callback?: (error?: Error | null) => void,
+): boolean {
   const message = typeof chunk === 'string' ? chunk : chunk.toString();
   // Suppress task_policy_set and Continuity Camera warnings
   if (
@@ -110,7 +114,7 @@ const createMainWindow = () => {
   // and load the index.html of the app.
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 
-  if (ENV.nodeEnv === 'development') {
+  if (ENV.openDevTools) {
     // Open the DevTools.
     mainWindow.webContents.openDevTools();
   }
@@ -364,10 +368,7 @@ async function forceQuit() {
 
   // Wait for cleanup with timeout (max 2 seconds)
   try {
-    await Promise.race([
-      Promise.all(cleanupPromises),
-      new Promise((resolve) => setTimeout(resolve, 2000)),
-    ]);
+    await Promise.race([Promise.all(cleanupPromises), new Promise((resolve) => setTimeout(resolve, 2000))]);
   } catch (error) {
     logger.debug(`error during cleanup: ${getExceptionMessage(error)}`);
   }
@@ -465,7 +466,15 @@ async function bootstrap() {
     });
 
     // init the renderer IPC API
-    initRendererIpcApi({ supabaseApi, jobScanner, autoUpdater, overlayBrowserView, nodeEnv: ENV.nodeEnv, analytics, onForceQuit: forceQuit });
+    initRendererIpcApi({
+      supabaseApi,
+      jobScanner,
+      autoUpdater,
+      overlayBrowserView,
+      nodeEnv: ENV.nodeEnv,
+      analytics,
+      onForceQuit: forceQuit,
+    });
 
     // init the tray menu
     trayMenu = new TrayMenu({ logger, onQuit: quit, onNavigate: navigate });

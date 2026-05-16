@@ -164,6 +164,15 @@ async function sendNewJobLinksEmail({
     return;
   }
 
+  // load sites so emails can show the source provider/site name for each job
+  const { data: sitesData, error: sitesError } = await supabaseClient.from('sites').select('*');
+  if (sitesError) {
+    logger.error(`failed to load sites: ${getExceptionMessage(sitesError)}`);
+    return;
+  }
+  const jobSites: JobSite[] = sitesData ?? [];
+  const siteMap = new Map(jobSites.map((site) => [site.id, site]));
+
   // send the email
   logger.info(`sending email to ${user.email} for ${newJobs.length} new jobs ...`);
   await mailer.sendEmail({
@@ -175,6 +184,7 @@ async function sendNewJobLinksEmail({
       payload: {
         new_jobs_count: newJobs.length,
         new_jobs: newJobs.map((job) => ({
+          providerName: siteMap.get(job.siteId)?.name ?? siteMap.get(job.siteId)?.provider ?? 'unknown',
           title: job.title,
           url: job.externalUrl,
           description: job.description?.slice(0, 200) ?? '',

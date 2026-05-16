@@ -1,4 +1,4 @@
-import { Job, JobType, throwError } from '@first2apply/core';
+import { Job, JobType } from '@first2apply/core';
 import { DbSchema, User } from '@first2apply/core';
 import { SupabaseClient } from '@supabase/supabasefork';
 import { DOMParser, Element } from 'https://deno.land/x/deno_dom@v0.1.43/deno-dom-wasm.ts';
@@ -156,8 +156,10 @@ ${htmlContent}
       }),
     ),
   ).then((jobs) => {
-    // filter out invalid jobs
-    return jobs.filter((job) => !!job.externalId && !!job.externalUrl?.startsWith('https://'));
+    // filter out invalid jobs (schema normalizes http -> https; require absolute https URL)
+    return jobs.filter(
+      (job) => !!job.externalId && !!job.externalUrl && /^https:\/\//i.test(job.externalUrl.trim()),
+    );
   });
 
   return {
@@ -194,8 +196,25 @@ const JOB_TYPE_SCHEMA = z.preprocess(
   z.enum(JOB_TYPE_VALUES).optional().nullable(),
 );
 
+/** Upgrade http:// to https:// so valid HTTP listings are kept (matches downstream HTTPS expectation). */
+function normalizeHttpToHttpsJobUrl(raw: string): string {
+  const trimmed = raw.trim();
+  if (/^http:\/\//i.test(trimmed)) {
+    return `https://${trimmed.replace(/^http:\/\//i, '')}`;
+  }
+  return trimmed;
+}
+
+const EXTERNAL_JOB_URL_SCHEMA = z.preprocess(
+  (value) => (typeof value === 'string' ? normalizeHttpToHttpsJobUrl(value) : value),
+  z
+    .string()
+    .url({ message: 'externalUrl must be a valid absolute URL' })
+    .refine((u) => /^https:\/\//i.test(u), { message: 'externalUrl must use https' }),
+);
+
 const JOB_SCHEMA = z.object({
-  externalUrl: z.string(),
+  externalUrl: EXTERNAL_JOB_URL_SCHEMA,
 
   title: z.string().min(3).max(200),
   companyName: z.string().min(2).max(100),
@@ -264,7 +283,7 @@ export async function parseCustomJobDescription({
     .from('advanced_matching')
     .select('*')
     .eq('user_id', user.id)
-    .single();
+    .maybeSingle();
   if (getAdvancedMatchingRecordError) {
     context.logger.error(
       `Failed to load advanced matching config for user ${user.id}: ${getAdvancedMatchingRecordError.message}`,

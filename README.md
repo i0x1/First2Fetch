@@ -95,6 +95,10 @@ Monorepo using Nx:
 - `libraries/core`: Shared core library
 - `libraries/ui`: Shared UI components
 
+## Architecture
+
+For a deeper agent-oriented walkthrough of the application structure, runtime flows, LLM usage, backend, frontend, data model, and development notes, see [docs/architecture.md](docs/architecture.md).
+
 ## Development
 
 ```bash

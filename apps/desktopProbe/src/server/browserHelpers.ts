@@ -73,3 +73,33 @@ export function getStoreHashFromUrl(url: string): string {
 
   return createHash('sha256').update(urlToHash).digest('hex');
 }
+
+export function getLinkedinReactContextBuilder(): string {
+  return `
+  const stringifyCircularJSON = obj => {
+    const seen = new WeakSet();
+    return JSON.stringify(obj, (k, v) => {
+      if (v instanceof Window) return;
+      if (v instanceof Element) return;
+      if (v instanceof Document) return;
+
+      if (typeof v === "bigint") return v.toString();
+      if (v !== null && typeof v === 'object') {
+        if (seen.has(v)) return;
+        seen.add(v);
+      }
+      return v;
+    });
+  };
+
+  const jobListElements = document.querySelectorAll("div[componentkey='SearchResultsMainContent'] div[componentkey]");
+  jobListElements.forEach(el => {
+    const reactKeys = Object.keys(el).filter(k => k.startsWith("__reactProps"));
+    const reactContext = reactKeys.map(key => ({
+      key,
+      value: stringifyCircularJSON(el[key]),
+    }));
+    el.setAttribute('f2a-react-context', JSON.stringify(reactContext));
+  });
+`;
+}

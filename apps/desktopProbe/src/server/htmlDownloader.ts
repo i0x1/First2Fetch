@@ -1,8 +1,8 @@
-import { WebPageRuntimeData } from '@first2apply/core';
+import { WebPageRuntimeData, getExceptionMessage } from '@first2apply/core';
 import { BrowserWindow } from 'electron';
 import { backOff } from 'exponential-backoff';
 
-import { consumeRuntimeData } from './browserHelpers';
+import { consumeRuntimeData, getLinkedinReactContextBuilder } from './browserHelpers';
 import { sleep, waitRandomBetween } from './helpers';
 import { ILogger } from './logger';
 import { WorkerQueue } from './workerQueue';
@@ -90,6 +90,12 @@ export class HtmlDownloader {
       let retryCount = 0;
       return backOff(
         async () => {
+          if (window.webContents.getURL().includes('linkedin.com')) {
+            await window.webContents.executeJavaScript(getLinkedinReactContextBuilder()).catch((error) => {
+              this._logger.error(`Failed to inject LinkedIn React context fallback: ${getExceptionMessage(error)}`);
+            });
+          }
+
           const html: string = await window.webContents.executeJavaScript('document.documentElement.innerHTML');
           const finalUrl = window.webContents.getURL();
           const webPageRuntimeData = consumeRuntimeData(finalUrl);
@@ -179,7 +185,7 @@ export class HtmlDownloader {
               })();
             `,
           );
-          
+
           await sleep(2_000 + Math.floor(Math.random() * 2000));
 
           // check if page was redirected to a login page

@@ -4,6 +4,28 @@ import { LogLevel, formatConsoleLog, resolveLogLevel, shouldLog } from '@first2a
 import { Logger as MezmoLogger, createLogger } from '@logdna/logger';
 import { app } from 'electron';
 
+type MezmoLoggerWithWarnAndEvents = MezmoLogger & {
+  warn?: (message: string, options?: { meta?: Record<string, unknown> }) => void;
+  on?: (event: 'error', listener: (error: Error & { meta?: unknown }) => void) => void;
+};
+
+function redactSensitiveLoggerMeta(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(redactSensitiveLoggerMeta);
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, child]) => [
+        key,
+        /api[-_]?key|authorization|token|secret|password/i.test(key) ? '<redacted>' : redactSensitiveLoggerMeta(child),
+      ]),
+    );
+  }
+
+  return value;
+}
+
 export interface ILogger {
   debug(message: string, data?: Record<string, unknown>): void;
   info(message: string, data?: Record<string, unknown>): void;
@@ -25,6 +47,20 @@ class Logger implements ILogger {
     meta?: Record<string, string>,
   ) {
     this._consoleMeta = { ...(meta ?? {}) };
+  }
+
+  private writeToMezmo(callback: (logger: MezmoLoggerWithWarnAndEvents) => void) {
+    if (!this._logger) {
+      return;
+    }
+
+    try {
+      callback(this._logger as MezmoLoggerWithWarnAndEvents);
+    } catch (error) {
+      this.writeToConsole('debug', 'Mezmo logger call failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private writeToConsole(level: LogLevel, message: string, data?: Record<string, unknown>) {
@@ -50,61 +86,58 @@ class Logger implements ILogger {
 
   debug(message: string, data?: Record<string, unknown>) {
     this.writeToConsole('debug', message, data);
-    if (this._logger) {
-      this._logger.debug(message, {
+    this.writeToMezmo((logger) => {
+      logger.debug(message, {
         meta: data,
       });
-    }
+    });
   }
 
   info(message: string, data?: Record<string, unknown>) {
     this.writeToConsole('info', message, data);
-    if (this._logger) {
-      this._logger.info(message, {
+    this.writeToMezmo((logger) => {
+      logger.info(message, {
         meta: data,
       });
-    }
+    });
   }
 
   warn(message: string, data?: Record<string, unknown>) {
     this.writeToConsole('warn', message, data);
-    const warnFn = (this._logger as MezmoLogger & { warn?: typeof this._logger.info })?.warn;
-    if (warnFn) {
-      warnFn(message, {
+    this.writeToMezmo((logger) => {
+      const warnFn = logger.warn ?? logger.info;
+      warnFn.call(logger, message, {
         meta: data,
       });
-    }
+    });
   }
 
   error(message: string, data?: Record<string, unknown>) {
     this.writeToConsole('error', message, data);
-    if (this._logger) {
-      this._logger.error(message, {
+    this.writeToMezmo((logger) => {
+      logger.error(message, {
         meta: data,
       });
-    }
+    });
   }
 
   addMeta(key: string, value: string) {
     this._consoleMeta[key] = value;
-    if (this._logger) {
-      this._logger.addMetaProperty(key, value);
-    }
+    this.writeToMezmo((logger) => {
+      logger.addMetaProperty(key, value);
+    });
   }
 
   flush() {
-    if (this._logger) {
-      this._logger.flush();
-    }
+    this.writeToMezmo((logger) => {
+      logger.flush();
+    });
   }
 }
 
 // Create logger only if Mezmo API key is provided, otherwise use console-only logger
 let mezmoLogger: MezmoLogger | null = null;
-const consoleLogLevel = resolveLogLevel(
-  ENV.logLevel ?? (ENV.nodeEnv === 'development' ? 'debug' : 'info'),
-  'info',
-);
+const consoleLogLevel = resolveLogLevel(ENV.logLevel ?? (ENV.nodeEnv === 'development' ? 'debug' : 'info'), 'info');
 
 if (ENV.mezmoApiKey) {
   mezmoLogger = createLogger(ENV.mezmoApiKey, {
@@ -117,6 +150,16 @@ if (ENV.mezmoApiKey) {
       arch: process.arch,
     },
     indexMeta: true,
+  });
+
+  (mezmoLogger as MezmoLoggerWithWarnAndEvents).on?.('error', (error) => {
+    let meta = '';
+    try {
+      meta = error.meta ? ` ${JSON.stringify(redactSensitiveLoggerMeta(error.meta))}` : '';
+    } catch {
+      meta = ' [unserializable meta]';
+    }
+    console.warn(`[warn] Mezmo logger transport error ignored: ${error.message}${meta}`);
   });
 }
 

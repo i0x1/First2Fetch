@@ -2,6 +2,14 @@ packages:
   - apps/*
   - libraries/*
 
+nodeLinker: hoisted
+publicHoistPattern:
+  - '*electron*'
+  - '*@electron-forge*'
+shamefullyHoist: false
+sharedWorkspaceLockfile: true
+enablePrePostScripts: true
+
 onlyBuiltDependencies:
   - '@parcel/watcher'
   - aws-sdk

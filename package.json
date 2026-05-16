@@ -73,6 +73,8 @@
     "@vercel/webpack-asset-relocator-loader": "^1.7.3",
     "autoprefixer": "^10.4.16",
     "babel-runtime": "^6.26.0",
+    "baseline-browser-mapping": "^2.10.29",
+    "caniuse-lite": "^1.0.30001792",
     "copy-webpack-plugin": "^12.0.1",
     "css-loader": "^6.11.0",
     "dotenv": "^16.3.1",

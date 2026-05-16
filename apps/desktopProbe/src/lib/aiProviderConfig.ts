@@ -1,9 +1,9 @@
 /**
  * Frontend AI Provider Configuration
- * 
+ *
  * This mirrors the backend configuration in apps/backend/supabase/functions/_shared/aiProviderConfig.ts
  * Keep both files in sync when adding new providers or models.
- * 
+ *
  * TODO: Consider sharing this config via a shared library in the future
  */
 
@@ -23,7 +23,7 @@ export type ProviderOption = {
 
 /**
  * AI Provider and Model Configuration for Frontend
- * 
+ *
  * This should match the backend configuration in aiProviderConfig.ts
  */
 export const AI_PROVIDER_CONFIG: Record<ProviderName, ProviderOption> = {
@@ -31,6 +31,10 @@ export const AI_PROVIDER_CONFIG: Record<ProviderName, ProviderOption> = {
     value: 'openai',
     label: 'OpenAI',
     models: [
+      { value: 'gpt-5.5', label: 'GPT-5.5' },
+      { value: 'gpt-5.4', label: 'GPT-5.4' },
+      { value: 'gpt-5.4-mini', label: 'GPT-5.4 mini (Budget)', isBudget: true },
+      { value: 'gpt-5.4-nano', label: 'GPT-5.4 nano (Budget)', isBudget: true },
       { value: 'gpt-5.2', label: 'GPT-5.2' },
       { value: 'gpt-5-mini', label: 'GPT-5 mini (Budget)', isBudget: true },
       { value: 'gpt-5-nano', label: 'GPT-5 nano (Budget)', isBudget: true },
@@ -68,4 +72,3 @@ export function getProviderOptions(): Array<{ value: ProviderName; label: string
 export function getProviderModels(provider: ProviderName): ModelOption[] {
   return AI_PROVIDER_CONFIG[provider]?.models || [];
 }
-
