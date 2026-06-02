@@ -129,10 +129,9 @@ export class F2aSupabaseApi {
       retryCount: number;
     }[],
   ) {
-    return this._invokeEdgeFunction<
-      { htmls: typeof htmls },
-      { newJobs: Job[]; parseFailed: boolean }
-    >('scan-urls', { htmls });
+    return this._invokeEdgeFunction<{ htmls: typeof htmls }, { newJobs: Job[]; parseFailed: boolean }>('scan-urls', {
+      htmls,
+    });
   }
 
   /**
@@ -164,10 +163,13 @@ export class F2aSupabaseApi {
    * Run the post scan hook edge function.
    */
   async runPostScanHook({ newJobIds, areEmailAlertsEnabled }: { newJobIds: number[]; areEmailAlertsEnabled: boolean }) {
-    return this._invokeEdgeFunction<{ newJobIds: number[]; areEmailAlertsEnabled: boolean }, unknown>('post-scan-hook', {
-      newJobIds,
-      areEmailAlertsEnabled,
-    });
+    return this._invokeEdgeFunction<{ newJobIds: number[]; areEmailAlertsEnabled: boolean }, unknown>(
+      'post-scan-hook',
+      {
+        newJobIds,
+        areEmailAlertsEnabled,
+      },
+    );
   }
 
   /**
@@ -219,6 +221,51 @@ export class F2aSupabaseApi {
 
       return { data, error };
     });
+  }
+
+  async getJobCounts({
+    search,
+    siteIds,
+    linkIds,
+    labels,
+    hideReposted,
+  }: {
+    search?: string;
+    siteIds?: number[];
+    linkIds?: number[];
+    labels?: string[];
+    hideReposted?: boolean;
+  }) {
+    const jobs_search = search || undefined;
+    const jobs_site_ids = siteIds?.length > 0 ? siteIds : undefined;
+    const jobs_link_ids = linkIds?.length > 0 ? linkIds : undefined;
+    const jobs_labels = labels?.length > 0 ? labels : undefined;
+
+    const counters = await this._supabaseApiCall<
+      Array<{
+        status: JobStatus;
+        job_count: number;
+      }>,
+      PostgrestError
+    >(async () => {
+      const res = await this._supabase.rpc('count_jobs', {
+        jobs_search,
+        jobs_site_ids,
+        jobs_link_ids,
+        jobs_labels,
+        hide_reposted: hideReposted ?? false,
+      });
+
+      return res;
+    });
+
+    const countersMap = new Map(counters.map((c) => [c.status, c.job_count]));
+    return {
+      new: countersMap.get('new') ?? 0,
+      archived: countersMap.get('archived') ?? 0,
+      applied: countersMap.get('applied') ?? 0,
+      filtered: countersMap.get('excluded_by_advanced_matching') ?? 0,
+    };
   }
 
   /**
@@ -376,7 +423,7 @@ export class F2aSupabaseApi {
   /**
    * Get authorization headers for edge function calls.
    * In Electron, we need to explicitly pass the auth header to edge functions.
-   * 
+   *
    * When verify_jwt is enabled on edge functions, Supabase gateway expects:
    * - Authorization: Bearer <user_jwt_token>
    * - apikey: <anon_key> (the public API key)
@@ -551,12 +598,7 @@ export class F2aSupabaseApi {
 
     // edge functions don't throw errors, instead they return an errorMessage field in the data object
     // work around for this issue https://github.com/supabase/functions-js/issues/45
-    if (
-      !!data &&
-      typeof data === 'object' &&
-      'errorMessage' in data &&
-      typeof data.errorMessage === 'string'
-    ) {
+    if (!!data && typeof data === 'object' && 'errorMessage' in data && typeof data.errorMessage === 'string') {
       console.error('[supabaseApiCall] Edge function returned errorMessage in response body:', data.errorMessage);
       throw new Error(data.errorMessage);
     }
@@ -760,15 +802,18 @@ export class F2aSupabaseApi {
   }) {
     // Use RPC function to handle encryption
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: updatedConfig, error } = await (this._supabase.rpc as any)('update_advanced_matching_with_ai_config', {
-      p_chatgpt_prompt: config.chatgpt_prompt,
-      p_blacklisted_companies: config.blacklisted_companies,
-      p_favorite_companies: config.favorite_companies,
-      p_watched_companies: config.watched_companies || null,
-      p_ai_provider: config.ai_provider || null,
-      p_ai_model: config.ai_model || null,
-      p_ai_api_key: config.ai_api_key_encrypted || null, // This will be encrypted in the function
-    });
+    const { data: updatedConfig, error } = await (this._supabase.rpc as any)(
+      'update_advanced_matching_with_ai_config',
+      {
+        p_chatgpt_prompt: config.chatgpt_prompt,
+        p_blacklisted_companies: config.blacklisted_companies,
+        p_favorite_companies: config.favorite_companies,
+        p_watched_companies: config.watched_companies || null,
+        p_ai_provider: config.ai_provider || null,
+        p_ai_model: config.ai_model || null,
+        p_ai_api_key: config.ai_api_key_encrypted || null, // This will be encrypted in the function
+      },
+    );
 
     if (error) {
       throw error;
@@ -823,12 +868,8 @@ export class F2aSupabaseApi {
     }
 
     const normalizedLower = normalizedName.toLowerCase();
-    const isInFavorites = config.favorite_companies.some(
-      (c: string) => c.toLowerCase() === normalizedLower
-    );
-    const isInWatched = (config.watched_companies || []).some(
-      (c: string) => c.toLowerCase() === normalizedLower
-    );
+    const isInFavorites = config.favorite_companies.some((c: string) => c.toLowerCase() === normalizedLower);
+    const isInWatched = (config.watched_companies || []).some((c: string) => c.toLowerCase() === normalizedLower);
 
     let updatedFavorites = [...config.favorite_companies];
     let updatedWatched = [...(config.watched_companies || [])];
@@ -838,9 +879,7 @@ export class F2aSupabaseApi {
       return config;
     } else if (isInWatched) {
       // Move from watched to favorites
-      updatedWatched = updatedWatched.filter(
-        (c: string) => c.toLowerCase() !== normalizedLower
-      );
+      updatedWatched = updatedWatched.filter((c: string) => c.toLowerCase() !== normalizedLower);
       updatedFavorites = this._ensureUniqueCompanies([...updatedFavorites, normalizedName]);
     } else {
       // Not in either, add to watched
@@ -861,7 +900,7 @@ export class F2aSupabaseApi {
     const config = await this._getOrCreateAdvancedMatchingConfig();
     const normalizedName = this._normalizeCompanyName(companyName);
     const normalizedLower = normalizedName.toLowerCase();
-    
+
     const updatedFavorites = config.favorite_companies.filter(
       (company: string) => company.toLowerCase() !== normalizedLower,
     );
@@ -928,10 +967,8 @@ export class F2aSupabaseApi {
 
     const normalizedLower = normalizedName.toLowerCase();
     // If company is already in favorites, move it to favorites (promote it)
-    const isInFavorites = config.favorite_companies.some(
-      (c: string) => c.toLowerCase() === normalizedLower
-    );
-    
+    const isInFavorites = config.favorite_companies.some((c: string) => c.toLowerCase() === normalizedLower);
+
     if (isInFavorites) {
       // Already in favorites, do nothing
       return config;
@@ -939,9 +976,7 @@ export class F2aSupabaseApi {
 
     // Remove from watched if exists, then add to watched
     const updatedWatched = this._ensureUniqueCompanies([
-      ...(config.watched_companies || []).filter(
-        (c: string) => c.toLowerCase() !== normalizedLower
-      ),
+      ...(config.watched_companies || []).filter((c: string) => c.toLowerCase() !== normalizedLower),
       normalizedName,
     ]);
 
@@ -1050,12 +1085,10 @@ export class F2aSupabaseApi {
 
     // Only update AI provider/model if explicitly provided in import (not undefined)
     // This preserves existing AI settings when importing old backup files that don't have them
-    const aiProvider = advancedMatching.ai_provider !== undefined 
-      ? advancedMatching.ai_provider 
-      : currentConfig?.ai_provider ?? null;
-    const aiModel = advancedMatching.ai_model !== undefined 
-      ? advancedMatching.ai_model 
-      : currentConfig?.ai_model ?? null;
+    const aiProvider =
+      advancedMatching.ai_provider !== undefined ? advancedMatching.ai_provider : (currentConfig?.ai_provider ?? null);
+    const aiModel =
+      advancedMatching.ai_model !== undefined ? advancedMatching.ai_model : (currentConfig?.ai_model ?? null);
 
     const updatedConfig = await this.updateAdvancedMatchingConfig({
       chatgpt_prompt: advancedMatching.chatgpt_prompt ?? '',

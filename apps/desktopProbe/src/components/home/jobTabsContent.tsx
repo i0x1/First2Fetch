@@ -9,8 +9,9 @@ import { useSettings } from '@/hooks/settings';
 import {
   addBlacklistedCompany,
   addFavoriteCompany,
-  getJobById,
   getAdvancedMatchingConfig,
+  getJobById,
+  getJobCounts,
   getJobDatesSummary,
   listJobs,
   openExternalUrl,
@@ -71,11 +72,15 @@ export function JobTabsContent({
   const browserWindowRefOther = useRef<BrowserWindowHandle>(null);
 
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
-  
+
   // Two-phase loading: date summaries + per-date jobs
-  const [dateSummaries, setDateSummaries] = useState<Array<{ date_key: string; total_count: number; favorite_count: number }>>([]);
-  const [jobsByDate, setJobsByDate] = useState<Record<string, { jobs: Job[]; hasMore: boolean; isLoading: boolean; nextPageToken?: string }>>({});
-  
+  const [dateSummaries, setDateSummaries] = useState<
+    Array<{ date_key: string; total_count: number; favorite_count: number }>
+  >([]);
+  const [jobsByDate, setJobsByDate] = useState<
+    Record<string, { jobs: Job[]; hasMore: boolean; isLoading: boolean; nextPageToken?: string }>
+  >({});
+
   // Get selected job from loaded jobs
   const selectedJob = useMemo(() => {
     if (!selectedJobId || !jobsByDate) return undefined;
@@ -145,27 +150,25 @@ export function JobTabsContent({
         }
 
         setListing((listing) => ({ ...listing, isLoading: true }));
-        
-        // Load date summaries (fast - just counts) - grouped by LOCAL timezone
-        const summaries = await getJobDatesSummary({ status, search, siteIds, linkIds, labels, hideReposted, timezone: userTimezone });
-        
+
+        // Load active-tab date summaries and all-tab counts separately. Summaries are scoped to
+        // one status, while tab badges need counts across every status.
+        const [summaries, counts] = await Promise.all([
+          getJobDatesSummary({ status, search, siteIds, linkIds, labels, hideReposted, timezone: userTimezone }),
+          getJobCounts({ search, siteIds, linkIds, labels, hideReposted }),
+        ]);
+
         setDateSummaries(summaries);
-        
-        // Calculate total counts from summaries
-        const totalNew = summaries.reduce((sum, s) => sum + (status === 'new' ? s.total_count : 0), 0);
-        const totalApplied = summaries.reduce((sum, s) => sum + (status === 'applied' ? s.total_count : 0), 0);
-        const totalArchived = summaries.reduce((sum, s) => sum + (status === 'archived' ? s.total_count : 0), 0);
-        const totalFiltered = summaries.reduce((sum, s) => sum + (status === 'excluded_by_advanced_matching' ? s.total_count : 0), 0);
-        
+
         setListing((listing) => ({
           ...listing,
           isLoading: false,
-          new: totalNew,
-          applied: totalApplied,
-          archived: totalArchived,
-          filtered: totalFiltered,
+          new: counts.new,
+          applied: counts.applied,
+          archived: counts.archived,
+          filtered: counts.filtered,
         }));
-        
+
         // Reset jobs by date
         setJobsByDate({});
         setSelectedJobId(null);
@@ -204,7 +207,7 @@ export function JobTabsContent({
         const existing = prev?.[dateKey] || { jobs: [], hasMore: false, isLoading: false };
         const existingJobIds = new Set(existing.jobs.map((job) => job.id));
         const newJobs = result.jobs.filter((job) => !existingJobIds.has(job.id));
-        
+
         return {
           ...(prev || {}),
           [dateKey]: {
@@ -241,7 +244,7 @@ export function JobTabsContent({
     // Find and remove job from jobsByDate
     let oldJob: Job | undefined;
     let jobDateKey: string | undefined;
-    
+
     if (jobsByDate) {
       for (const [dateKey, dateJobs] of Object.entries(jobsByDate)) {
         if (!dateJobs || !dateJobs.jobs) continue;
@@ -311,7 +314,7 @@ export function JobTabsContent({
         }
       }
     }
-    
+
     const currentJobIndex = allJobs.findIndex((job) => job.id === jobId);
     const nextJob = allJobs[currentJobIndex + 1] ?? allJobs[currentJobIndex - 1];
     if (nextJob) {
@@ -368,7 +371,9 @@ export function JobTabsContent({
             ...prev,
             [jobDateKey]: {
               ...dateJobs,
-              jobs: dateJobs.jobs.map((j) => (j.id === job.id ? { ...j, isLoadingJD: true } as Job & { isLoadingJD?: boolean } : j)),
+              jobs: dateJobs.jobs.map((j) =>
+                j.id === job.id ? ({ ...j, isLoadingJD: true } as Job & { isLoadingJD?: boolean }) : j,
+              ),
             },
           };
         });
@@ -399,7 +404,7 @@ export function JobTabsContent({
       }
     }
   };
-  
+
   // Helper to get date key
   function getDateKey(date: Date): string {
     const d = new Date(date);
@@ -472,16 +477,12 @@ export function JobTabsContent({
     let nextJobToSelect: Job | null = null;
     let removedSelectedJob = false;
     setListing((prev) => {
-      const jobsToRemove = prev.jobs.filter(
-        (job) => job.companyName && job.companyName.toLowerCase() === key,
-      );
+      const jobsToRemove = prev.jobs.filter((job) => job.companyName && job.companyName.toLowerCase() === key);
       if (jobsToRemove.length === 0) {
         return prev;
       }
 
-      const remainingJobs = prev.jobs.filter(
-        (job) => !job.companyName || job.companyName.toLowerCase() !== key,
-      );
+      const remainingJobs = prev.jobs.filter((job) => !job.companyName || job.companyName.toLowerCase() !== key);
 
       let newCount = prev.new;
       let appliedCount = prev.applied;
@@ -625,11 +626,8 @@ export function JobTabsContent({
           <TabsContent key={statusItem} value={statusItem} className="focus-visible:ring-0">
             <section className="flex gap-4">
               {/* Jobs list, search and filters side */}
-              <div
-                id="jobsList"
-                className="no-scrollbar h-[calc(100vh-100px)] w-1/2 overflow-y-scroll lg:w-2/5"
-              >
-                <div className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl pb-5 pt-3">
+              <div id="jobsList" className="no-scrollbar h-[calc(100vh-100px)] w-1/2 overflow-y-scroll lg:w-2/5">
+                <div className="sticky top-0 z-50 bg-background/80 pb-5 pt-3 backdrop-blur-xl">
                   <JobFilters
                     search={search}
                     siteIds={siteIds}
@@ -689,21 +687,22 @@ export function JobTabsContent({
                         onUpdateLabels={onUpdateJobLabels}
                         onOpenUrl={onOpenUrl}
                         isFavoriteCompany={isFavoriteCompany(selectedJob.companyName)}
-                        isWatchedCompany={watchedCompanies.some((c) => c.toLowerCase() === (selectedJob.companyName || '').toLowerCase())}
+                        isWatchedCompany={watchedCompanies.some(
+                          (c) => c.toLowerCase() === (selectedJob.companyName || '').toLowerCase(),
+                        )}
                         isBlacklistedCompany={isBlacklistedCompany(selectedJob.companyName)}
                         onToggleFavorite={toggleFavoriteCompany}
                         onToggleBlacklist={toggleBlacklistedCompany}
-                        favoriteActionPending={
-                          !!selectedCompanyKey && pendingFavoriteCompany === selectedCompanyKey
-                        }
-                        blacklistActionPending={
-                          !!selectedCompanyKey && pendingBlacklistCompany === selectedCompanyKey
-                        }
+                        favoriteActionPending={!!selectedCompanyKey && pendingFavoriteCompany === selectedCompanyKey}
+                        blacklistActionPending={!!selectedCompanyKey && pendingBlacklistCompany === selectedCompanyKey}
                         isCompanyPreferencesLoaded={isAdvancedMatchingLoaded}
                       />
                       <JobNotes jobId={selectedJobId} />
                       <hr className="border-t border-border/30" />
-                      <JobDetails job={selectedJob} isScrapingDescription={!!(selectedJob as Job & { isLoadingJD?: boolean }).isLoadingJD}></JobDetails>
+                      <JobDetails
+                        job={selectedJob}
+                        isScrapingDescription={!!(selectedJob as Job & { isLoadingJD?: boolean }).isLoadingJD}
+                      ></JobDetails>
                     </>
                   )}
                 </div>
@@ -971,4 +970,3 @@ const NoSearchResults = () => {
     <span>There aren't any jobs that match your search.</span>
   );
 };
-

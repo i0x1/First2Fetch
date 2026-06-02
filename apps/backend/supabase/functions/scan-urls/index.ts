@@ -223,9 +223,9 @@ async function handleParsingFailureForLink({
     });
 
     // save the html dump for debugging
-    await supabaseClient.from('html_dumps').insert([
-      { url: link.url, html: html.content, webpage_runtime_data: html.webPageRuntimeData ?? null },
-    ]);
+    await supabaseClient
+      .from('html_dumps')
+      .insert([{ url: link.url, html: html.content, webpage_runtime_data: html.webPageRuntimeData }]);
   }
 }
 

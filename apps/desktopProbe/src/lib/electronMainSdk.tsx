@@ -184,6 +184,33 @@ export async function getJobDatesSummary({
   return result;
 }
 
+export async function getJobCounts({
+  search,
+  siteIds,
+  linkIds,
+  labels,
+  hideReposted,
+}: {
+  search?: string;
+  siteIds?: number[];
+  linkIds?: number[];
+  labels?: string[];
+  hideReposted?: boolean;
+}) {
+  return await _mainProcessApiCall<{
+    new: number;
+    applied: number;
+    archived: number;
+    filtered: number;
+  }>('get-job-counts', {
+    search,
+    siteIds,
+    linkIds,
+    labels,
+    hideReposted,
+  });
+}
+
 /**
  * List all jobs.
  */
