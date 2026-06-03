@@ -310,7 +310,7 @@ Responsibilities:
 - Checks for repeatedly broken links and emails users.
 - Sends new-job email alerts.
 
-The desktop scanner currently has the call to `runPostScanHook()` commented out, so in-app notifications are active but the post-scan email hook is not called from the main scan flow unless re-enabled.
+After each scan, the desktop app calls `runPostScanHook()` when notifications run. Job alert and broken-link emails are sent via Resend (`post-scan-hook` edge function).
 
 ### Webhooks
 
@@ -509,7 +509,9 @@ Backend edge functions use Deno env through `_shared/env.ts`:
 - `AZURE_AI_FOUNDRY_API_KEY`
 - `MEZMO_API_KEY`
 - `MAILERLITE_API_KEY`
-- `MAILERSEND_API_KEY`
+- `RESEND_API_KEY`
+- `RESEND_FROM_EMAIL`
+- `RESEND_FROM_NAME` (optional)
 - `F2A_WEBHOOK_SECRET`
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SIGNING_SECRET`
@@ -548,7 +550,7 @@ Marketing/blog:
 - LLM output must stay schema-validated before writing to the database.
 - For parser changes, add enough logging and preserve `html_dumps` behavior because production parser failures depend on saved HTML for diagnosis.
 - Existing local/session files are stored under Electron `app.getPath("userData")`, not inside the repo.
-- `post-scan-hook` exists, but the scanner currently comments out the call. Re-enable deliberately if email alerts are required.
+- `post-scan-hook` sends transactional emails through Resend; requires `RESEND_API_KEY` and `RESEND_FROM_EMAIL` edge secrets.
 - Before changing scanning concurrency or delays, inspect rate-limit/authwall handling in `HtmlDownloader`.
 - Deep-link naming is mixed in historical config. The active desktop protocol in `index.ts`, `forge.config.ts`, and password reset code is `first2fetch://`; `apps/backend/supabase/config.toml` still contains an older `first2apply://**` redirect entry, so verify redirect allow-lists when changing auth links.
 - There are existing modified files in backend function areas in some worktrees. Check `git status` before editing and avoid reverting unrelated user changes.

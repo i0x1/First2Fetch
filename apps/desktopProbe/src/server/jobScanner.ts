@@ -402,18 +402,16 @@ export class JobScanner {
       const scannedJobs = await this.scanJobs(jobs);
       const newJobs = scannedJobs.filter((job) => job.status === 'new');
 
-      // run post scan hook
-      // TEMPORARILY COMMENTED OUT - Email feature disabled
-      // const newJobIds = newJobs.map((job) => job.id);
-      // await this._supabaseApi
-      //   .runPostScanHook({
-      //     newJobIds: sendNotification ? newJobIds : [], // hacky way to supress email alerts
-      //     areEmailAlertsEnabled: this._settings.areEmailAlertsEnabled,
-      //   })
-      //   .catch((error) => {
-      //     this._logger.error(`failed to run post scan hook: ${getExceptionMessage(error)}`);
-      //     this._logToUi(`Failed to run post-scan hook: ${getExceptionMessage(error)}`);
-      //   });
+      const newJobIds = newJobs.map((job) => job.id);
+      await this._supabaseApi
+        .runPostScanHook({
+          newJobIds: sendNotification ? newJobIds : [],
+          areEmailAlertsEnabled: this._settings.areEmailAlertsEnabled,
+        })
+        .catch((error) => {
+          this._logger.error(`failed to run post scan hook: ${getExceptionMessage(error)}`);
+          this._logToUi(`Failed to run post-scan hook: ${getExceptionMessage(error)}`);
+        });
 
       // fire a notification if there are new jobs
       if (!this._isRunning) return;

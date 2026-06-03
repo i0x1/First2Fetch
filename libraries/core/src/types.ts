@@ -84,6 +84,7 @@ export type Job = {
   tags?: string[];
 
   description?: string;
+  description_hash?: string;
 
   status: JobStatus;
   labels: JobLabel[];

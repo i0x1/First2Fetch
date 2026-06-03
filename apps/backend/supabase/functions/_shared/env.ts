@@ -7,7 +7,9 @@ export type First2ApplyBackendEnv = {
   supabaseServiceRoleKey: string;
   azureFoundryConfig: AzureFoundryConfig;
   mailerLiteApiKey?: string;
-  mailerSendApiKey?: string;
+  resendApiKey?: string;
+  resendFromEmail?: string;
+  resendFromName?: string;
   mezmoApiKey: string;
   f2aWebhookSecret?: string;
   stripeSecretKey: string;
@@ -23,7 +25,9 @@ export function parseEnv(): First2ApplyBackendEnv {
       apiKey: Deno.env.get('AZURE_AI_FOUNDRY_API_KEY') ?? '',
     },
     mailerLiteApiKey: Deno.env.get('MAILERLITE_API_KEY'),
-    mailerSendApiKey: Deno.env.get('MAILERSEND_API_KEY'),
+    resendApiKey: Deno.env.get('RESEND_API_KEY'),
+    resendFromEmail: Deno.env.get('RESEND_FROM_EMAIL'),
+    resendFromName: Deno.env.get('RESEND_FROM_NAME'),
     mezmoApiKey: Deno.env.get('MEZMO_API_KEY') ?? '',
     f2aWebhookSecret: Deno.env.get('F2A_WEBHOOK_SECRET'),
     stripeSecretKey: Deno.env.get('STRIPE_SECRET_KEY') ?? '',
