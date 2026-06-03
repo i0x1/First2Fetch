@@ -467,8 +467,6 @@ export async function deleteNote(noteId: number): Promise<void> {
 export type AdvancedMatchingConfigWithAI = AdvancedMatchingConfig & {
   favorite_companies: string[];
   watched_companies: string[];
-  ai_provider?: string | null;
-  ai_model?: string | null;
   ai_api_key_encrypted?: string | null;
 };
 
@@ -490,6 +488,13 @@ type AdvancedMatchingUpdatePayload = {
   ai_provider?: string | null;
   ai_model?: string | null;
   ai_api_key_encrypted?: string | null;
+  ai_jd_filter_provider?: string | null;
+  ai_jd_filter_model?: string | null;
+  ai_job_list_provider?: string | null;
+  ai_job_list_model?: string | null;
+  ai_jd_parse_provider?: string | null;
+  ai_jd_parse_model?: string | null;
+  ai_api_keys?: Record<string, string> | null;
 };
 
 export async function updateAdvancedMatchingConfig(config: AdvancedMatchingUpdatePayload) {
@@ -531,6 +536,12 @@ export type UserSettingsExport = {
     favorite_companies: string[];
     ai_provider: string | null;
     ai_model: string | null;
+    ai_jd_filter_provider?: string | null;
+    ai_jd_filter_model?: string | null;
+    ai_job_list_provider?: string | null;
+    ai_job_list_model?: string | null;
+    ai_jd_parse_provider?: string | null;
+    ai_jd_parse_model?: string | null;
   };
   saved_searches: Array<{
     title: string;
@@ -548,6 +559,12 @@ export type UserSettingsImport = {
     favorite_companies?: string[];
     ai_provider?: string | null;
     ai_model?: string | null;
+    ai_jd_filter_provider?: string | null;
+    ai_jd_filter_model?: string | null;
+    ai_job_list_provider?: string | null;
+    ai_job_list_model?: string | null;
+    ai_jd_parse_provider?: string | null;
+    ai_jd_parse_model?: string | null;
   };
   saved_searches?: Array<{
     title?: string;

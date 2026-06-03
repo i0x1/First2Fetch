@@ -2,7 +2,8 @@ import { AdvancedMatchingConfig, DbSchema, Job, JobStatus, throwError } from '@f
 import { SupabaseClient } from '@supabase/supabasefork';
 import { z } from 'zod';
 
-import { buildAIProviderFromUserConfig, logAiUsage } from './aiProvider.ts';
+import { buildAIProviderForTask, logAiUsage } from './aiProvider.ts';
+import { truncateJobDescriptionForFilter } from './aiHtmlLimits.ts';
 import { ILogger } from './logger.ts';
 import { checkUserSubscription } from './subscription.ts';
 
@@ -127,9 +128,10 @@ async function promptAI({
   supabaseAdminClient: SupabaseClient<DbSchema, 'public'>;
 }) {
   // Try to use user's configured AI provider
-  const userProvider = await buildAIProviderFromUserConfig({
+  const userProvider = await buildAIProviderForTask({
     supabaseAdminClient,
     userId: job.user_id,
+    task: 'jd_filter',
     logger,
   });
 
@@ -188,6 +190,12 @@ async function promptAI({
  * Generate the user prompt for the AI API.
  */
 function generateUserPrompt({ prompt, job }: { prompt: string; job: Job }) {
+  const description = job.description ?? '';
+  const { content: trimmedDescription, truncated } = truncateJobDescriptionForFilter(description);
+  const truncationNote = truncated
+    ? '\n(Note: job description was truncated for length; use the visible portion.)'
+    : '';
+
   return `Here are my requirements for job filtering:
 ${prompt}
 
@@ -196,7 +204,7 @@ Company: ${job.companyName}
 Location: ${job.location ?? 'Not specified'}
 Tags: ${job?.tags?.join(', ') ?? 'None'}
 Job Description:
-${job.description}
+${trimmedDescription}${truncationNote}
 
 Should this job be excluded from my feed? Return JSON only.`;
 }

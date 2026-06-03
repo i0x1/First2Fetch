@@ -372,18 +372,23 @@ Main files:
 - `apps/desktopProbe/src/lib/aiProviderConfig.ts`
 - `apps/desktopProbe/src/server/supabaseApi.ts`
 
-Supported providers:
+Supported providers (catalog in `libraries/core/src/aiProviderConfig.ts`):
 
 - `openai`
 - `google_gemini`
+- `deepseek`
+- `moonshot` (Kimi)
+- `openrouter` (gateway to many models)
 
-Supported model lists live in backend and frontend config files. Keep both in sync. The backend config is authoritative for cost accounting and provider validation.
+Per-task provider/model (falls back to legacy `ai_provider` / `ai_model` when unset):
 
-The user config is stored in `advanced_matching`:
+- `ai_jd_filter_provider` / `ai_jd_filter_model` — advanced matching JD filter
+- `ai_job_list_provider` / `ai_job_list_model` — custom site job list scraping
+- `ai_jd_parse_provider` / `ai_jd_parse_model` — custom site JD parsing
 
-- `ai_provider`
-- `ai_model`
-- `ai_api_key_encrypted`
+API keys: `ai_api_keys_encrypted` (JSON map per provider). `ai_configured_providers` lists which providers have a stored key (no secrets returned to the client).
+
+HTML sent to LLMs is truncated to 100k characters; JD filter descriptions to 32k characters (`aiHtmlLimits.ts`).
 
 The raw API key is passed from the desktop UI to `update_advanced_matching_with_ai_config`, encrypted by Postgres RPC, and not returned to the UI. Edge functions decrypt through `decrypt_api_key` with `supabaseAdminClient`.
 

@@ -791,6 +791,19 @@ export class F2aSupabaseApi {
    * Update the advanced matching configuration for the current user.
    * Uses RPC function to encrypt API keys securely.
    */
+  private _aiFieldsFromConfig(config: Record<string, unknown>) {
+    return {
+      ai_provider: (config.ai_provider as string | null) ?? null,
+      ai_model: (config.ai_model as string | null) ?? null,
+      ai_jd_filter_provider: (config.ai_jd_filter_provider as string | null) ?? null,
+      ai_jd_filter_model: (config.ai_jd_filter_model as string | null) ?? null,
+      ai_job_list_provider: (config.ai_job_list_provider as string | null) ?? null,
+      ai_job_list_model: (config.ai_job_list_model as string | null) ?? null,
+      ai_jd_parse_provider: (config.ai_jd_parse_provider as string | null) ?? null,
+      ai_jd_parse_model: (config.ai_jd_parse_model as string | null) ?? null,
+    };
+  }
+
   async updateAdvancedMatchingConfig(config: {
     chatgpt_prompt: string;
     blacklisted_companies: string[];
@@ -799,6 +812,13 @@ export class F2aSupabaseApi {
     ai_provider?: string | null;
     ai_model?: string | null;
     ai_api_key_encrypted?: string | null;
+    ai_jd_filter_provider?: string | null;
+    ai_jd_filter_model?: string | null;
+    ai_job_list_provider?: string | null;
+    ai_job_list_model?: string | null;
+    ai_jd_parse_provider?: string | null;
+    ai_jd_parse_model?: string | null;
+    ai_api_keys?: Record<string, string> | null;
   }) {
     // Use RPC function to handle encryption
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -811,7 +831,14 @@ export class F2aSupabaseApi {
         p_watched_companies: config.watched_companies || null,
         p_ai_provider: config.ai_provider || null,
         p_ai_model: config.ai_model || null,
-        p_ai_api_key: config.ai_api_key_encrypted || null, // This will be encrypted in the function
+        p_ai_api_key: config.ai_api_key_encrypted || null,
+        p_ai_jd_filter_provider: config.ai_jd_filter_provider || null,
+        p_ai_jd_filter_model: config.ai_jd_filter_model || null,
+        p_ai_job_list_provider: config.ai_job_list_provider || null,
+        p_ai_job_list_model: config.ai_job_list_model || null,
+        p_ai_jd_parse_provider: config.ai_jd_parse_provider || null,
+        p_ai_jd_parse_model: config.ai_jd_parse_model || null,
+        p_ai_api_keys: config.ai_api_keys || null,
       },
     );
 
@@ -891,8 +918,7 @@ export class F2aSupabaseApi {
       blacklisted_companies: config.blacklisted_companies,
       favorite_companies: updatedFavorites,
       watched_companies: updatedWatched,
-      ai_provider: config.ai_provider,
-      ai_model: config.ai_model,
+      ...this._aiFieldsFromConfig(config),
     });
   }
 
@@ -910,8 +936,7 @@ export class F2aSupabaseApi {
       blacklisted_companies: config.blacklisted_companies,
       favorite_companies: updatedFavorites,
       watched_companies: config.watched_companies || [],
-      ai_provider: config.ai_provider,
-      ai_model: config.ai_model,
+      ...this._aiFieldsFromConfig(config),
     });
   }
 
@@ -936,8 +961,7 @@ export class F2aSupabaseApi {
       blacklisted_companies: updatedBlacklist,
       favorite_companies: updatedFavorites,
       watched_companies: updatedWatched,
-      ai_provider: config.ai_provider,
-      ai_model: config.ai_model,
+      ...this._aiFieldsFromConfig(config),
     });
   }
 
@@ -953,8 +977,7 @@ export class F2aSupabaseApi {
       blacklisted_companies: updatedBlacklist,
       favorite_companies: config.favorite_companies,
       watched_companies: config.watched_companies || [],
-      ai_provider: config.ai_provider,
-      ai_model: config.ai_model,
+      ...this._aiFieldsFromConfig(config),
     });
   }
 
@@ -985,8 +1008,7 @@ export class F2aSupabaseApi {
       blacklisted_companies: config.blacklisted_companies,
       favorite_companies: config.favorite_companies,
       watched_companies: updatedWatched,
-      ai_provider: config.ai_provider,
-      ai_model: config.ai_model,
+      ...this._aiFieldsFromConfig(config),
     });
   }
 
@@ -1002,8 +1024,7 @@ export class F2aSupabaseApi {
       blacklisted_companies: config.blacklisted_companies,
       favorite_companies: config.favorite_companies,
       watched_companies: updatedWatched,
-      ai_provider: config.ai_provider,
-      ai_model: config.ai_model,
+      ...this._aiFieldsFromConfig(config),
     });
   }
 
@@ -1049,6 +1070,12 @@ export class F2aSupabaseApi {
         favorite_companies: config.favorite_companies,
         ai_provider: config.ai_provider ?? null,
         ai_model: config.ai_model ?? null,
+        ai_jd_filter_provider: config.ai_jd_filter_provider ?? null,
+        ai_jd_filter_model: config.ai_jd_filter_model ?? null,
+        ai_job_list_provider: config.ai_job_list_provider ?? null,
+        ai_job_list_model: config.ai_job_list_model ?? null,
+        ai_jd_parse_provider: config.ai_jd_parse_provider ?? null,
+        ai_jd_parse_model: config.ai_jd_parse_model ?? null,
       },
       saved_searches: savedSearches,
     };
@@ -1085,19 +1112,26 @@ export class F2aSupabaseApi {
 
     // Only update AI provider/model if explicitly provided in import (not undefined)
     // This preserves existing AI settings when importing old backup files that don't have them
-    const aiProvider =
-      advancedMatching.ai_provider !== undefined ? advancedMatching.ai_provider : (currentConfig?.ai_provider ?? null);
-    const aiModel =
-      advancedMatching.ai_model !== undefined ? advancedMatching.ai_model : (currentConfig?.ai_model ?? null);
+    const pickAi = (field: string) => {
+      const imported = (advancedMatching as Record<string, unknown>)[field];
+      if (imported !== undefined) {
+        return imported as string | null;
+      }
+      return (currentConfig as Record<string, unknown> | undefined)?.[field] as string | null ?? null;
+    };
 
     const updatedConfig = await this.updateAdvancedMatchingConfig({
       chatgpt_prompt: advancedMatching.chatgpt_prompt ?? '',
       blacklisted_companies: this._ensureUniqueCompanies(advancedMatching.blacklisted_companies ?? []),
       favorite_companies: this._ensureUniqueCompanies(advancedMatching.favorite_companies ?? []),
-      ai_provider: aiProvider,
-      ai_model: aiModel,
-      // Explicitly don't pass ai_api_key_encrypted to preserve existing API key
-      // The database function will preserve it via coalesce
+      ai_provider: pickAi('ai_provider'),
+      ai_model: pickAi('ai_model'),
+      ai_jd_filter_provider: pickAi('ai_jd_filter_provider'),
+      ai_jd_filter_model: pickAi('ai_jd_filter_model'),
+      ai_job_list_provider: pickAi('ai_job_list_provider'),
+      ai_job_list_model: pickAi('ai_job_list_model'),
+      ai_jd_parse_provider: pickAi('ai_jd_parse_provider'),
+      ai_jd_parse_model: pickAi('ai_jd_parse_model'),
     });
 
     const savedSearches = settings.saved_searches ?? [];

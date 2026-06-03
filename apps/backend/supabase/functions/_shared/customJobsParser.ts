@@ -5,7 +5,8 @@ import { DOMParser, Element } from 'https://deno.land/x/deno_dom@v0.1.43/deno-do
 import turndown from 'npm:turndown';
 import { z } from 'npm:zod';
 
-import { buildAIProviderFromUserConfig, logAiUsage } from './aiProvider.ts';
+import { buildAIProviderForTask, logAiUsage } from './aiProvider.ts';
+import { truncateHtmlForLlm } from './aiHtmlLimits.ts';
 import { denoHashString } from './deno.ts';
 import { JobDescriptionUpdates } from './jobDescriptionParser.ts';
 import { JobSiteParseResult, ParsedJob } from './parsers/parserTypes.ts';
@@ -34,9 +35,10 @@ export async function parseCustomJobs({
   const { logger, supabaseAdminClient } = context;
 
   // Try to use user's configured AI provider
-  const userProvider = await buildAIProviderFromUserConfig({
+  const userProvider = await buildAIProviderForTask({
     supabaseAdminClient,
     userId: user.id,
+    task: 'job_list',
     logger,
   });
 
@@ -58,7 +60,11 @@ export async function parseCustomJobs({
     const nodesToRemove = ['head', 'script', 'style', 'nav', 'header', 'footer', 'aside', 'iframe'];
     stripNodes(document.documentElement, nodesToRemove);
     stripAttributes(document.documentElement, /^(class|style|aria-.*|role)$/);
-    const htmlContent = document.documentElement?.outerHTML ?? '';
+    const rawHtml = document.documentElement?.outerHTML ?? '';
+    const { content: htmlContent, truncated } = truncateHtmlForLlm(rawHtml);
+    if (truncated) {
+      logger.warn(`Job list HTML truncated from ${rawHtml.length} chars for LLM context limit`);
+    }
 
     return `Extract the jobs listing from the HTML page below. Return the result as a JSON object matching the provided schema. If no jobs are found, return an empty array for the jobs field.
 Here are some rules for the required output:
@@ -297,7 +303,11 @@ export async function parseCustomJobDescription({
     const nodesToRemove = ['head', 'script', 'style', 'nav', 'header', 'footer', 'aside', 'img', 'form'];
     stripNodes(document.documentElement, nodesToRemove);
     stripAttributes(document.documentElement, /^(class|style|aria-.*|role)$/);
-    const htmlContent = turndownService.turndown(document.documentElement?.outerHTML ?? '');
+    const rawMarkdown = turndownService.turndown(document.documentElement?.outerHTML ?? '');
+    const { content: htmlContent, truncated } = truncateHtmlForLlm(rawMarkdown);
+    if (truncated) {
+      context.logger.warn(`JD parse HTML truncated from ${rawMarkdown.length} chars for LLM context limit`);
+    }
     const withAdvancedMatchingPreferences = `Here are my job search preferences: ${advancedMatchingRecord?.chatgpt_prompt ?? 'nothing specific for the moment'}.`;
 
     const userPrompt = `Extract the job description from the HTML page below. Return the result as a JSON object matching the provided schema.
@@ -316,9 +326,10 @@ ${withAdvancedMatchingPreferences}
   const { userPrompt, htmlContent } = generateUserPrompt();
 
   // Try to use user's configured AI provider
-  const userProvider = await buildAIProviderFromUserConfig({
+  const userProvider = await buildAIProviderForTask({
     supabaseAdminClient,
     userId: user.id,
+    task: 'jd_parse',
     logger,
   });
 

@@ -169,9 +169,17 @@ export type AdvancedMatchingConfig = {
   ai_api_cost: number;
   ai_api_input_tokens_used: number;
   ai_api_output_tokens_used: number;
-  ai_provider?: 'openai' | 'google_gemini' | null;
+  ai_provider?: string | null;
   ai_model?: string | null;
   ai_api_key_encrypted?: string | null;
+  ai_api_keys_encrypted?: Record<string, string> | null;
+  ai_jd_filter_provider?: string | null;
+  ai_jd_filter_model?: string | null;
+  ai_job_list_provider?: string | null;
+  ai_job_list_model?: string | null;
+  ai_jd_parse_provider?: string | null;
+  ai_jd_parse_model?: string | null;
+  ai_configured_providers?: string[] | null;
 };
 
 /**
