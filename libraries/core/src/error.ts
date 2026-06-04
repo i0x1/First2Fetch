@@ -1,7 +1,20 @@
+function looksLikeNetworkError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const parts = [error.message, error.stack ?? '', String((error as Error & { cause?: unknown }).cause ?? '')];
+  return /fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|network/i.test(parts.join(' '));
+}
+
 /**
  * Get an error string from an exception.
  */
 export function getExceptionMessage(error: unknown, noStackTrace = false) {
+  if (noStackTrace && looksLikeNetworkError(error)) {
+    return "Can't reach the server. Your Wi‑Fi may be blocking Supabase — try mobile hotspot or another network.";
+  }
+
   if (error instanceof Error) {
     return noStackTrace ? error.message : (error.stack ?? error.message);
   } else if (typeof error === 'object') {

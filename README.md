@@ -31,14 +31,16 @@ cd ../ui && pnpm build
 ## Environment Setup
 
 Create `.env` files from `.env.example` in:
-- `apps/backend/.env`
-- `apps/desktopProbe/.env`
+- `apps/desktopProbe/.env` (required for the desktop app)
+- `apps/backend/supabase/functions/.env` (edge function secrets for local `functions serve` / deploy)
+
+Optional keys (`AXIOM_TOKEN`, `AMPLITUDE_API_KEY`) can be left empty — the app logs to the terminal and runs without them. See **[docs/logging.md](docs/logging.md)** for remote log setup (Axiom).
 
 ## Supabase Setup
 
 ### Option A: Supabase Cloud (Recommended for persistent data)
 
-Using Supabase Cloud avoids data loss from local Docker issues. See **[docs/SUPABASE_CLOUD_MIGRATION.md](docs/SUPABASE_CLOUD_MIGRATION.md)** for full migration steps.
+Using Supabase Cloud avoids data loss from local Docker issues.
 
 ```bash
 cd apps/backend
@@ -48,7 +50,16 @@ npx supabase db push --include-seed
 npx supabase functions deploy
 ```
 
-Then set `SUPABASE_URL` and `SUPABASE_KEY` in `.env` to your Cloud project values.
+Then set `SUPABASE_URL` and `SUPABASE_KEY` in `apps/desktopProbe/.env` to your Cloud project values (Dashboard → Settings → API).
+
+**Auth email checklist (password reset, signup confirm):** Supabase’s built-in mailer only sends to org team emails. For real users you must configure custom SMTP in the Dashboard:
+
+1. [Authentication → SMTP](https://supabase.com/dashboard/project/_/auth/smtp) — enable custom SMTP (e.g. [Resend](https://resend.com/docs/send-with-supabase-smtp): host `smtp.resend.com`, port `465`, user `resend`, password = Resend API key, sender = a verified domain like `noreply@yourdomain.com`).
+2. [Authentication → URL Configuration](https://supabase.com/dashboard/project/_/auth/url-configuration) — add redirect allow-list entry `first2fetch://reset-password` (desktop deep link for reset flow).
+
+`RESEND_*` in `apps/backend/supabase/functions/.env` is for **job alert** emails from edge functions only; it does not power auth emails.
+
+**Connectivity:** If the desktop app shows `ECONNREFUSED` or `fetch failed` for Supabase, some Wi‑Fi networks block `*.supabase.co`. Try mobile hotspot or another network. Hitting `https://YOUR_PROJECT_REF.supabase.co/auth/v1/health` in a browser without an API key returns `No API key found` — that means the server is reachable.
 
 ### Option B: Local (Docker)
 

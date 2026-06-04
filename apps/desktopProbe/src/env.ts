@@ -25,6 +25,9 @@ export const ENV = {
     url: process.env.SUPABASE_URL,
     key: process.env.SUPABASE_KEY,
   },
-  mezmoApiKey: process.env.MEZMO_API_KEY,
+  axiomToken: process.env.AXIOM_TOKEN,
+  axiomDataset: process.env.AXIOM_DATASET,
+  axiomUrl: process.env.AXIOM_URL,
+  remoteLogLevel: process.env.REMOTE_LOG_LEVEL,
   amplitudeApiKey: process.env.AMPLITUDE_API_KEY,
 };

@@ -2,7 +2,6 @@
   "nodeModules": "auto",
   "imports": {
     "@first2apply/core": "../../../../../libraries/core/src/index.deno.ts",
-    "npm:@logdna/logger": "npm:@logdna/logger@2.6.11",
     "npm:resend": "npm:resend@4.0.0",
     "openai": "npm:openai@6.7.0",
     "npm:stripe": "npm:stripe@15.1.0",

@@ -10,7 +10,6 @@ export type First2ApplyBackendEnv = {
   resendApiKey?: string;
   resendFromEmail?: string;
   resendFromName?: string;
-  mezmoApiKey: string;
   f2aWebhookSecret?: string;
   stripeSecretKey: string;
   stripeWebhookSigningSecret: string;
@@ -28,7 +27,6 @@ export function parseEnv(): First2ApplyBackendEnv {
     resendApiKey: Deno.env.get('RESEND_API_KEY'),
     resendFromEmail: Deno.env.get('RESEND_FROM_EMAIL'),
     resendFromName: Deno.env.get('RESEND_FROM_NAME'),
-    mezmoApiKey: Deno.env.get('MEZMO_API_KEY') ?? '',
     f2aWebhookSecret: Deno.env.get('F2A_WEBHOOK_SECRET'),
     stripeSecretKey: Deno.env.get('STRIPE_SECRET_KEY') ?? '',
     stripeWebhookSigningSecret: Deno.env.get('STRIPE_WEBHOOK_SIGNING_SECRET') ?? '',

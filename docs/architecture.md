@@ -501,8 +501,9 @@ Desktop `.env` is loaded from `apps/desktopProbe/.env`:
 - `SUPABASE_URL`
 - `SUPABASE_KEY`
 - `DESKTOP_LOG_LEVEL` or `LOG_LEVEL`
-- `MEZMO_API_KEY`
-- `AMPLITUDE_API_KEY`
+- `REMOTE_LOG_LEVEL` (optional — minimum level sent to Axiom; default `info`)
+- `AXIOM_TOKEN`, `AXIOM_DATASET`, `AXIOM_URL` (optional remote logging — see `docs/logging.md`)
+- `AMPLITUDE_API_KEY` (optional)
 - Release/notarization variables used by Electron Forge when packaging.
 
 Backend edge functions use Deno env through `_shared/env.ts`:
@@ -512,9 +513,9 @@ Backend edge functions use Deno env through `_shared/env.ts`:
 - `SUPABASE_ANON_KEY` in current auth helper fallback path
 - `AZURE_AI_FOUNDRY_ENDPOINT`
 - `AZURE_AI_FOUNDRY_API_KEY`
-- `MEZMO_API_KEY`
+- `AXIOM_TOKEN`, `AXIOM_DATASET` (optional; edge functions ignore unless `AXIOM_ENABLE_EDGE=true`)
 - `MAILERLITE_API_KEY`
-- `RESEND_API_KEY`
+- `RESEND_API_KEY` (job-alert emails via `post-scan-hook`, not auth mail)
 - `RESEND_FROM_EMAIL`
 - `RESEND_FROM_NAME` (optional)
 - `F2A_WEBHOOK_SECRET`
@@ -557,5 +558,7 @@ Marketing/blog:
 - Existing local/session files are stored under Electron `app.getPath("userData")`, not inside the repo.
 - `post-scan-hook` sends transactional emails through Resend; requires `RESEND_API_KEY` and `RESEND_FROM_EMAIL` edge secrets.
 - Before changing scanning concurrency or delays, inspect rate-limit/authwall handling in `HtmlDownloader`.
-- Deep-link naming is mixed in historical config. The active desktop protocol in `index.ts`, `forge.config.ts`, and password reset code is `first2fetch://`; `apps/backend/supabase/config.toml` still contains an older `first2apply://**` redirect entry, so verify redirect allow-lists when changing auth links.
+- Deep-link naming is mixed in historical config. The active desktop protocol in `index.ts`, `forge.config.ts`, and password reset code is `first2fetch://`; `apps/backend/supabase/config.toml` still contains an older `first2apply://**` redirect entry, so verify redirect allow-lists when changing auth links. On Supabase Cloud, add `first2fetch://reset-password` under Dashboard → Authentication → URL Configuration.
+- Auth emails (signup confirm, password reset) use Dashboard → Authentication → SMTP, not `RESEND_*` edge secrets. Default Supabase SMTP only delivers to org team addresses; configure Resend (or another SMTP provider) for production auth mail.
+- Some networks block outbound connections to `*.supabase.co` (`ECONNREFUSED` in the desktop terminal). If auth/API calls fail while other HTTPS sites work, try another network (e.g. mobile hotspot).
 - There are existing modified files in backend function areas in some worktrees. Check `git status` before editing and avoid reverting unrelated user changes.

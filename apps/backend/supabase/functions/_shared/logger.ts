@@ -1,20 +1,18 @@
 import {
   LogLevel,
+  RemoteLogTransport,
+  createAxiomRemoteTransport,
   formatConsoleLog,
   resolveLogLevel,
+  resolveRemoteLoggingEnv,
   shouldLog,
 } from '@first2apply/core';
-import { Logger as MezmoLogger, createLogger } from 'npm:@logdna/logger';
-
-type MezmoLoggerWithWarn = MezmoLogger & {
-  warn?: (message: string, options?: { meta?: Record<string, any> }) => void;
-};
 
 export interface ILogger {
-  debug(message: string, data?: Record<string, any>): void;
-  info(message: string, data?: Record<string, any>): void;
-  warn(message: string, data?: Record<string, any>): void;
-  error(message: string, data?: Record<string, any>): void;
+  debug(message: string, data?: Record<string, unknown>): void;
+  info(message: string, data?: Record<string, unknown>): void;
+  warn(message: string, data?: Record<string, unknown>): void;
+  error(message: string, data?: Record<string, unknown>): void;
   addMeta(key: string, value: string): void;
   flush(): void;
 }
@@ -24,23 +22,18 @@ function isTruthyEnv(value: string | undefined): boolean {
   return v === '1' || v === 'true' || v === 'yes';
 }
 
-/**
- * Custom logger class that wraps the Mezmo logger.
- * When `_mezmo` is null, only console logging is used (safe for hosted Edge: @logdna/logger
- * can throw uncaught connection errors in the event loop and take down the isolate).
- */
 class Logger implements ILogger {
   private _consoleMeta: Record<string, string>;
 
   constructor(
-    private _mezmo: MezmoLogger | null,
+    private _remote: RemoteLogTransport | null,
     private _consoleLevel: LogLevel,
     meta: Record<string, string>,
   ) {
     this._consoleMeta = { ...meta };
   }
 
-  private writeToConsole(level: LogLevel, message: string, data?: Record<string, any>) {
+  private writeToConsole(level: LogLevel, message: string, data?: Record<string, unknown>) {
     if (!shouldLog(level, this._consoleLevel)) {
       return;
     }
@@ -61,34 +54,42 @@ class Logger implements ILogger {
     }
   }
 
-  debug(message: string, data?: Record<string, any>) {
+  private writeToRemote(level: LogLevel, message: string, data?: Record<string, unknown>) {
+    this._remote?.enqueue({
+      level,
+      message,
+      timestamp: new Date().toISOString(),
+      meta: Object.keys(this._consoleMeta).length ? this._consoleMeta : undefined,
+      data,
+    });
+  }
+
+  debug(message: string, data?: Record<string, unknown>) {
     this.writeToConsole('debug', message, data);
-    this._mezmo?.debug?.(message, { meta: data });
+    this.writeToRemote('debug', message, data);
   }
 
-  info(message: string, data?: Record<string, any>) {
+  info(message: string, data?: Record<string, unknown>) {
     this.writeToConsole('info', message, data);
-    this._mezmo?.info?.(message, { meta: data });
+    this.writeToRemote('info', message, data);
   }
 
-  warn(message: string, data?: Record<string, any>) {
+  warn(message: string, data?: Record<string, unknown>) {
     this.writeToConsole('warn', message, data);
-    const w = this._mezmo as MezmoLoggerWithWarn | null;
-    w?.warn?.(message, { meta: data });
+    this.writeToRemote('warn', message, data);
   }
 
-  error(message: string, data?: Record<string, any>) {
+  error(message: string, data?: Record<string, unknown>) {
     this.writeToConsole('error', message, data);
-    this._mezmo?.error?.(message, { meta: data });
+    this.writeToRemote('error', message, data);
   }
 
   addMeta(key: string, value: string) {
     this._consoleMeta[key] = value;
-    this._mezmo?.addMetaProperty?.(key, value);
   }
 
   flush() {
-    this._mezmo?.flush?.();
+    void this._remote?.flush();
   }
 }
 
@@ -98,21 +99,26 @@ export const createLoggerWithMeta = (meta: Record<string, string>) => {
     'info',
   );
 
-  const mezmoKey = Deno.env.get('MEZMO_API_KEY')?.trim() ?? '';
-  // Opt-in: @logdna/logger opens persistent connections; on Supabase Edge it can throw
-  // uncaught "connection-based error" in the event loop (503 for clients). Default off.
-  const useMezmo = mezmoKey.length > 0 && isTruthyEnv(Deno.env.get('MEZMO_ENABLE_EDGE'));
+  const axiomEnv = {
+    AXIOM_TOKEN: Deno.env.get('AXIOM_TOKEN') ?? undefined,
+    AXIOM_DATASET: Deno.env.get('AXIOM_DATASET') ?? undefined,
+    AXIOM_URL: Deno.env.get('AXIOM_URL') ?? undefined,
+    REMOTE_LOG_LEVEL: Deno.env.get('REMOTE_LOG_LEVEL') ?? undefined,
+  };
+  const resolvedAxiom = isTruthyEnv(Deno.env.get('AXIOM_ENABLE_EDGE')) ? resolveRemoteLoggingEnv(axiomEnv) : null;
 
-  const mezmoLogger = useMezmo
-    ? createLogger(mezmoKey, {
-        level: 'info',
-        app: 'first2apply',
-        env: 'all',
-        hostname: 'edge-functions',
-        meta,
-        indexMeta: true,
+  const remoteTransport = resolvedAxiom
+    ? createAxiomRemoteTransport({
+        token: resolvedAxiom.token,
+        dataset: resolvedAxiom.dataset,
+        baseUrl: resolvedAxiom.baseUrl,
+        minLevel: resolvedAxiom.minLevel,
+        source: 'edge-functions',
+        fetchImpl: fetch,
+        batchSize: 10,
+        flushIntervalMs: 0,
       })
     : null;
 
-  return new Logger(mezmoLogger, consoleLevel, meta);
+  return new Logger(remoteTransport, consoleLevel, meta);
 };
