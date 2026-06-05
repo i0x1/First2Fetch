@@ -2,7 +2,7 @@ import { ENV } from './env';
 
 import { DbSchema, getExceptionMessage } from '@first2apply/core';
 import { SupabaseClient, createClient } from '@supabase/supabase-js';
-import { BrowserWindow, Notification, app, dialog, nativeTheme, safeStorage, shell } from 'electron';
+import { BrowserWindow, app, dialog, nativeTheme, safeStorage, shell } from 'electron';
 import Storage from 'electron-store';
 import fs from 'fs';
 import path from 'path';
@@ -71,6 +71,32 @@ const storage = new Storage<{
   height: number;
 }>({ defaults: { width: 1024, height: 800 } });
 
+process.on('unhandledRejection', (reason) => {
+  const message = getExceptionMessage(reason);
+  const expectedShutdownError =
+    message.includes('target closed') ||
+    message.includes('Object has been destroyed') ||
+    message.includes('WebContents was destroyed');
+
+  if (isQuitting && expectedShutdownError) {
+    logger.debug(`ignored shutdown rejection: ${message}`);
+    return;
+  }
+
+  logger.error(message);
+});
+
+function requestGracefulQuit(reason: string) {
+  logger.info(`quit requested from ${reason}`);
+  void quit();
+}
+
+(['SIGINT', 'SIGTERM', 'SIGHUP'] as NodeJS.Signals[]).forEach((signal) => {
+  process.once(signal, () => {
+    requestGracefulQuit(signal);
+  });
+});
+
 // register the custom protocol
 if (process.defaultApp) {
   if (process.argv.length >= 2) {
@@ -81,7 +107,6 @@ if (process.defaultApp) {
 }
 
 let mainWindow: BrowserWindow | null = null;
-let trayIconNotificationShown = false;
 const createMainWindow = () => {
   // Create the browser window.
   if (mainWindow) return;
@@ -121,8 +146,12 @@ const createMainWindow = () => {
   }
 
   mainWindow.on('close', (event) => {
+    if (!appIsRunning || isQuitting) {
+      return;
+    }
+
     event.preventDefault();
-    onHideToSystemTray();
+    void quit();
   });
 
   // open all external links in the default browser
@@ -157,22 +186,20 @@ app.on('ready', () => {
   }
 });
 
-// On macOS the app stays in the menu bar when the window is hidden; do not quit.
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  if (!isQuitting) {
     app.quit();
   }
 });
 
-// do not close all windows when the app is quit on macOS, instead hide the main window
 app.on('before-quit', (event) => {
-  // Allow force quit to proceed without preventing default
   if (isQuitting) {
     return;
   }
+
   if (appIsRunning) {
     event.preventDefault();
-    onHideToSystemTray();
+    requestGracefulQuit('app before-quit');
   }
 });
 
@@ -205,31 +232,6 @@ function onActivate() {
 
   mainWindow?.focus();
 }
-function onHideToSystemTray() {
-  mainWindow?.hide();
-
-  // hide the dock icon on macOS and hide the taskbar icon on Windows
-  if (process.platform === 'darwin') {
-    app.dock.hide();
-  } else if (process.platform === 'win32') {
-    mainWindow?.setSkipTaskbar(true);
-  }
-
-  // dirty hack to fix navigating to the right tab in home page
-  // when closing we navigate to help page
-  mainWindow?.webContents.send('navigate', { path: '/help' });
-
-  // send notification to inform the user that the app is still running
-  if (!trayIconNotificationShown) {
-    trayIconNotificationShown = true;
-    const notification = new Notification({
-      title: 'See you soon!',
-      body: 'First 2 Fetch is still checking for new jobs in the background. Click the paper plane icon in the menu bar (top right) to open the app.',
-    });
-    notification.show();
-  }
-}
-
 // globals
 const analytics = new AmplitudeAnalyticsClient();
 const autoUpdater = new F2aAutoUpdater(logger, quit, analytics);
@@ -575,34 +577,60 @@ async function bootstrap() {
  */
 async function quit() {
   try {
+    if (isQuitting) {
+      logger.info(`quit already in progress, skipping...`);
+      return;
+    }
+    isQuitting = true;
     logger.info(`quitting...`);
     appIsRunning = false;
 
-    jobScanner?.close();
-    logger.info(`closed job scanner`);
+    let cleanupTimedOut = false;
+    const cleanup = (async () => {
+      jobScanner?.close();
+      logger.info(`closed job scanner`);
 
-    await promiseAllSequence(htmlDownloaders, (htmlDownloader) => htmlDownloader.close());
-    logger.info(`closed html downloader`);
+      await promiseAllSequence(htmlDownloaders, (htmlDownloader) => htmlDownloader.close());
+      logger.info(`closed html downloader`);
 
-    trayMenu?.close();
-    logger.info(`closed tray menu`);
+      trayMenu?.close();
+      logger.info(`closed tray menu`);
 
-    autoUpdater.stop();
-    logger.info(`stopped auto updater`);
+      autoUpdater.stop();
+      logger.info(`stopped auto updater`);
 
-    storage.set('width', mainWindow?.getSize()[0] || 1024);
-    storage.set('height', mainWindow?.getSize()[1] || 800);
+      storage.set('width', mainWindow?.getSize()[0] || 1024);
+      storage.set('height', mainWindow?.getSize()[1] || 800);
 
-    mainWindow?.removeAllListeners();
-    logger.info(`removed all main window listeners`);
+      mainWindow?.removeAllListeners();
+      logger.info(`removed all main window listeners`);
 
-    mainWindow?.close();
-    logger.info(`closed main window`);
+      mainWindow?.close();
+      logger.info(`closed main window`);
 
-    analytics.trackEvent('app_quit');
+      analytics.trackEvent('app_quit');
+      analytics.flush();
+    })().catch((error) => {
+      logger.error(getExceptionMessage(error));
+    });
 
-    analytics.flush();
+    await Promise.race([
+      cleanup,
+      new Promise<void>((resolve) => {
+        setTimeout(() => {
+          cleanupTimedOut = true;
+          resolve();
+        }, 2500);
+      }),
+    ]);
+
+    if (cleanupTimedOut) {
+      logger.warn(`quit cleanup timed out, exiting anyway`);
+    }
+
     logger.flush();
+
+    app.exit(0);
   } catch (error) {
     logger.error(getExceptionMessage(error));
     process.exit(-1); // force quit
