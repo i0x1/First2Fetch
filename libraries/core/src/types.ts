@@ -259,20 +259,38 @@ export type DbSchema = {
           AdvancedMatchingConfig,
           | 'blacklisted_companies'
           | 'favorite_companies'
+          | 'watched_companies'
           | 'chatgpt_prompt'
           | 'ai_provider'
           | 'ai_model'
           | 'ai_api_key_encrypted'
+          | 'ai_api_keys_encrypted'
+          | 'ai_jd_filter_provider'
+          | 'ai_jd_filter_model'
+          | 'ai_job_list_provider'
+          | 'ai_job_list_model'
+          | 'ai_jd_parse_provider'
+          | 'ai_jd_parse_model'
+          | 'ai_configured_providers'
         >;
         Update: Partial<
           Pick<
             AdvancedMatchingConfig,
             | 'blacklisted_companies'
             | 'favorite_companies'
+            | 'watched_companies'
             | 'chatgpt_prompt'
             | 'ai_provider'
             | 'ai_model'
             | 'ai_api_key_encrypted'
+            | 'ai_api_keys_encrypted'
+            | 'ai_jd_filter_provider'
+            | 'ai_jd_filter_model'
+            | 'ai_job_list_provider'
+            | 'ai_job_list_model'
+            | 'ai_jd_parse_provider'
+            | 'ai_jd_parse_model'
+            | 'ai_configured_providers'
           >
         >;
         Relationships: [];

@@ -534,6 +534,7 @@ export type UserSettingsExport = {
     chatgpt_prompt: string;
     blacklisted_companies: string[];
     favorite_companies: string[];
+    watched_companies: string[];
     ai_provider: string | null;
     ai_model: string | null;
     ai_jd_filter_provider?: string | null;
@@ -557,6 +558,7 @@ export type UserSettingsImport = {
     chatgpt_prompt?: string;
     blacklisted_companies?: string[];
     favorite_companies?: string[];
+    watched_companies?: string[];
     ai_provider?: string | null;
     ai_model?: string | null;
     ai_jd_filter_provider?: string | null;

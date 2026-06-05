@@ -1,4 +1,4 @@
-import { Job } from '@first2apply/core';
+import { Job, SiteProvider } from '@first2apply/core';
 import { getExceptionMessage } from '@first2apply/core';
 
 import { applyAdvancedMatchingFilters } from '../_shared/advancedMatching.ts';
@@ -129,7 +129,12 @@ Deno.serve(async (req) => {
           throw updateJobErr;
         }
 
-        const parseFailed = !updatedJob.description;
+        // Report failure from this parse attempt, not from the DB fallback description.
+        const descriptionExtracted = Boolean(updates.description?.trim());
+        const parseFailed =
+          site.provider === SiteProvider.robertHalf
+            ? !job.description?.trim()
+            : !descriptionExtracted;
 
         return { updatedJob, parseFailed };
       } catch (error) {

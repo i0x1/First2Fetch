@@ -780,8 +780,12 @@ export class F2aSupabaseApi {
    * Get the advanced matching configuration for the current user.
    */
   async getAdvancedMatchingConfig() {
+    return this._getOrCreateAdvancedMatchingConfig();
+  }
+
+  private async _fetchAdvancedMatchingConfig() {
     const [config] = await this._supabaseApiCall(
-      async () => await this._supabase.from('advanced_matching').select('*'),
+      async () => await this._supabase.from('advanced_matching').select('*').limit(1),
     );
 
     return config;
@@ -871,7 +875,7 @@ export class F2aSupabaseApi {
   }
 
   private async _getOrCreateAdvancedMatchingConfig() {
-    const config = await this.getAdvancedMatchingConfig();
+    const config = await this._fetchAdvancedMatchingConfig();
     if (config) {
       return config;
     }
@@ -1068,6 +1072,7 @@ export class F2aSupabaseApi {
         chatgpt_prompt: config.chatgpt_prompt,
         blacklisted_companies: config.blacklisted_companies,
         favorite_companies: config.favorite_companies,
+        watched_companies: config.watched_companies ?? [],
         ai_provider: config.ai_provider ?? null,
         ai_model: config.ai_model ?? null,
         ai_jd_filter_provider: config.ai_jd_filter_provider ?? null,
@@ -1087,8 +1092,15 @@ export class F2aSupabaseApi {
       chatgpt_prompt?: string;
       blacklisted_companies?: string[];
       favorite_companies?: string[];
+      watched_companies?: string[];
       ai_provider?: string | null;
       ai_model?: string | null;
+      ai_jd_filter_provider?: string | null;
+      ai_jd_filter_model?: string | null;
+      ai_job_list_provider?: string | null;
+      ai_job_list_model?: string | null;
+      ai_jd_parse_provider?: string | null;
+      ai_jd_parse_model?: string | null;
     };
     saved_searches?: Array<{
       title?: string;
@@ -1106,7 +1118,7 @@ export class F2aSupabaseApi {
     }
 
     // Get current config to preserve AI settings if not provided in import
-    const currentConfig = await this.getAdvancedMatchingConfig();
+    const currentConfig = await this._getOrCreateAdvancedMatchingConfig();
 
     const advancedMatching = settings.advanced_matching ?? {};
 
@@ -1124,6 +1136,9 @@ export class F2aSupabaseApi {
       chatgpt_prompt: advancedMatching.chatgpt_prompt ?? '',
       blacklisted_companies: this._ensureUniqueCompanies(advancedMatching.blacklisted_companies ?? []),
       favorite_companies: this._ensureUniqueCompanies(advancedMatching.favorite_companies ?? []),
+      watched_companies: this._ensureUniqueCompanies(
+        advancedMatching.watched_companies ?? currentConfig?.watched_companies ?? [],
+      ),
       ai_provider: pickAi('ai_provider'),
       ai_model: pickAi('ai_model'),
       ai_jd_filter_provider: pickAi('ai_jd_filter_provider'),
