@@ -126,10 +126,7 @@ Deno.serve(async (req) => {
   }
 });
 
-async function getUserEmailById(
-  supabaseClient: SupabaseClient<DbSchema, 'public', DbSchema['public']>,
-  userId: string,
-) {
+async function getUserEmailById(supabaseClient: SupabaseClient<DbSchema, 'public'>, userId: string) {
   const { data: user, error: getUserError } = await supabaseClient.auth.admin.getUserById(userId);
   if (getUserError) {
     throw getUserError;

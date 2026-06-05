@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
           {
             url: link.url,
             html,
-            webpage_runtime_data: webPageRuntimeData ?? null,
+            webpage_runtime_data: webPageRuntimeData || undefined,
           },
         ]);
         if (htmlDumpError) {

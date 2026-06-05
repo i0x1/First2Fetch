@@ -189,6 +189,7 @@ export function parseLinkedInJobs({
       companyName,
       companyLogo,
       location,
+      posted_at_raw: extractLinkedInPostedAt(el),
       labels: [],
       tags: [],
     };
@@ -273,6 +274,7 @@ export function parseLinkedInJobs({
       companyName,
       companyLogo,
       location,
+      posted_at_raw: extractLinkedInPostedAt(el),
       labels: [],
       jobType,
       tags,
@@ -324,6 +326,7 @@ export function parseLinkedInJobs({
       companyName,
       location,
       jobType,
+      posted_at_raw: extractLinkedInPostedAt(el),
       labels: [],
       tags,
     };
@@ -451,6 +454,7 @@ export function parseLinkedInJobs({
       companyLogo,
       location: cleanedLocation,
       jobType,
+      posted_at_raw: extractLinkedInPostedAt(el),
       labels: [],
       tags,
     };
@@ -534,6 +538,7 @@ export function parseLinkedInJobs({
       companyLogo,
       location,
       jobType,
+      posted_at_raw: extractLinkedInPostedAt(el),
       labels: [],
       tags,
     };
@@ -617,6 +622,7 @@ export function parseLinkedInJobs({
       companyLogo,
       location,
       jobType,
+      posted_at_raw: extractLinkedInPostedAt(el),
       labels: [],
       tags,
     };
@@ -667,6 +673,7 @@ export function parseLinkedInJobs({
       companyLogo,
       location,
       jobType,
+      posted_at_raw: extractLinkedInPostedAt(el),
       labels: [],
       tags,
     };
@@ -725,6 +732,7 @@ export function parseLinkedInJobs({
       companyLogo,
       location,
       jobType,
+      posted_at_raw: extractLinkedInPostedAt(card),
       labels: [],
       tags,
     };
@@ -929,6 +937,36 @@ function getLinkedInCardTextLines(card: Element, title: string): string[] {
       seen.add(normalized);
       return true;
     });
+}
+
+function extractLinkedInPostedAt(card: Element): string | undefined {
+  const directTime = normalizeLinkedInPostedAt(card.querySelector('time')?.textContent);
+  if (directTime) {
+    return directTime;
+  }
+
+  const ariaTime = (Array.from(card.querySelectorAll('[aria-label]')) as Element[])
+    .map((el) => normalizeLinkedInPostedAt(el.getAttribute('aria-label')))
+    .find(Boolean);
+  if (ariaTime) {
+    return ariaTime;
+  }
+
+  return getLinkedInCardTextLines(card, '')
+    .map((line) => normalizeLinkedInPostedAt(line))
+    .find(Boolean);
+}
+
+function normalizeLinkedInPostedAt(text: string | null | undefined): string | undefined {
+  const cleaned = cleanLinkedInText(text);
+  if (!cleaned) {
+    return undefined;
+  }
+
+  const match = cleaned.match(
+    /\b(?:reposted\s+)?(?:just now|today|\d+\s*(?:minute|hour|day|week|month|year)s?\s+ago)\b/i,
+  );
+  return match?.[0];
 }
 
 function looksLikeLinkedInLocation(text: string): boolean {

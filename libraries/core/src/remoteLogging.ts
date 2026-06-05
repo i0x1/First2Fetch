@@ -1,4 +1,38 @@
-import { LogLevel, resolveLogLevel, shouldLog } from './logging';
+type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+const LOG_LEVEL_ORDER: Record<LogLevel, number> = {
+  debug: 10,
+  info: 20,
+  warn: 30,
+  error: 40,
+};
+
+const LOG_LEVEL_ALIASES: Record<string, LogLevel> = {
+  debug: 'debug',
+  d: 'debug',
+  verbose: 'debug',
+  info: 'info',
+  i: 'info',
+  warn: 'warn',
+  warning: 'warn',
+  w: 'warn',
+  error: 'error',
+  err: 'error',
+  e: 'error',
+};
+
+function resolveLogLevel(input?: string | null, fallback: LogLevel = 'info'): LogLevel {
+  if (!input) {
+    return fallback;
+  }
+
+  const normalized = input.trim().toLowerCase();
+  return LOG_LEVEL_ALIASES[normalized] ?? fallback;
+}
+
+function shouldLog(level: LogLevel, threshold: LogLevel): boolean {
+  return LOG_LEVEL_ORDER[level] >= LOG_LEVEL_ORDER[threshold];
+}
 
 export type RemoteLogEvent = {
   level: LogLevel;
@@ -141,9 +175,8 @@ export function createAxiomRemoteTransport(options: AxiomRemoteTransportOptions)
       void flushNow();
     }, flushIntervalMs);
 
-    if (typeof flushTimer === 'object' && 'unref' in flushTimer && typeof flushTimer.unref === 'function') {
-      flushTimer.unref();
-    }
+    const maybeNodeTimer = flushTimer as { unref?: () => void };
+    maybeNodeTimer.unref?.();
   };
 
   return {

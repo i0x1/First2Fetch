@@ -1,4 +1,11 @@
 import { Icons } from '@/components/icons';
+import {
+  CompactChip,
+  CompactChipList,
+  CompactGrid,
+  CompactPageHeader,
+  CompactPanel,
+} from '@/components/compact/compactLayout';
 import { Cross2Icon, DownloadIcon, UploadIcon } from '@radix-ui/react-icons';
 import type { ChangeEvent } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -9,23 +16,18 @@ import { FiltersSkeleton } from '@/components/skeletons/filtersSkeleton';
 import { useError } from '@/hooks/error';
 import { useSession } from '@/hooks/session';
 import {
-  AiProvidersFormState,
-  AiProvidersSection,
   buildAdvancedMatchingAiPayload,
   buildAiFormStateFromConfig,
-  collectProvidersInUse,
 } from '@/components/aiProvidersSection';
-import { validateApiKeyFormat } from '@/lib/aiProviderConfig';
 import {
-  AdvancedMatchingConfigWithAI,
   UserSettingsImport,
+  addWatchedCompany,
   exportUserSettings,
   getAdvancedMatchingConfig,
   openExternalUrl,
   importUserSettings,
-  updateAdvancedMatchingConfig,
-  addWatchedCompany,
   removeWatchedCompany,
+  updateAdvancedMatchingConfig,
 } from '@/lib/electronMainSdk';
 import { StripeBillingPlan, SubscriptionTier } from '@first2apply/core';
 import {
@@ -35,12 +37,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@first2apply/ui';
-import { Badge } from '@first2apply/ui';
 import { Button } from '@first2apply/ui';
 import { Input } from '@first2apply/ui';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@first2apply/ui';
-import { Label } from '@first2apply/ui';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@first2apply/ui';
 import { useToast } from '@first2apply/ui';
 
 import { DefaultLayout } from './defaultLayout';
@@ -66,17 +64,17 @@ export function FiltersPage() {
   const [isImportingSettings, setIsImportingSettings] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [aiForm, setAiForm] = useState<AiProvidersFormState>(() => buildAiFormStateFromConfig({} as AdvancedMatchingConfigWithAI));
-
   /**
    * Hydrate state from API response
    */
-  const hydrateConfigFromResponse = useCallback((config: AdvancedMatchingConfigWithAI) => {
+  const hydrateConfigFromResponse = useCallback((config: Awaited<ReturnType<typeof getAdvancedMatchingConfig>>) => {
+    if (!config) {
+      return;
+    }
     setUserAiInput(config.chatgpt_prompt);
     setBlacklistedCompanies(config.blacklisted_companies);
     setFavoriteCompanies(config.favorite_companies ?? []);
     setWatchedCompanies(config.watched_companies ?? []);
-    setAiForm(buildAiFormStateFromConfig(config));
   }, []);
 
   /**
@@ -132,13 +130,18 @@ export function FiltersPage() {
     }
 
     try {
+      const currentConfig = await getAdvancedMatchingConfig();
+      const preservedAiPayload = currentConfig
+        ? buildAdvancedMatchingAiPayload(buildAiFormStateFromConfig(currentConfig))
+        : {};
+
       // If company is in watched, it will be moved to favorites by the API
       const updatedConfig = await updateAdvancedMatchingConfig({
         chatgpt_prompt: userAiInput,
         blacklisted_companies: filterCompanyFromList(blacklistedCompanies, normalized),
         favorite_companies: [...favoriteCompanies, normalized],
         watched_companies: filterCompanyFromList(watchedCompanies, normalized),
-        ...buildAdvancedMatchingAiPayload(aiForm),
+        ...preservedAiPayload,
       });
       hydrateConfigFromResponse(updatedConfig);
       setAddFavoriteCompany('');
@@ -237,48 +240,18 @@ export function FiltersPage() {
    */
   const onSave = async () => {
     try {
-      const providersInUse = collectProvidersInUse(aiForm.taskConfigs);
-      for (const provider of providersInUse) {
-        const key = aiForm.apiKeyInputs[provider];
-        if (key) {
-          const validationError = validateApiKeyFormat(provider, key);
-          if (validationError) {
-            toast({
-              title: 'Invalid API Key',
-              description: `${provider}: ${validationError}`,
-              variant: 'destructive',
-            });
-            return;
-          }
-        }
-      }
-
-      const missingKeys = providersInUse.filter(
-        (provider) => !aiForm.apiKeyInputs[provider]?.trim() && !aiForm.storedProviders.includes(provider),
-      );
-      if (missingKeys.length > 0) {
-        const shouldContinue = window.confirm(
-          `Missing API keys for: ${missingKeys.join(', ')}. Custom scraping and AI filters will not work until you add keys. Continue saving anyway?`,
-        );
-        if (!shouldContinue) {
-          return;
-        }
-      }
+      const currentConfig = await getAdvancedMatchingConfig();
+      const preservedAiPayload = currentConfig
+        ? buildAdvancedMatchingAiPayload(buildAiFormStateFromConfig(currentConfig))
+        : {};
 
       const updatedConfig = await updateAdvancedMatchingConfig({
         chatgpt_prompt: userAiInput,
         blacklisted_companies: blacklistedCompanies,
         favorite_companies: favoriteCompanies,
         watched_companies: watchedCompanies,
-        ...buildAdvancedMatchingAiPayload(aiForm),
+        ...preservedAiPayload,
       });
-      const nextForm = buildAiFormStateFromConfig(updatedConfig);
-      for (const provider of providersInUse) {
-        if (aiForm.apiKeyInputs[provider]?.trim()) {
-          nextForm.storedProviders = [...new Set([...nextForm.storedProviders, provider])];
-        }
-      }
-      setAiForm({ ...nextForm, apiKeyInputs: {} });
       hydrateConfigFromResponse(updatedConfig);
 
       // if the user is not on the PRO plan, show the subscription dialog
@@ -332,246 +305,184 @@ export function FiltersPage() {
 
   if (isLoading) {
     return (
-      <DefaultLayout className="flex flex-col p-6 md:p-10">
+      <DefaultLayout className="flex flex-col">
         <FiltersSkeleton />
       </DefaultLayout>
     );
   }
 
   return (
-    <DefaultLayout className="flex flex-col space-y-16 p-6 md:p-10">
-      <h1 className="w-fit text-2xl font-medium tracking-wide">Advanced Matching</h1>
+    <DefaultLayout className="flex flex-col space-y-3">
+      <CompactPageHeader title="Advanced Matching" />
 
-      <section>
-        <h2 className="mb-4 text-lg font-medium">Job filter prompt</h2>
-        <div className="relative">
+      <CompactPanel title="Job Filter Prompt">
+        <div className="relative p-2">
           <TextareaAutosize
             value={userAiInput}
             placeholder='E.g. "Avoid Java or senior roles", "Seeking $60K+ salary, remote opportunities", "Suitable for under 2 years of experience"'
             autoFocus={true}
-            onChange={(evt) => {
-              const newValue = evt.target.value;
-              setUserAiInput(newValue);
-            }}
+            onChange={(evt) => setUserAiInput(evt.target.value)}
             minRows={3}
             maxLength={5000}
-            className="w-full resize-none rounded-md border border-border bg-card px-6 py-4 text-base ring-ring placeholder:text-muted-foreground focus:outline-none focus:ring-2"
+            className="w-full resize-none rounded-md border border-border bg-card px-3 py-2 text-sm ring-ring placeholder:text-muted-foreground focus:outline-none focus:ring-2"
           />
-          <span className="absolute bottom-4 right-4 text-sm text-muted-foreground">{userAiInput.length}/5000</span>
+          <span className="absolute bottom-3 right-3 text-[10px] text-muted-foreground">{userAiInput.length}/5000</span>
         </div>
-      </section>
+      </CompactPanel>
 
-      <section>
-        <h2 className="mb-4 text-lg font-medium">Blacklist companies</h2>
+      <CompactGrid cols={2}>
+        <CompactPanel title="Blacklist Companies">
+          <div className="space-y-2 p-2">
+            <div className="flex w-full gap-2">
+              <div className="relative flex-1">
+                <Input
+                  value={addBlacklistedCompany}
+                  placeholder="E.g. Luxoft"
+                  onChange={(evt) => setAddBlacklistedCompany(evt.target.value)}
+                  maxLength={100}
+                  className="h-8 bg-card pr-14 text-xs focus-visible:ring-2"
+                />
+                <span className="absolute bottom-2 right-2 text-[10px] text-muted-foreground">
+                  {addBlacklistedCompany.length}/100
+                </span>
+              </div>
+              <Button variant="secondary" size="sm" className="h-8" onClick={handleAddBlacklistedCompany}>
+                Add
+              </Button>
+            </div>
 
-        <div className="flex w-full gap-2">
-          <div className="relative flex-1">
-            <Input
-              value={addBlacklistedCompany}
-              placeholder="E.g. Luxoft"
-              onChange={(evt) => setAddBlacklistedCompany(evt.target.value)}
-              maxLength={100}
-              className="bg-card px-6 pr-20 text-base ring-ring placeholder:text-base focus-visible:ring-2"
-            />
-            <span className="absolute bottom-2 right-4 text-sm text-muted-foreground">
-              {addBlacklistedCompany.length}/100
-            </span>
-          </div>
-
-          <Button variant="secondary" className="w-36 border border-border" onClick={handleAddBlacklistedCompany}>
-            Add company
-          </Button>
-        </div>
-
-        <div className="mt-4">
-          {blacklistedCompanies.length === 0 ? (
-            <p>You haven't blacklisted any companies yet</p>
-          ) : (
-            <TooltipProvider delayDuration={500}>
-              <div className="flex flex-wrap gap-2">
-                {(showAllBlacklistedCompanies ? blacklistedCompanies : blacklistedCompanies.slice(0, 10)).map(
-                  (company) => (
-                    <Badge
-                      key={company}
-                      className="flex items-center gap-2 border border-border bg-card py-1 pl-4 pr-2 text-base hover:bg-card"
-                    >
-                      {company}
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            className="inline-flex items-center justify-center"
-                            onClick={() => setBlacklistedCompanies(filterCompanyFromList(blacklistedCompanies, company))}
-                          >
-                            <Cross2Icon className="h-4 w-4 text-foreground" />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom" className="mt-2 text-sm">
-                          Remove
-                        </TooltipContent>
-                      </Tooltip>
-                    </Badge>
-                  ),
-                )}
+            {blacklistedCompanies.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No blacklisted companies yet.</p>
+            ) : (
+              <CompactChipList>
+                {(showAllBlacklistedCompanies ? blacklistedCompanies : blacklistedCompanies.slice(0, 10)).map((company) => (
+                  <CompactChip
+                    key={company}
+                    onRemove={() => setBlacklistedCompanies(filterCompanyFromList(blacklistedCompanies, company))}
+                  >
+                    {company}
+                  </CompactChip>
+                ))}
                 {blacklistedCompanies.length > 10 && !showAllBlacklistedCompanies && (
-                  <Button variant="secondary" className="py-2" onClick={() => setShowAllBlacklistedCompanies(true)}>
-                    See All
+                  <Button variant="secondary" size="sm" className="h-6 px-2 text-[10px]" onClick={() => setShowAllBlacklistedCompanies(true)}>
+                    See all
                   </Button>
                 )}
                 {showAllBlacklistedCompanies && (
-                  <Button variant="secondary" className="py-2" onClick={() => setShowAllBlacklistedCompanies(false)}>
-                    Show Less
+                  <Button variant="secondary" size="sm" className="h-6 px-2 text-[10px]" onClick={() => setShowAllBlacklistedCompanies(false)}>
+                    Show less
                   </Button>
                 )}
-              </div>
-            </TooltipProvider>
-          )}
-        </div>
-      </section>
-
-      <section>
-        <h2 className="mb-4 text-lg font-medium">Favorite companies</h2>
-
-        <div className="flex w-full gap-2">
-          <div className="relative flex-1">
-            <Input
-              value={addFavoriteCompany}
-              placeholder="E.g. Google"
-              onChange={(evt) => setAddFavoriteCompany(evt.target.value)}
-              maxLength={100}
-              className="bg-card px-6 pr-20 text-base ring-ring placeholder:text-base focus-visible:ring-2"
-            />
-            <span className="absolute bottom-2 right-4 text-sm text-muted-foreground">
-              {addFavoriteCompany.length}/100
-            </span>
+              </CompactChipList>
+            )}
           </div>
+        </CompactPanel>
 
-          <Button variant="secondary" className="w-36 border border-border" onClick={handleAddFavoriteCompany}>
-            Add favorite
-          </Button>
-        </div>
+        <CompactPanel title="Favorite Companies">
+          <div className="space-y-2 p-2">
+            <div className="flex w-full gap-2">
+              <div className="relative flex-1">
+                <Input
+                  value={addFavoriteCompany}
+                  placeholder="E.g. Google"
+                  onChange={(evt) => setAddFavoriteCompany(evt.target.value)}
+                  maxLength={100}
+                  className="h-8 bg-card pr-14 text-xs focus-visible:ring-2"
+                />
+                <span className="absolute bottom-2 right-2 text-[10px] text-muted-foreground">
+                  {addFavoriteCompany.length}/100
+                </span>
+              </div>
+              <Button variant="secondary" size="sm" className="h-8" onClick={handleAddFavoriteCompany}>
+                Add
+              </Button>
+            </div>
 
-        <div className="mt-4">
-          {favoriteCompanies.length === 0 ? (
-            <p>You haven't added any favorite companies yet</p>
-          ) : (
-            <TooltipProvider delayDuration={500}>
-              <div className="flex flex-wrap gap-2">
+            {favoriteCompanies.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No favorite companies yet.</p>
+            ) : (
+              <CompactChipList>
                 {(showAllFavoriteCompanies ? favoriteCompanies : favoriteCompanies.slice(0, 10)).map((company) => (
-                  <Badge
+                  <CompactChip
                     key={company}
-                    className="flex items-center gap-2 border border-border bg-card py-1 pl-4 pr-2 text-base hover:bg-card"
+                    onRemove={() => setFavoriteCompanies(filterCompanyFromList(favoriteCompanies, company))}
                   >
                     {company}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          className="inline-flex items-center justify-center"
-                          onClick={() => setFavoriteCompanies(filterCompanyFromList(favoriteCompanies, company))}
-                        >
-                          <Cross2Icon className="h-4 w-4 text-foreground" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom" className="mt-2 text-sm">
-                        Remove
-                      </TooltipContent>
-                    </Tooltip>
-                  </Badge>
+                  </CompactChip>
                 ))}
                 {favoriteCompanies.length > 10 && !showAllFavoriteCompanies && (
-                  <Button variant="secondary" className="py-2" onClick={() => setShowAllFavoriteCompanies(true)}>
-                    See All
+                  <Button variant="secondary" size="sm" className="h-6 px-2 text-[10px]" onClick={() => setShowAllFavoriteCompanies(true)}>
+                    See all
                   </Button>
                 )}
                 {showAllFavoriteCompanies && (
-                  <Button variant="secondary" className="py-2" onClick={() => setShowAllFavoriteCompanies(false)}>
-                    Show Less
+                  <Button variant="secondary" size="sm" className="h-6 px-2 text-[10px]" onClick={() => setShowAllFavoriteCompanies(false)}>
+                    Show less
                   </Button>
                 )}
-              </div>
-            </TooltipProvider>
-          )}
-        </div>
-      </section>
-
-      <section>
-        <h2 className="mb-4 text-lg font-medium">Watched companies</h2>
-        <p className="mb-4 text-sm text-muted-foreground">
-          Watched companies are highlighted in job listings but don't affect sorting. Click the favorite button twice to promote a watched company to favorites.
-        </p>
-
-        <div className="flex w-full gap-2">
-          <div className="relative flex-1">
-            <Input
-              value={addWatchedCompanyInput}
-              placeholder="E.g. Microsoft"
-              onChange={(evt) => setAddWatchedCompanyInput(evt.target.value)}
-              maxLength={100}
-              className="bg-card px-6 pr-20 text-base ring-ring placeholder:text-base focus-visible:ring-2"
-              onKeyDown={(evt) => {
-                if (evt.key === 'Enter') {
-                  handleAddWatchedCompany();
-                }
-              }}
-            />
-            <span className="absolute bottom-2 right-4 text-sm text-muted-foreground">
-              {addWatchedCompanyInput.length}/100
-            </span>
+              </CompactChipList>
+            )}
           </div>
+        </CompactPanel>
 
-          <Button variant="secondary" className="w-36 border border-border" onClick={handleAddWatchedCompany}>
-            Add watched
-          </Button>
-        </div>
+        <CompactPanel title="Watched Companies" className="md:col-span-2">
+          <div className="space-y-2 p-2">
+            <p className="text-xs text-muted-foreground">
+              Highlight-only list. Favoriting a watched company promotes it in ranking.
+            </p>
+            <div className="flex w-full gap-2">
+              <div className="relative flex-1">
+                <Input
+                  value={addWatchedCompanyInput}
+                  placeholder="E.g. Microsoft"
+                  onChange={(evt) => setAddWatchedCompanyInput(evt.target.value)}
+                  maxLength={100}
+                  className="h-8 bg-card pr-14 text-xs focus-visible:ring-2"
+                  onKeyDown={(evt) => {
+                    if (evt.key === 'Enter') {
+                      handleAddWatchedCompany();
+                    }
+                  }}
+                />
+                <span className="absolute bottom-2 right-2 text-[10px] text-muted-foreground">
+                  {addWatchedCompanyInput.length}/100
+                </span>
+              </div>
+              <Button variant="secondary" size="sm" className="h-8" onClick={handleAddWatchedCompany}>
+                Add
+              </Button>
+            </div>
 
-        <div className="mt-4">
-          {watchedCompanies.length === 0 ? (
-            <p>You haven't added any watched companies yet</p>
-          ) : (
-            <TooltipProvider delayDuration={500}>
-              <div className="flex flex-wrap gap-2">
+            {watchedCompanies.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No watched companies yet.</p>
+            ) : (
+              <CompactChipList>
                 {(showAllWatchedCompanies ? watchedCompanies : watchedCompanies.slice(0, 10)).map((company) => (
-                  <Badge
-                    key={company}
-                    className="flex items-center gap-2 border border-border bg-card py-1 pl-4 pr-2 text-base hover:bg-card"
-                  >
+                  <CompactChip key={company} onRemove={() => handleRemoveWatchedCompany(company)}>
                     {company}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          className="inline-flex items-center justify-center"
-                          onClick={() => handleRemoveWatchedCompany(company)}
-                        >
-                          <Cross2Icon className="h-4 w-4 text-foreground" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom" className="mt-2 text-sm">
-                        Remove
-                      </TooltipContent>
-                    </Tooltip>
-                  </Badge>
+                  </CompactChip>
                 ))}
                 {watchedCompanies.length > 10 && !showAllWatchedCompanies && (
-                  <Button variant="secondary" className="py-2" onClick={() => setShowAllWatchedCompanies(true)}>
-                    See All
+                  <Button variant="secondary" size="sm" className="h-6 px-2 text-[10px]" onClick={() => setShowAllWatchedCompanies(true)}>
+                    See all
                   </Button>
                 )}
                 {showAllWatchedCompanies && (
-                  <Button variant="secondary" className="py-2" onClick={() => setShowAllWatchedCompanies(false)}>
-                    Show Less
+                  <Button variant="secondary" size="sm" className="h-6 px-2 text-[10px]" onClick={() => setShowAllWatchedCompanies(false)}>
+                    Show less
                   </Button>
                 )}
-              </div>
-            </TooltipProvider>
-          )}
-        </div>
-      </section>
-
-      <AiProvidersSection form={aiForm} onChange={setAiForm} />
+              </CompactChipList>
+            )}
+          </div>
+        </CompactPanel>
+      </CompactGrid>
 
       <div className="flex items-center justify-between">
         <div className="flex gap-3">
           <Button
             variant="secondary"
+            size="sm"
             className="flex items-center gap-2"
             onClick={handleExportSettings}
             disabled={isExportingSettings}
@@ -581,6 +492,7 @@ export function FiltersPage() {
           </Button>
           <Button
             variant="secondary"
+            size="sm"
             className="flex items-center gap-2"
             onClick={triggerImportSettings}
             disabled={isImportingSettings}
@@ -596,7 +508,7 @@ export function FiltersPage() {
             onChange={handleImportSettingsFromFile}
           />
         </div>
-        <Button className="w-36" onClick={onSave}>
+        <Button size="sm" className="w-24" onClick={onSave}>
           Save
         </Button>
       </div>

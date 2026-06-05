@@ -1,26 +1,69 @@
 import { CronSchedule } from '@/components/cronSchedule';
+import {
+  AiProvidersFormState,
+  AiProvidersSection,
+  buildAdvancedMatchingAiPayload,
+  buildAiFormStateFromConfig,
+  collectProvidersInUse,
+} from '@/components/aiProvidersSection';
+import {
+  CompactKvRow,
+  CompactKvTable,
+  CompactPageHeader,
+  CompactPanel,
+} from '@/components/compact/compactLayout';
 import { SettingsSkeleton } from '@/components/skeletons/SettingsSkeleton';
 import { useAppState } from '@/hooks/appState';
 import { useError } from '@/hooks/error';
 import { useSession } from '@/hooks/session';
 import { useSettings } from '@/hooks/settings';
-import { applyAppUpdate, logout, openExternalUrl } from '@/lib/electronMainSdk';
+import { validateApiKeyFormat } from '@/lib/aiProviderConfig';
+import {
+  AdvancedMatchingConfigWithAI,
+  applyAppUpdate,
+  getAdvancedMatchingConfig,
+  logout,
+  openExternalUrl,
+  updateAdvancedMatchingConfig,
+} from '@/lib/electronMainSdk';
 import { JobScannerSettings } from '@/lib/types';
 import { Button, Input } from '@first2apply/ui';
 import { Switch } from '@first2apply/ui';
+import { useToast } from '@first2apply/ui';
 import { PauseIcon, PlayIcon } from '@radix-ui/react-icons';
 import * as luxon from 'luxon';
+import { useEffect, useState } from 'react';
 
 import { DefaultLayout } from './defaultLayout';
 
 export function SettingsPage() {
   const { handleError } = useError();
+  const { toast } = useToast();
   const { isLoading: isLoadingSession, logout: resetUser, user, profile, stripeConfig } = useSession();
   const { isLoading: isLoadingSettings, settings, updateSettings } = useSettings();
   const { newUpdate } = useAppState();
+  const [isLoadingAiConfig, setIsLoadingAiConfig] = useState(true);
+  const [aiForm, setAiForm] = useState<AiProvidersFormState>(() => buildAiFormStateFromConfig({} as AdvancedMatchingConfigWithAI));
 
-  const isLoading = !profile || !stripeConfig || isLoadingSettings || isLoadingSession;
+  const isLoading = !profile || !stripeConfig || isLoadingSettings || isLoadingSession || isLoadingAiConfig;
   const hasNewUpdate = !!newUpdate;
+
+  useEffect(() => {
+    const loadAiConfig = async () => {
+      try {
+        const config = await getAdvancedMatchingConfig();
+        if (config) {
+          setAiForm(buildAiFormStateFromConfig(config));
+        }
+      } catch (error) {
+        handleError({ error, title: 'Failed to load AI settings' });
+      } finally {
+        setIsLoadingAiConfig(false);
+      }
+    };
+
+    loadAiConfig();
+  }, [handleError]);
 
   // Update settings
   const onUpdatedSettings = async (newSettings: JobScannerSettings) => {
@@ -59,179 +102,191 @@ export function SettingsPage() {
     }
   };
 
+  const onSaveAiSettings = async () => {
+    try {
+      const providersInUse = collectProvidersInUse(aiForm.taskConfigs);
+      for (const provider of providersInUse) {
+        const key = aiForm.apiKeyInputs[provider];
+        if (!key) {
+          continue;
+        }
+        const validationError = validateApiKeyFormat(provider, key);
+        if (validationError) {
+          toast({
+            title: 'Invalid API key',
+            description: `${provider}: ${validationError}`,
+            variant: 'destructive',
+          });
+          return;
+        }
+      }
+
+      const missingKeys = providersInUse.filter(
+        (provider) => !aiForm.apiKeyInputs[provider]?.trim() && !aiForm.storedProviders.includes(provider),
+      );
+      if (missingKeys.length > 0) {
+        const shouldContinue = window.confirm(
+          `Missing API keys for: ${missingKeys.join(', ')}. Custom scraping and AI filters will not work until you add keys. Continue saving anyway?`,
+        );
+        if (!shouldContinue) {
+          return;
+        }
+      }
+
+      const currentConfig = await getAdvancedMatchingConfig();
+      const updatedConfig = await updateAdvancedMatchingConfig({
+        chatgpt_prompt: currentConfig?.chatgpt_prompt ?? '',
+        blacklisted_companies: currentConfig?.blacklisted_companies ?? [],
+        favorite_companies: currentConfig?.favorite_companies ?? [],
+        watched_companies: currentConfig?.watched_companies ?? [],
+        ...buildAdvancedMatchingAiPayload(aiForm),
+      });
+
+      const nextForm = buildAiFormStateFromConfig(updatedConfig);
+      for (const provider of providersInUse) {
+        if (aiForm.apiKeyInputs[provider]?.trim()) {
+          nextForm.storedProviders = [...new Set([...nextForm.storedProviders, provider])];
+        }
+      }
+      setAiForm({ ...nextForm, apiKeyInputs: {} });
+      toast({ title: 'AI settings saved' });
+    } catch (error) {
+      handleError({ error, title: 'Failed to save AI settings' });
+    }
+  };
+
   if (isLoading) {
     return (
-      <DefaultLayout className="space-y-3 p-6 md:p-10">
+      <DefaultLayout className="space-y-2">
         <SettingsSkeleton />
       </DefaultLayout>
     );
   }
 
   return (
-    <DefaultLayout className="space-y-8 p-6 md:p-10 max-w-4xl">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted-foreground">Manage your preferences and subscription.</p>
-      </div>
+    <DefaultLayout className="max-w-4xl space-y-2">
+      <CompactPageHeader title="Settings" />
 
-      {/* New Updates */}
       {hasNewUpdate && (
-        <div className="flex flex-row items-center justify-between gap-6 rounded-xl border border-blue-200 bg-blue-50/50 p-4 dark:border-blue-900 dark:bg-blue-900/20">
-          <div className="space-y-1">
-            <h2 className="text-sm font-medium">
-              Update available: <span className="font-bold">{newUpdate.name}</span>
-            </h2>
-            <p className="text-xs text-muted-foreground">{newUpdate.message}</p>
-          </div>
-          {!profile.is_trial && (
-            <Button size="sm" onClick={() => onApplyUpdate()}>
-              Update Now
-            </Button>
-          )}
-        </div>
+        <CompactPanel title="App Update">
+          <CompactKvTable>
+            <tbody>
+              <CompactKvRow label={newUpdate.name} hint={newUpdate.message}>
+                {!profile.is_trial ? (
+                  <Button size="sm" onClick={() => onApplyUpdate()}>
+                    Update now
+                  </Button>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Available after trial</span>
+                )}
+              </CompactKvRow>
+            </tbody>
+          </CompactKvTable>
+        </CompactPanel>
       )}
 
-      {/* Subscription Card */}
-      <div className="rounded-xl border bg-card p-6 shadow-sm">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="space-y-1">
-            <h2 className="text-lg font-medium">
-                {profile.subscription_tier.toUpperCase()} Plan
-                {profile.is_trial && ' (Trial)'}
-            </h2>
-            <p className="text-sm text-muted-foreground">
-                {profile.is_trial ? 'Trial ends on ' : 'Renews on '}
-                <span className="font-medium text-foreground">
-                {luxon.DateTime.fromISO(profile.subscription_end_date).toFormat('MMMM dd, yyyy')}
-                </span>
-            </p>
-            </div>
-            {!profile.is_trial && (
-            <Button
-                variant="outline"
-                onClick={() => openExternalUrl(stripeConfig.customerPortalLink)}
-            >
-                Manage Subscription
-            </Button>
-            )}
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        <h3 className="text-sm font-medium text-muted-foreground px-1">Scraping & Behavior</h3>
-        <div className="divide-y rounded-xl border bg-card shadow-sm">
-            {/* Play/Pause scraping */}
-            <div className="flex flex-row items-center justify-between gap-4 p-4">
-                <div className="space-y-0.5">
-                    <h2 className="text-base font-medium">Job Scraping</h2>
-                    <p className="text-sm text-muted-foreground">
-                        {settings.isPaused
-                        ? 'Scraping is paused.'
-                        : 'Active and scanning for jobs.'}
-                    </p>
-                </div>
+      <CompactPanel title="Account & Scanner">
+        <CompactKvTable>
+          <tbody>
+            <CompactKvRow label="Plan">
+              <span className="mr-2 text-xs font-semibold">
+                {profile.subscription_tier.toUpperCase()}
+                {profile.is_trial ? ' Trial' : ''}
+              </span>
+              {!profile.is_trial ? (
                 <Button
-                    variant={settings.isPaused ? 'default' : 'secondary'}
-                    size="sm"
-                    className="h-8 w-8 p-0"
-                    onClick={() => onUpdatedSettings({ ...settings, isPaused: !settings.isPaused })}
+                  variant="outline"
+                  size="sm"
+                  className="h-6 px-2 text-[10px]"
+                  onClick={() => openExternalUrl(stripeConfig.customerPortalLink)}
                 >
-                    {settings.isPaused ? <PlayIcon className="h-4 w-4" /> : <PauseIcon className="h-4 w-4" />}
+                  Manage
                 </Button>
-            </div>
+              ) : (
+                <span className="text-xs text-muted-foreground">Trial active</span>
+              )}
+            </CompactKvRow>
+            <CompactKvRow label={profile.is_trial ? 'Trial ends' : 'Renews'}>
+              <span className="text-xs text-muted-foreground">
+                {luxon.DateTime.fromISO(profile.subscription_end_date).toFormat('MMM dd, yyyy')}
+              </span>
+            </CompactKvRow>
+            <CompactKvRow label="Scanner" hint={settings.isPaused ? 'Paused' : 'Running'}>
+              <Button
+                variant={settings.isPaused ? 'default' : 'secondary'}
+                size="sm"
+                className="h-6 w-6 p-0"
+                onClick={() => onUpdatedSettings({ ...settings, isPaused: !settings.isPaused })}
+              >
+                {settings.isPaused ? <PlayIcon className="h-3.5 w-3.5" /> : <PauseIcon className="h-3.5 w-3.5" />}
+              </Button>
+            </CompactKvRow>
+            <CompactKvRow label="Scan frequency">
+              <CronSchedule cronRule={settings.cronRule} onCronRuleChange={onCronRuleChange} />
+            </CompactKvRow>
+            <CompactKvRow label="LinkedIn interval" hint="Minutes; blank uses default">
+              <Input
+                type="number"
+                min={1}
+                max={1440}
+                placeholder="Min"
+                className="h-6 w-16 text-[10px]"
+                value={settings.linkedinScanIntervalMinutes ?? ''}
+                onChange={(e) => {
+                  const value = e.target.value ? parseInt(e.target.value, 10) : undefined;
+                  onUpdatedSettings({ ...settings, linkedinScanIntervalMinutes: value });
+                }}
+              />
+            </CompactKvRow>
+            <CompactKvRow label="In-app browser">
+              <Switch
+                checked={settings.inAppBrowserEnabled}
+                onCheckedChange={(checked) => onUpdatedSettings({ ...settings, inAppBrowserEnabled: checked })}
+              />
+            </CompactKvRow>
+            <CompactKvRow label="Prevent sleep" hint="Keep scanning while idle">
+              <Switch
+                checked={settings.preventSleep}
+                onCheckedChange={(checked) => onUpdatedSettings({ ...settings, preventSleep: checked })}
+              />
+            </CompactKvRow>
+            <CompactKvRow label="Sound effects">
+              <Switch
+                checked={settings.useSound}
+                onCheckedChange={(checked) => onUpdatedSettings({ ...settings, useSound: checked })}
+              />
+            </CompactKvRow>
+            <CompactKvRow label="Email alerts">
+              <Switch
+                checked={settings.areEmailAlertsEnabled}
+                onCheckedChange={(checked) => onUpdatedSettings({ ...settings, areEmailAlertsEnabled: checked })}
+              />
+            </CompactKvRow>
+          </tbody>
+        </CompactKvTable>
+      </CompactPanel>
 
-            {/* Cron settings */}
-            <div className="p-4">
-                <CronSchedule cronRule={settings.cronRule} onCronRuleChange={onCronRuleChange} />
+      <CompactPanel title="AI & API Keys">
+        <div className="overflow-x-auto">
+          <AiProvidersSection form={aiForm} onChange={setAiForm} />
+          <div className="flex items-center justify-between gap-2 border-t border-border px-2 py-1">
+            <span className="min-w-0 truncate text-[10px] text-muted-foreground">Signed in as {user.email}</span>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" className="h-6 px-2 text-[10px]" onClick={onSaveAiSettings}>
+                Save AI settings
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 px-2 text-[10px] text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={onLogout}
+              >
+                Sign out
+              </Button>
             </div>
-
-            {/* LinkedIn scan interval override */}
-            <div className="flex flex-row items-center justify-between gap-4 p-4">
-                <div className="space-y-0.5">
-                    <h2 className="text-base font-medium">LinkedIn Scan Interval</h2>
-                    <p className="text-sm text-muted-foreground">
-                        Override global frequency (minutes). Empty to use default.
-                    </p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <Input
-                        type="number"
-                        min={1}
-                        max={1440}
-                        placeholder="Min"
-                        className="w-20 h-9"
-                        value={settings.linkedinScanIntervalMinutes ?? ''}
-                        onChange={(e) => {
-                            const value = e.target.value ? parseInt(e.target.value, 10) : undefined;
-                            onUpdatedSettings({ ...settings, linkedinScanIntervalMinutes: value });
-                        }}
-                    />
-                </div>
-            </div>
-
-            {/* In-app browser settings */}
-            <div className="flex flex-row items-center justify-between gap-4 p-4">
-                <div className="space-y-0.5">
-                    <h2 className="text-base font-medium">In-app Browser</h2>
-                    <p className="text-sm text-muted-foreground">Open job listings within the app.</p>
-                </div>
-                <Switch
-                    checked={settings.inAppBrowserEnabled}
-                    onCheckedChange={(checked) => onUpdatedSettings({ ...settings, inAppBrowserEnabled: checked })}
-                />
-            </div>
-
-             {/* Prevent sleep settings */}
-             <div className="flex flex-row items-center justify-between gap-4 p-4">
-                <div className="space-y-0.5">
-                    <h2 className="text-base font-medium">Prevent Sleep</h2>
-                    <p className="text-sm text-muted-foreground">Keep scanning while computer is idle.</p>
-                </div>
-                <Switch
-                    checked={settings.preventSleep}
-                    onCheckedChange={(checked) => onUpdatedSettings({ ...settings, preventSleep: checked })}
-                />
-            </div>
+          </div>
         </div>
-      </div>
-
-      <div className="space-y-4">
-        <h3 className="text-sm font-medium text-muted-foreground px-1">Notifications</h3>
-        <div className="divide-y rounded-xl border bg-card shadow-sm">
-             {/* Notification settings */}
-             <div className="flex flex-row items-center justify-between gap-4 p-4">
-                <div className="space-y-0.5">
-                    <h2 className="text-base font-medium">Sound Effects</h2>
-                    <p className="text-sm text-muted-foreground">Play a sound when a new job is found.</p>
-                </div>
-                <Switch
-                    checked={settings.useSound}
-                    onCheckedChange={(checked) => onUpdatedSettings({ ...settings, useSound: checked })}
-                />
-            </div>
-
-            {/* Email notifications */}
-            <div className="flex flex-row items-center justify-between gap-4 p-4">
-                <div className="space-y-0.5">
-                    <h2 className="text-base font-medium">Email Alerts</h2>
-                    <p className="text-sm text-muted-foreground">Receive email summaries of new jobs.</p>
-                </div>
-                <Switch
-                    checked={settings.areEmailAlertsEnabled}
-                    onCheckedChange={(checked) => onUpdatedSettings({ ...settings, areEmailAlertsEnabled: checked })}
-                />
-            </div>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-4 pt-4 border-t">
-        <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Signed in as {user.email}</span>
-            <Button variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={onLogout}>
-            Sign Out
-            </Button>
-        </div>
-      </div>
+      </CompactPanel>
     </DefaultLayout>
   );
 }

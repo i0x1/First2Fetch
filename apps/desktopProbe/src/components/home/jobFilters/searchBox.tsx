@@ -17,19 +17,19 @@ export function SearchBox({
   };
 
   return (
-    <div className="relative h-12 flex-grow">
+    <div className="relative h-[30px] flex-grow">
       <Input
-        className="h-full w-full overflow-x-scroll rounded-md px-11 focus-visible:outline-none focus-visible:ring-0"
-        placeholder="Search by title or company name ..."
+        className="h-full w-full overflow-x-scroll rounded-md border-border bg-card pl-8 pr-8 text-xs focus-visible:outline-none focus-visible:ring-0"
+        placeholder="Search title or company..."
         value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}
       />
 
-      <MagnifyingGlassIcon className="absolute left-5 top-3.5 h-5 w-fit text-muted-foreground" />
+      <MagnifyingGlassIcon className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
 
       {inputValue && (
         <Cross2Icon
-          className="absolute right-3.5 top-3.5 h-5 w-5 cursor-pointer text-muted-foreground"
+          className="absolute right-2.5 top-2 h-3.5 w-3.5 cursor-pointer text-muted-foreground"
           onClick={handleClearInput}
         />
       )}

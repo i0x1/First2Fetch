@@ -25,7 +25,7 @@ import remarkGfm from 'remark-gfm';
 /**
  * Job notes component.
  */
-export function JobNotes({ jobId }: { jobId: number }) {
+export function JobNotes({ jobId, compact = false }: { jobId: number; compact?: boolean }) {
   const { handleError } = useError();
   const { toast } = useToast();
 
@@ -127,7 +127,70 @@ export function JobNotes({ jobId }: { jobId: number }) {
     }
   };
 
-  if (isLoading) return <div>Loading...</div>;
+  if (isLoading) {
+    return compact ? <div className="py-2 text-[11px] text-muted-foreground">Loading notes…</div> : <div>Loading...</div>;
+  }
+
+  if (compact) {
+    return (
+      <details className="my-2 rounded-md border border-border bg-muted/20" open={notes.length > 0 || !!newNote}>
+        <summary className="cursor-pointer px-2.5 py-2 text-xs font-semibold text-foreground">
+          Notes ({notes.length + (newNote ? 1 : 0)})
+        </summary>
+        <div className="space-y-2 px-2.5 pb-2.5 text-[12px] text-muted-foreground">
+          <div className="flex items-center gap-1">
+            <Button size="xs" className="h-6 rounded-md px-2 text-[10px]" onClick={handleNewNote} disabled={!!newNote}>
+              <PlusIcon className="mr-1 h-3 w-3" />
+              Add note
+            </Button>
+          </div>
+          {newNote && (
+            <EditJobNote
+              note={newNote}
+              isNew={true}
+              onCreate={handleCreateNote}
+              onUpdate={handleUpdateNote}
+              onAddFile={handleAddFileToNote}
+              onEndEditing={() => setNewNote(undefined)}
+            />
+          )}
+          {!newNote && notes.length === 0 ? (
+            <p className="text-[11px]">No notes yet. Add one before you apply.</p>
+          ) : (
+            notes.map((note) =>
+              editingNoteId === note.id ? (
+                <EditJobNote
+                  key={note.id}
+                  note={note}
+                  isNew={false}
+                  onCreate={handleCreateNote}
+                  onUpdate={handleUpdateNote}
+                  onAddFile={handleAddFileToNote}
+                  onEndEditing={() => setEditingNoteId(null)}
+                />
+              ) : (
+                <JobNote
+                  key={note.id}
+                  note={note}
+                  onDelete={(noteId) => setNoteToDelete(notes.find((note) => note.id === noteId))}
+                  onAddFile={handleAddFileToNote}
+                  onStartEditing={() => setEditingNoteId(note.id)}
+                />
+              ),
+            )
+          )}
+        </div>
+        {noteToDelete && (
+          <DeleteNoteDialog
+            isOpen={!!noteToDelete}
+            note={noteToDelete}
+            onClose={() => setNoteToDelete(undefined)}
+            onDelete={(note) => handleDeleteNote(note.id)}
+          />
+        )}
+      </details>
+    );
+  }
 
   return (
     <div className="pb-2">

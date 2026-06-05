@@ -1,13 +1,10 @@
 import {
   ArchiveIcon,
-  BackpackIcon,
   CheckIcon,
-  CookieIcon,
   CopyIcon,
   FileTextIcon,
   HeartFilledIcon,
   InfoCircledIcon,
-  ListBulletIcon,
   MinusCircledIcon,
   ResetIcon,
   TrashIcon,
@@ -17,24 +14,26 @@ import React, { useMemo } from 'react';
 import { Icons } from '@/components/icons';
 import { useLinks } from '@/hooks/links';
 import { useSites } from '@/hooks/sites';
+import { formatShortPostedWithFallback, formatShortRelativeTime } from '@/lib/jobDisplayUtils';
 import { LABEL_COLOR_CLASSES } from '@/lib/labels';
 import { cn } from '@/lib/utils';
 import { JOB_LABELS, Job, JobLabel, JobStatus } from '@first2apply/core';
-import { Avatar, AvatarImage } from '@first2apply/ui';
 import { Button } from '@first2apply/ui';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@first2apply/ui';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@first2apply/ui';
 import { toast } from '@first2apply/ui';
 
+import { DetailIconButton } from './detailIconButton';
 import { DeleteJobDialog } from './deleteJobDialog';
+import { JobLogos } from './jobLogos';
 
 function isJobLabel(value: JobLabel): value is JobLabel {
   return Object.values(JOB_LABELS).includes(value);
 }
 
-/**
- * Job summary component.
- */
+function siteCode(siteName?: string) {
+  return (siteName ?? 'JB').slice(0, 2).toUpperCase();
+}
+
 export function JobSummary({
   job,
   onView,
@@ -64,356 +63,185 @@ export function JobSummary({
   blacklistActionPending?: boolean;
   isCompanyPreferencesLoaded?: boolean;
 }) {
-  const { siteLogos } = useSites();
+  const { siteLogos, siteMap } = useSites();
   const { links } = useLinks();
-
-  const usedLink = useMemo(() => {
-    return links.find((l) => l.id === job.link_id);
-  }, [links, job.link_id]);
-
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
 
+  const usedLink = useMemo(() => links.find((l) => l.id === job.link_id), [links, job.link_id]);
+  const boardName = siteMap[job.siteId]?.name ?? 'Job board';
+  const postedText = formatShortPostedWithFallback(job.posted_at_raw, job.created_at);
+
   return (
-    <div className="rounded-2xl border border-border/50 bg-card/50 p-6 shadow-sm lg:p-8">
-      <div className="flex items-start justify-between gap-6">
-        <div className="flex-1 min-w-0">
-          {/* search site */}
+    <div className="shrink-0 border-b border-border">
+      <div className="flex gap-2 px-2.5 py-2">
+        <JobLogos
+          size="md"
+          companyName={job.companyName}
+          companyLogo={job.companyLogo}
+          siteLogo={siteLogos[job.siteId]}
+          siteCode={siteCode(siteMap[job.siteId]?.name)}
+        />
+        <div className="min-w-0 flex-1">
+          <h2 className="mb-1 text-[15px] font-semibold leading-tight text-foreground">{job.title}</h2>
+          <div className="mb-1 grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground">
+            <span
+              className={cn(
+                'truncate font-medium',
+                isFavoriteCompany && 'text-rose-500',
+                !isFavoriteCompany && isWatchedCompany && 'text-blue-500',
+                !isFavoriteCompany && !isWatchedCompany && 'text-foreground',
+              )}
+            >
+              {job.companyName}
+            </span>
+            <span className="truncate">{job.location || '—'}</span>
+            <span>
+              found <strong className="text-foreground">{formatShortRelativeTime(new Date(job.created_at))}</strong>
+            </span>
+            <span>
+              posted
+              <strong
+                className="ml-1 text-foreground"
+                title={
+                  job.posted_at_raw
+                    ? `Posted ${job.posted_at_raw}`
+                    : 'Exact posted date was not captured; showing the oldest confirmed age from when this job was found.'
+                }
+              >
+                {postedText}
+              </strong>
+            </span>
+          </div>
           {usedLink && (
-            <a
-              className="mb-4 inline-flex items-center gap-2 text-xs font-medium text-muted-foreground/80 transition-colors hover:text-foreground"
-              href="#"
+            <button
+              type="button"
+              className="flex min-w-0 items-center gap-1 text-left text-[10px] text-muted-foreground hover:text-foreground"
               onClick={(e) => {
-                e.stopPropagation();
                 e.preventDefault();
                 onOpenUrl(usedLink.url);
               }}
             >
-              <img src={siteLogos[usedLink.site_id]} alt={usedLink.title} className="h-4 w-4" />
-              <span>via {usedLink.title}</span>
-            </a>
+              <span className="rounded-[3px] border border-border bg-muted px-1 text-[8px] font-extrabold text-primary">
+                {siteCode(siteMap[job.siteId]?.name)}
+              </span>
+              <span className="truncate">
+                {usedLink.title} · {boardName}
+              </span>
+            </button>
           )}
-
-          {/* Job title */}
-          <h1 className="mb-3 text-2xl font-semibold leading-tight tracking-tight text-foreground lg:text-3xl">
-            {job.title}
-          </h1>
-
-          {/* Company name & location */}
-          <div className="mb-6 flex items-center gap-2">
-            <p className={cn(
-              "text-base font-medium",
-              isWatchedCompany && !isFavoriteCompany
-                ? "text-blue-500/90 font-semibold"
-                : "text-foreground/90"
-            )}>
-              {job.companyName}
-            </p>
-            {isFavoriteCompany && (
-              <HeartFilledIcon className="h-4 w-4 text-rose-500" />
-            )}
-            {isWatchedCompany && !isFavoriteCompany && (
-              <span title="Watched company">
-                <HeartFilledIcon className="h-4 w-4 text-blue-500" />
-              </span>
-            )}
-            {job.location && (
-              <span className="text-base text-muted-foreground/80">
-                · {job.location}
-              </span>
-            )}
-          </div>
-
-          {/* Job details */}
-          <div className="space-y-2.5">
-            {job.jobType && (
-              <div className="flex items-center gap-3 text-sm text-muted-foreground/80">
-                <BackpackIcon className="h-4 w-4 flex-shrink-0" />
-                <span className="capitalize">{job.jobType}</span>
-              </div>
-            )}
-            {job.salary && (
-              <div className="flex items-center gap-3 text-sm font-medium text-muted-foreground/90">
-                <CookieIcon className="h-4 w-4 flex-shrink-0" />
-                <span>{job.salary}</span>
-              </div>
-            )}
-            {job.tags.length > 0 && (
-              <div className="flex items-start gap-3 text-sm text-muted-foreground/80">
-                <ListBulletIcon className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                <p className="flex-1">{job.tags?.slice(0, 5).join(', ')}</p>
-              </div>
-            )}
-          </div>
         </div>
-
-        {/* Company logo */}
-        {job.companyLogo && (
-          <Avatar className="h-20 w-20 flex-shrink-0 ring-2 ring-border/30 lg:h-24 lg:w-24">
-            <AvatarImage src={job.companyLogo} />
-          </Avatar>
-        )}
       </div>
 
-      {/* Filtered out job explainer */}
       {job.status === 'excluded_by_advanced_matching' && job.exclude_reason && (
-        <div className="mt-6 rounded-xl bg-destructive/10 border border-destructive/20 p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <InfoCircledIcon className="h-4 w-4 text-destructive" />
-            <p className="text-sm font-semibold text-foreground">Why was this job excluded?</p>
+        <div className="mx-2.5 mb-2 rounded-md border border-destructive/20 bg-destructive/10 px-2 py-1.5 text-[11px] text-muted-foreground">
+          <div className="mb-0.5 flex items-center gap-1 font-semibold text-foreground">
+            <InfoCircledIcon className="h-3.5 w-3.5 text-destructive" />
+            Why excluded
           </div>
-          <p className="text-sm text-muted-foreground/90">{job.exclude_reason}</p>
+          {job.exclude_reason}
         </div>
       )}
 
-      {/* Action buttons */}
-      <div className={`mt-8 flex flex-wrap items-center gap-2 ${job.status !== 'excluded_by_advanced_matching' && 'lg:mt-10'}`}>
-        {/* Open button */}
-        <Button
-          size="lg"
-          className="h-10 rounded-xl px-6 text-sm font-medium shadow-sm transition-all duration-200 hover:shadow-md"
-          onClick={() => {
-            onView(job);
-          }}
-        >
+      <div className="flex flex-wrap items-center gap-0.5 border-t border-border px-2.5 py-1.5">
+        <Button size="sm" className="h-7 rounded-md px-3 text-xs font-semibold" onClick={() => onView(job)}>
           Open
         </Button>
 
-        {/* Apply button */}
         {job.status !== 'applied' && (
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-10 w-10 rounded-xl transition-all duration-200 hover:bg-muted"
-                  onClick={() => onUpdateJobStatus(job.id, 'applied')}
-                >
-                  <CheckIcon className="h-5 w-5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="text-sm">
-                Mark job as Applied
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <DetailIconButton title="Applied" onClick={() => onUpdateJobStatus(job.id, 'applied')}>
+            <CheckIcon className="h-3.5 w-3.5" />
+          </DetailIconButton>
         )}
 
-        {/* Back to new button */}
         {job.status !== 'new' && (
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-10 w-10 rounded-xl transition-all duration-200 hover:bg-muted"
-                  onClick={() => onUpdateJobStatus(job.id, 'new')}
-                >
-                  <ResetIcon className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="text-sm">
-                Move job back to New
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <DetailIconButton title="Move to New" onClick={() => onUpdateJobStatus(job.id, 'new')}>
+            <ResetIcon className="h-3.5 w-3.5" />
+          </DetailIconButton>
         )}
 
-        {/* Archive button */}
         {job.status !== 'archived' && (
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-10 w-10 rounded-xl transition-all duration-200 hover:bg-muted"
-                  onClick={() => onUpdateJobStatus(job.id, 'archived')}
-                >
-                  <ArchiveIcon className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="text-sm">
-                Archive
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <DetailIconButton title="Archive" onClick={() => onUpdateJobStatus(job.id, 'archived')}>
+            <ArchiveIcon className="h-3.5 w-3.5" />
+          </DetailIconButton>
         )}
 
-        {/* Copy url button */}
-        <TooltipProvider delayDuration={300}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-10 w-10 rounded-xl transition-all duration-200 hover:bg-muted"
-                onClick={(evt) => {
-                  evt.stopPropagation();
-                  navigator.clipboard.writeText(job.externalUrl);
-                  toast({
-                    title: 'Job URL copied to clipboard',
-                    description: 'You can now paste it anywhere.',
-                    variant: 'success',
-                  });
-                }}
-              >
-                <CopyIcon className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-sm">
-              Copy URL
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <DetailIconButton
+          title="Copy URL"
+          onClick={() => {
+            navigator.clipboard.writeText(job.externalUrl);
+            toast({ title: 'Job URL copied', variant: 'success' });
+          }}
+        >
+          <CopyIcon className="h-3.5 w-3.5" />
+        </DetailIconButton>
 
-        {/* Copy job details button */}
-        <TooltipProvider delayDuration={300}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-10 w-10 rounded-xl transition-all duration-200 hover:bg-muted"
-                onClick={(evt) => {
-                  evt.stopPropagation();
-                  const jobDetails = [
-                    `Title: ${job.title}`,
-                    `Company: ${job.companyName}`,
-                    job.location ? `Location: ${job.location}` : null,
-                    job.description ? `\nJob Description:\n${job.description}` : null,
-                  ]
-                    .filter(Boolean)
-                    .join('\n');
-                  
-                  navigator.clipboard.writeText(jobDetails);
-                  toast({
-                    title: 'Job details copied to clipboard',
-                    description: 'Title, company, location, and description have been copied.',
-                    variant: 'success',
-                  });
-                }}
-              >
-                <FileTextIcon className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-sm">
-              Copy Job Details
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <DetailIconButton
+          title="Copy details"
+          onClick={() => {
+            const jobDetails = [
+              `Title: ${job.title}`,
+              `Company: ${job.companyName}`,
+              job.location ? `Location: ${job.location}` : null,
+              job.description ? `\nJob Description:\n${job.description}` : null,
+            ]
+              .filter(Boolean)
+              .join('\n');
+            navigator.clipboard.writeText(jobDetails);
+            toast({ title: 'Job details copied', variant: 'success' });
+          }}
+        >
+          <FileTextIcon className="h-3.5 w-3.5" />
+        </DetailIconButton>
 
-        {/* Delete button */}
-        <TooltipProvider delayDuration={300}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-10 w-10 rounded-xl transition-all duration-200 hover:bg-destructive/10 hover:text-destructive"
-                onClick={() => setIsDeleteDialogOpen(true)}
-              >
-                <TrashIcon className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-sm">
-              Delete
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <DetailIconButton title="Delete" destructive onClick={() => setIsDeleteDialogOpen(true)}>
+          <TrashIcon className="h-3.5 w-3.5" />
+        </DetailIconButton>
 
-        {/* Favorite/Watched company button */}
         {onToggleFavorite && job.companyName && (
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className={`h-10 w-10 rounded-xl transition-all duration-200 ${
-                    isFavoriteCompany
-                      ? 'bg-rose-500/10 text-rose-500 hover:bg-rose-500/20'
-                      : isWatchedCompany
-                        ? 'bg-blue-500/10 text-blue-500 hover:bg-blue-500/20'
-                        : 'hover:bg-muted'
-                  }`}
-                  disabled={!isCompanyPreferencesLoaded || favoriteActionPending}
-                  onClick={() => onToggleFavorite(job.companyName)}
-                >
-                  {favoriteActionPending ? (
-                    <Icons.spinner2 className="h-5 w-5 animate-spin" />
-                  ) : (
-                    <HeartFilledIcon className={`h-5 w-5 ${
-                      isFavoriteCompany
-                        ? 'text-rose-500'
-                        : isWatchedCompany
-                          ? 'text-blue-500'
-                          : ''
-                    }`} />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="text-sm">
-                {isFavoriteCompany
-                  ? 'Remove from favorites'
-                  : isWatchedCompany
-                    ? 'Promote to favorites'
-                    : 'Add to watched'}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <DetailIconButton
+            title={isFavoriteCompany ? 'Remove favorite' : isWatchedCompany ? 'Promote to favorite' : 'Watch company'}
+            active={isFavoriteCompany}
+            disabled={!isCompanyPreferencesLoaded || favoriteActionPending}
+            onClick={() => onToggleFavorite(job.companyName)}
+          >
+            {favoriteActionPending ? (
+              <Icons.spinner2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <HeartFilledIcon className={cn('h-3.5 w-3.5', isWatchedCompany && !isFavoriteCompany && 'text-blue-500')} />
+            )}
+          </DetailIconButton>
         )}
 
-        {/* Block company button */}
         {onToggleBlacklist && job.companyName && (
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className={`h-10 w-10 rounded-xl transition-all duration-200 ${
-                    isBlacklistedCompany
-                      ? 'bg-destructive/10 text-destructive hover:bg-destructive/20'
-                      : 'hover:bg-muted'
-                  }`}
-                  disabled={!isCompanyPreferencesLoaded || blacklistActionPending}
-                  onClick={() => onToggleBlacklist(job.companyName)}
-                >
-                  {blacklistActionPending ? (
-                    <Icons.spinner2 className="h-5 w-5 animate-spin" />
-                  ) : (
-                    <MinusCircledIcon className="h-5 w-5" />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="text-sm">
-                {isBlacklistedCompany ? 'Remove from blacklist' : 'Block company'}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <DetailIconButton
+            title={isBlacklistedCompany ? 'Unblock company' : 'Block company'}
+            destructive={isBlacklistedCompany}
+            disabled={!isCompanyPreferencesLoaded || blacklistActionPending}
+            onClick={() => onToggleBlacklist(job.companyName)}
+          >
+            {blacklistActionPending ? (
+              <Icons.spinner2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <MinusCircledIcon className="h-3.5 w-3.5" />
+            )}
+          </DetailIconButton>
         )}
 
-        <DeleteJobDialog
-          isOpen={isDeleteDialogOpen}
-          job={job}
-          onClose={() => setIsDeleteDialogOpen(false)}
-          onDelete={() => onUpdateJobStatus(job.id, 'deleted')}
-        />
-
-        {/* Label selector */}
         <div className="ml-auto">
           <JobLabelSelector job={job} onUpdateLabels={onUpdateLabels} />
         </div>
       </div>
+
+      <DeleteJobDialog
+        isOpen={isDeleteDialogOpen}
+        job={job}
+        onClose={() => setIsDeleteDialogOpen(false)}
+        onDelete={() => onUpdateJobStatus(job.id, 'deleted')}
+      />
     </div>
   );
 }
 
-/**
- * Label selector component. For now we only allow setting one label per job.
- */
 function JobLabelSelector({
   job,
   onUpdateLabels,
@@ -423,33 +251,30 @@ function JobLabelSelector({
 }) {
   const label = job.labels[0] ?? '';
 
-  const LabelOptionWithColor = ({ jobLabel, colorClass }: { jobLabel: string; colorClass: string }) => (
-    <SelectItem value={jobLabel}>
-      <div className="flex items-center">
-        <div className={`h-3 w-3 rounded-full ${colorClass}`}></div>
-        <div className="ml-2 flex-1">{jobLabel}</div>
-      </div>
-    </SelectItem>
-  );
-
   return (
     <Select
       value={label}
       onValueChange={(labelValue: JobLabel) => {
-        const newLabels = isJobLabel(labelValue) ? [labelValue] : [];
-        onUpdateLabels(job.id, newLabels);
+        onUpdateLabels(job.id, isJobLabel(labelValue) ? [labelValue] : []);
       }}
     >
-      <SelectTrigger className="h-10 w-[148px] rounded-xl border-border/50">
-        <SelectValue placeholder="Add Label" />
+      <SelectTrigger className="h-7 w-[110px] rounded-md border-border text-[11px]">
+        <SelectValue placeholder="Label…" />
       </SelectTrigger>
       <SelectContent>
-        {/* no label */}
-        <LabelOptionWithColor jobLabel="None" colorClass="bg-background" />
-
-        {/* labels with colors */}
+        <SelectItem value="None">
+          <div className="flex items-center gap-2">
+            <div className="h-2.5 w-2.5 rounded-full bg-background ring-1 ring-border" />
+            None
+          </div>
+        </SelectItem>
         {Object.values(JOB_LABELS).map((jobLabel) => (
-          <LabelOptionWithColor key={jobLabel} jobLabel={jobLabel} colorClass={LABEL_COLOR_CLASSES[jobLabel]} />
+          <SelectItem key={jobLabel} value={jobLabel}>
+            <div className="flex items-center gap-2">
+              <div className={cn('h-2.5 w-2.5 rounded-full', LABEL_COLOR_CLASSES[jobLabel])} />
+              {jobLabel}
+            </div>
+          </SelectItem>
         ))}
       </SelectContent>
     </Select>

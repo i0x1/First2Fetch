@@ -99,6 +99,7 @@ Deno.test('parseLinkedInJobs parses logged-in LinkedIn cards with title text fal
                 </a>
                 <div class="artdeco-entity-lockup__subtitle"><span>Acme</span></div>
                 <div class="artdeco-entity-lockup__caption">San Francisco Bay Area (Hybrid)</div>
+                <time>2 days ago</time>
               </div>
             </li>
           </ul>
@@ -114,6 +115,9 @@ Deno.test('parseLinkedInJobs parses logged-in LinkedIn cards with title text fal
   }
   if (result.jobs[0]?.title !== 'Frontend Developer') throw new Error(`Unexpected title: ${result.jobs[0]?.title}`);
   if (result.jobs[0]?.companyName !== 'Acme') throw new Error(`Unexpected company: ${result.jobs[0]?.companyName}`);
+  if (result.jobs[0]?.posted_at_raw !== '2 days ago') {
+    throw new Error(`Unexpected posted_at_raw: ${result.jobs[0]?.posted_at_raw}`);
+  }
 });
 
 Deno.test('parseLinkedInJobs prefers V5 cards over broad tracking-scope nodes', () => {
@@ -196,6 +200,7 @@ Deno.test('parseLinkedInJobs parses currentJobId anchor cards', () => {
             <p>•</p>
             <p>United States (Remote)</p>
             <p>14 connections work here</p>
+            <p>Reposted 1 week ago</p>
             <p>Promoted</p>
           </a>
         </body>
@@ -220,6 +225,9 @@ Deno.test('parseLinkedInJobs parses currentJobId anchor cards', () => {
     throw new Error(`Unexpected location: ${result.jobs[0]?.location}`);
   }
   if (result.jobs[0]?.jobType !== 'remote') throw new Error(`Unexpected job type: ${result.jobs[0]?.jobType}`);
+  if (result.jobs[0]?.posted_at_raw !== 'Reposted 1 week ago') {
+    throw new Error(`Unexpected posted_at_raw: ${result.jobs[0]?.posted_at_raw}`);
+  }
 });
 
 Deno.test('parseLinkedInJobs skips non-job scaffold list items and falls back to generic job view anchors', () => {

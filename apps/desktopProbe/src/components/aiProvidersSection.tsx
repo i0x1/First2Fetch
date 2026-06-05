@@ -15,7 +15,6 @@ import { useMemo, useState } from 'react';
 
 import { Button } from '@first2apply/ui';
 import { Input } from '@first2apply/ui';
-import { Label } from '@first2apply/ui';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@first2apply/ui';
 
 export type AiTaskState = Record<AiTaskId, { provider: ProviderName | ''; model: string }>;
@@ -112,118 +111,112 @@ export function AiProvidersSection({ form, onChange }: Props) {
   };
 
   return (
-    <section className="rounded-lg border border-border/70 bg-card/50 p-4 space-y-4">
-      <div>
-        <h2 className="text-base font-medium">AI models (optional)</h2>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Pick a provider and model per task. HTML sent to the API is capped at 100k characters per request for long
-          runs.
-        </p>
+    <div className="divide-y divide-border">
+      <div className="grid grid-cols-[minmax(150px,1fr)_minmax(124px,148px)_minmax(150px,190px)] gap-1.5 bg-muted px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-muted-foreground">
+        <span>Task</span>
+        <span>Provider</span>
+        <span>Model</span>
       </div>
 
       {AI_TASKS.map((task) => {
         const state = form.taskConfigs[task.id];
         const models = state.provider ? getProviderModels(state.provider) : {};
+
         return (
-          <div key={task.id} className="rounded-md border border-border/50 p-3 space-y-2">
-            <div>
-              <p className="text-sm font-medium">{task.label}</p>
-              <p className="text-xs text-muted-foreground">{task.description}</p>
+          <div
+            key={task.id}
+            className="grid grid-cols-[minmax(150px,1fr)_minmax(124px,148px)_minmax(150px,190px)] items-center gap-1.5 px-2 py-1"
+          >
+            <div className="min-w-0">
+              <p className="truncate text-[10px] font-semibold leading-tight text-foreground">{task.label}</p>
+              <p className="truncate text-[9px] leading-tight text-muted-foreground">{task.description}</p>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor={`${task.id}-provider`}>Provider</Label>
-                <Select
-                  value={state.provider || undefined}
-                  onValueChange={(value) => {
-                    const provider = value as ProviderName;
-                    const defaultModel = getDefaultTaskConfig(task.id).model;
-                    const modelEntries = Object.keys(getProviderModels(provider));
-                    const model = modelEntries.includes(defaultModel) ? defaultModel : modelEntries[0] ?? '';
-                    updateTask(task.id, { provider, model });
-                  }}
-                >
-                  <SelectTrigger id={`${task.id}-provider`}>
-                    <SelectValue placeholder="Choose provider" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {providerOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {state.provider && (
-                <div className="space-y-1.5">
-                  <Label htmlFor={`${task.id}-model`}>Model</Label>
-                  <Select value={state.model} onValueChange={(model) => updateTask(task.id, { model })}>
-                    <SelectTrigger id={`${task.id}-model`}>
-                      <SelectValue placeholder="Choose model" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(models).map(([value, model]) => (
-                        <SelectItem key={value} value={value}>
-                          {model.label}
-                          {model.isBudget ? ' · Budget' : ''}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-            </div>
+            <Select
+              value={state.provider || undefined}
+              onValueChange={(value) => {
+                const provider = value as ProviderName;
+                const defaultModel = getDefaultTaskConfig(task.id).model;
+                const modelEntries = Object.keys(getProviderModels(provider));
+                const model = modelEntries.includes(defaultModel) ? defaultModel : modelEntries[0] ?? '';
+                updateTask(task.id, { provider, model });
+              }}
+            >
+              <SelectTrigger id={`${task.id}-provider`} className="h-6 text-[10px]">
+                <SelectValue placeholder="Provider" />
+              </SelectTrigger>
+              <SelectContent>
+                {providerOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {state.provider ? (
+              <Select value={state.model} onValueChange={(model) => updateTask(task.id, { model })}>
+                <SelectTrigger id={`${task.id}-model`} className="h-6 text-[10px]">
+                  <SelectValue placeholder="Model" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(models).map(([value, model]) => (
+                    <SelectItem key={value} value={value}>
+                      {model.label}
+                      {model.isBudget ? ' · Budget' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <span className="text-[9px] text-muted-foreground">Choose provider</span>
+            )}
           </div>
         );
       })}
 
       {providersInUse.length > 0 && (
-        <div className="space-y-3 border-t border-border/50 pt-3">
-          <p className="text-sm font-medium">API keys</p>
-          <p className="text-xs text-muted-foreground">
-            One key per provider you use above. Keys are encrypted when you save filters.
-          </p>
+        <div>
+          <div className="bg-muted px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-muted-foreground">
+            API keys
+          </div>
           {providersInUse.map((provider) => {
             const input = form.apiKeyInputs[provider] ?? '';
             const hasStored = form.storedProviders.includes(provider);
             const validationError = input ? validateApiKeyFormat(provider, input) : null;
+
             return (
-              <div key={provider} className="space-y-1.5">
-                <Label htmlFor={`key-${provider}`}>{getProviderDisplayName(provider)}</Label>
-                <div className="relative">
-                  <Input
-                    id={`key-${provider}`}
-                    type={visibleKeyProvider === provider ? 'text' : 'password'}
-                    value={input}
-                    onChange={(e) => updateApiKey(provider, e.target.value)}
-                    placeholder={
-                      hasStored && !input
-                        ? 'Key saved (enter new key to replace)'
-                        : `Enter ${getProviderDisplayName(provider)} API key`
-                    }
-                    className="pr-16"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-1 top-1/2 h-8 -translate-y-1/2 px-2"
-                    onClick={() => setVisibleKeyProvider(visibleKeyProvider === provider ? null : provider)}
-                    disabled={!input}
-                  >
-                    {visibleKeyProvider === provider ? 'Hide' : 'Show'}
-                  </Button>
+              <div key={provider} className="grid grid-cols-[128px_minmax(0,1fr)] items-center gap-1.5 px-2 py-1">
+                <div>
+                  <p className="text-[10px] font-semibold leading-tight text-foreground">{getProviderDisplayName(provider)}</p>
+                  <p className="text-[9px] leading-tight text-muted-foreground">{hasStored && !input ? 'Saved' : 'Encrypted on save'}</p>
                 </div>
-                {validationError && <p className="text-xs text-destructive">{validationError}</p>}
-                {hasStored && !input && (
-                  <p className="text-xs text-muted-foreground">A key is already stored for this provider.</p>
-                )}
+                <div>
+                  <div className="relative">
+                    <Input
+                      id={`key-${provider}`}
+                      type={visibleKeyProvider === provider ? 'text' : 'password'}
+                      value={input}
+                      onChange={(e) => updateApiKey(provider, e.target.value)}
+                      placeholder={hasStored && !input ? 'Key saved (enter new key to replace)' : 'Enter API key'}
+                      className="h-6 pr-12 text-[10px]"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-1 top-1/2 h-4 -translate-y-1/2 px-1 text-[9px]"
+                      onClick={() => setVisibleKeyProvider(visibleKeyProvider === provider ? null : provider)}
+                      disabled={!input}
+                    >
+                      {visibleKeyProvider === provider ? 'Hide' : 'Show'}
+                    </Button>
+                  </div>
+                  {validationError && <p className="mt-1 text-[10px] text-destructive">{validationError}</p>}
+                </div>
               </div>
             );
           })}
         </div>
       )}
-    </section>
+    </div>
   );
 }

@@ -9,6 +9,9 @@
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
     "build": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "prettier": "prettier --check \"src/**/*.{ts,tsx}\"",
     "package": "electron-forge package",
     "make": "electron-forge make --arch x64",
@@ -48,7 +51,13 @@
     "@electron-forge/publisher-s3": "^7.10.2",
     "@electron-forge/shared-types": "^7.10.2",
     "@electron/fuses": "^1.8.0",
-    "electron": "39.0.0"
+    "@playwright/test": "^1.49.1",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "electron": "39.0.0",
+    "jsdom": "^25.0.1",
+    "serve": "^14.2.4",
+    "vitest": "^3.0.5"
   },
   "dependencies": {
     "@first2apply/core": "workspace:*",

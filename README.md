@@ -38,9 +38,90 @@ Optional keys (`AXIOM_TOKEN`, `AMPLITUDE_API_KEY`) can be left empty — the app
 
 ## Supabase Setup
 
-### Option A: Supabase Cloud (Recommended for persistent data)
+If your Wi‑Fi blocks Supabase Cloud, use **local Supabase** below every day until cloud works again. All `supabase` commands must run from **`apps/backend`** — not `apps/desktopProbe` (running start in the wrong folder causes “port already allocated” errors).
 
-Using Supabase Cloud avoids data loss from local Docker issues.
+### Daily workflow (local Supabase)
+
+**Before you begin:** Open **Docker Desktop** and wait until it says Docker is running.
+
+**1. Start the database** (leave this terminal open or come back to it later)
+
+```bash
+cd apps/backend
+npx supabase start
+```
+
+Wait until you see `API URL: http://127.0.0.1:54321`. First run downloads images and can take a few minutes.
+
+**2. Run the desktop app** (second terminal)
+
+```bash
+cd apps/desktopProbe
+npm start
+```
+
+**Window vanished but the app is still running?** On macOS, closing the window hides it to the **menu bar** (paper plane icon, top right) — not the Dock. Click that icon, or click the Dock icon again, or run `npm start` once more to focus the existing window. Fully quit with **Cmd+Q** or tray menu → Quit.
+
+**3. When you are done for the day** (stops Docker containers; **keeps your local data**)
+
+```bash
+cd apps/backend
+npx supabase stop
+```
+
+| What | URL / command |
+|------|----------------|
+| App API (use in `.env`) | `http://127.0.0.1:54321` |
+| Studio (browse tables) | http://127.0.0.1:54323 |
+| Test emails (Mailpit) | http://127.0.0.1:54324 |
+
+**One-time:** point the desktop app at local Supabase. Copy `apps/desktopProbe/.env.example` → `apps/desktopProbe/.env`, then set:
+
+```bash
+cd apps/backend
+npx supabase status -o env
+```
+
+Paste into `apps/desktopProbe/.env`:
+
+```
+SUPABASE_URL=http://127.0.0.1:54321
+SUPABASE_KEY=<ANON_KEY from the command above>
+```
+
+The local `ANON_KEY` is the same every time on your machine (demo JWT from the CLI). You only need to copy it once unless you delete Docker volumes.
+
+**Optional:** edge functions (job scanning, webhooks) in a third terminal:
+
+```bash
+cd apps/backend
+npx supabase functions serve
+```
+
+#### If `supabase start` fails
+
+- **`Bind for 0.0.0.0:54322 failed: port is already allocated`** — Supabase is already running, or you started it from the wrong folder.
+  ```bash
+  cd apps/backend
+  npx supabase stop
+  npx supabase start
+  ```
+  If you ever ran `supabase start` inside `apps/desktopProbe`, stop that project too:
+  ```bash
+  cd apps/desktopProbe
+  npx supabase stop
+  ```
+- **`Cannot connect to the Docker daemon`** — start Docker Desktop, wait ~30s, try again.
+- **Storage / migration errors on start** — clear stale CLI pins, then use a recent CLI:
+  ```bash
+  cd apps/backend
+  rm -f supabase/.temp/storage-migration supabase/.temp/storage-version
+  npx supabase@latest start
+  ```
+
+**Never run** `npx supabase db reset` on local data you care about (workspace rule: no database reset).
+
+### Option A: Supabase Cloud (when your network can reach it)
 
 ```bash
 cd apps/backend
@@ -50,7 +131,7 @@ npx supabase db push --include-seed
 npx supabase functions deploy
 ```
 
-Then set `SUPABASE_URL` and `SUPABASE_KEY` in `apps/desktopProbe/.env` to your Cloud project values (Dashboard → Settings → API).
+Set `SUPABASE_URL` and `SUPABASE_KEY` in `apps/desktopProbe/.env` from Dashboard → Settings → API (hosted URL + anon key).
 
 **Auth email checklist (password reset, signup confirm):** Supabase’s built-in mailer only sends to org team emails. For real users you must configure custom SMTP in the Dashboard:
 
@@ -59,39 +140,20 @@ Then set `SUPABASE_URL` and `SUPABASE_KEY` in `apps/desktopProbe/.env` to your C
 
 `RESEND_*` in `apps/backend/supabase/functions/.env` is for **job alert** emails from edge functions only; it does not power auth emails.
 
-**Connectivity:** If the desktop app shows `ECONNREFUSED` or `fetch failed` for Supabase, some Wi‑Fi networks block `*.supabase.co`. Try mobile hotspot or another network. Hitting `https://YOUR_PROJECT_REF.supabase.co/auth/v1/health` in a browser without an API key returns `No API key found` — that means the server is reachable.
+**Connectivity:** If the desktop app shows `ECONNREFUSED` or `fetch failed` for cloud, your router may block `*.supabase.co` — use the **daily local workflow** above. Hitting `https://YOUR_PROJECT_REF.supabase.co/auth/v1/health` in a browser (no API key) and seeing `No API key found` means cloud is reachable.
 
-### Option B: Local (Docker)
+### Database migrations (developers)
+
+Migrations live in `apps/backend/supabase/migrations/`. New migration:
 
 ```bash
 cd apps/backend
-npx supabase init
-npx supabase start
-```
-
-Service URLs:
-- Studio: http://127.0.0.1:54323
-- API: http://127.0.0.1:54321
-- Database: postgresql://postgres:postgres@127.0.0.1:54322/postgres
-
-Migrations are in `supabase/migrations/`. Create new migration:
-```bash
 npx supabase migration new your_migration_name
 ```
 
 ## Running Applications
 
-Desktop:
-```bash
-cd apps/desktopProbe
-npm start
-```
-
-Backend functions:
-```bash
-cd apps/backend
-npx supabase functions serve
-```
+See **Daily workflow** above for `npm start` in `apps/desktopProbe`.
 
 ## Project Structure
 

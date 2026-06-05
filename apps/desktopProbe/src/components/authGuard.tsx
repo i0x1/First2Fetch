@@ -3,10 +3,11 @@ import { memo, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { useSession } from '@/hooks/session';
+import { Icons } from './icons';
 
 // if the user is not logged in
 export const withAuthGuard = (Component: React.ComponentType) => {
-  const AuthGuard = (props: any) => {
+  const AuthGuard = (props: Record<string, unknown>) => {
     const location = useLocation();
     const navigate = useNavigate();
 
@@ -42,7 +43,7 @@ export const withAuthGuard = (Component: React.ComponentType) => {
 export const AuthGuardLoading = () => {
   return (
     <main className="flex min-h-screen w-full flex-col items-center justify-center">
-      <div className="h-16 w-16 animate-spin rounded-full border-b-4 border-gray-900"></div>
+      <Icons.spinner2 className="h-8 w-8 animate-spin text-primary" />
     </main>
   );
 };

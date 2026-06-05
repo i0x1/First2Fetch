@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '@first2apply/ui';
 import { Button } from '@first2apply/ui';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@first2apply/ui';
+import { CompactDataTable, CompactDataTableHead, CompactTd, CompactTh } from '@/components/compact/compactDataTable';
 
 import { EditLink } from './editLink';
 
@@ -33,86 +34,77 @@ export function LinksList({
 
   return (
     <>
-      <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <CompactDataTable>
+        <CompactDataTableHead>
+          <CompactTh>Board</CompactTh>
+          <CompactTh>Search title</CompactTh>
+          <CompactTh className="whitespace-nowrap">Checked</CompactTh>
+          <CompactTh className="whitespace-nowrap">Added</CompactTh>
+          <CompactTh className="whitespace-nowrap">Jobs</CompactTh>
+          <CompactTh className="whitespace-nowrap">Status</CompactTh>
+          <CompactTh className="w-[124px] text-right">Actions</CompactTh>
+        </CompactDataTableHead>
+        <tbody>
         {links.map((link) => {
+          const isFailure = isInFailureState(link);
           return (
-            <li
+            <tr
               key={link.id}
               className={cn(
-                "group relative flex flex-col justify-between gap-4 rounded-xl border bg-card p-5 shadow-sm transition-all hover:shadow-md cursor-pointer",
-                isInFailureState(link) ? "border-destructive/50 bg-destructive/5" : "hover:border-primary/20"
+                'group cursor-pointer transition-colors hover:bg-muted/30',
+                isFailure ? 'bg-destructive/5 hover:bg-destructive/10' : ''
               )}
               onClick={() => {
                 onDebugLink(link.id);
               }}
             >
-              <div className="flex items-start gap-3">
-                <Avatar
-                  className="h-10 w-10 shrink-0 rounded-lg"
-                >
+              <CompactTd>
+                <div className="flex items-center gap-2">
+                  <Avatar className="h-6 w-6 shrink-0 rounded">
                   <AvatarImage src={siteLogos[link.site_id]} />
-                  <AvatarFallback className="text-sm rounded-lg">LI</AvatarFallback>
+                    <AvatarFallback className="rounded text-[10px]">LI</AvatarFallback>
                 </Avatar>
-
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-muted-foreground mb-1">
+                  <span className="truncate text-[11px] text-muted-foreground">
                     {sitesMap.get(link.site_id)?.name}
-                  </p>
-                  <p className="text-base font-medium leading-tight text-foreground line-clamp-2">
-                    {link.title}
-                  </p>
+                  </span>
                 </div>
-              </div>
-
-              <div className="flex items-end justify-between pt-2">
-                <div className="space-y-0.5">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-                    Checked <ReactTimeAgo date={new Date(link.last_scraped_at)} locale="en-US" />
-                    </p>
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-                    Added <ReactTimeAgo date={new Date(link.created_at)} locale="en-US" />
-                    </p>
-                </div>
-
-                {/* actions */}
-                <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                  {isInFailureState(link) && (
-                    <TooltipProvider delayDuration={200}>
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                onClick={(evt) => {
-                                    evt.stopPropagation();
-                                    onDebugLink(link.id);
-                                }}
-                                >
-                                <QuestionMarkCircledIcon className="h-4 w-4" />
-                                </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Troubleshoot</TooltipContent>
-                        </Tooltip>
-                    </TooltipProvider>
-                  )}
-
+              </CompactTd>
+              <CompactTd className="max-w-[340px]">
+                <span className="line-clamp-2 text-xs font-medium leading-tight text-foreground">{link.title}</span>
+              </CompactTd>
+              <CompactTd className="whitespace-nowrap text-[10px] text-muted-foreground">
+                <ReactTimeAgo date={new Date(link.last_scraped_at)} locale="en-US" />
+              </CompactTd>
+              <CompactTd className="whitespace-nowrap text-[10px] text-muted-foreground">
+                <ReactTimeAgo date={new Date(link.created_at)} locale="en-US" />
+              </CompactTd>
+              <CompactTd className="whitespace-nowrap text-[11px] text-muted-foreground">—</CompactTd>
+              <CompactTd className="whitespace-nowrap">
+                <span className={cn('text-[11px] font-medium', isFailure ? 'text-destructive' : 'text-foreground')}>
+                  {isFailure ? 'Needs attention' : 'OK'}
+                </span>
+              </CompactTd>
+              <CompactTd>
+                <div className="flex items-center justify-end gap-0.5">
                   <TooltipProvider delayDuration={200}>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                          className={cn(
+                            'h-6 w-6 text-muted-foreground hover:text-foreground',
+                            isFailure ? 'text-destructive hover:bg-destructive/10 hover:text-destructive' : ''
+                          )}
                           onClick={(evt) => {
                             evt.stopPropagation();
-                            navigator.clipboard.writeText(link.url);
+                            onDebugLink(link.id);
                           }}
                         >
-                          <CopyIcon className="h-4 w-4" />
+                          <QuestionMarkCircledIcon className="h-3.5 w-3.5" />
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent>Copy URL</TooltipContent>
+                      <TooltipContent>{isFailure ? 'Troubleshoot' : 'Test'}</TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
 
@@ -122,13 +114,13 @@ export function LinksList({
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                          className="h-6 w-6 text-muted-foreground hover:text-foreground"
                           onClick={(evt) => {
                             evt.stopPropagation();
                             setEditedLink(link);
                           }}
                         >
-                          <Pencil1Icon className="h-4 w-4" />
+                          <Pencil1Icon className="h-3.5 w-3.5" />
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>Edit</TooltipContent>
@@ -141,24 +133,44 @@ export function LinksList({
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                          onClick={(evt) => {
+                            evt.stopPropagation();
+                            navigator.clipboard.writeText(link.url);
+                          }}
+                        >
+                          <CopyIcon className="h-3.5 w-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Copy URL</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+
+                  <TooltipProvider delayDuration={200}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                           onClick={(evt) => {
                             evt.stopPropagation();
                             onDeleteLink(link.id);
                           }}
                         >
-                          <TrashIcon className="h-4 w-4" />
+                          <TrashIcon className="h-3.5 w-3.5" />
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>Delete</TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
                 </div>
-              </div>
-            </li>
+              </CompactTd>
+            </tr>
           );
         })}
-      </ul>
+        </tbody>
+      </CompactDataTable>
       <EditLink
         isOpen={!!editedLink}
         link={editedLink}

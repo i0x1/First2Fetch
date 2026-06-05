@@ -25,7 +25,7 @@ export function Home() {
   }
 
   return (
-    <DefaultLayout className="px-6 pt-6 md:px-10">
+    <DefaultLayout className="flex h-screen min-h-0 flex-col overflow-hidden">
       <JobTabs />
     </DefaultLayout>
   );

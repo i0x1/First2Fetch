@@ -120,15 +120,15 @@ export function JobFiltersMenu({
   return (
     <DropdownMenu open={isOpen} onOpenChange={(opened) => setIsOpen(opened)}>
       <DropdownMenuTrigger
-        className={`relative flex h-12 w-12 items-center justify-center rounded-md bg-transparent transition-colors duration-200 ease-in-out hover:bg-foreground/10 focus-visible:outline-none focus-visible:ring-0 ${isOpen && 'bg-foreground/10'}`}
+        className={`relative flex h-[30px] w-[30px] items-center justify-center rounded-md border border-border bg-card text-muted-foreground transition-colors duration-200 ease-in-out hover:text-foreground focus-visible:outline-none focus-visible:ring-0 ${isOpen && 'text-foreground'}`}
         onClick={(evt) => {
           evt.preventDefault();
           evt.stopPropagation();
         }}
       >
-        <FilterIcon className="h-auto w-6 text-foreground/90" />
+        <FilterIcon className="h-3.5 w-3.5" />
         {activeFilterCount > 0 && (
-          <div className="absolute bottom-1.5 right-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-foreground p-0 text-[10px] text-background dark:font-bold">
+          <div className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary p-0 text-[9px] font-bold text-white">
             {activeFilterCount}
           </div>
         )}
