@@ -21,7 +21,6 @@ import {
 } from '@/components/aiProvidersSection';
 import {
   UserSettingsImport,
-  addWatchedCompany,
   exportUserSettings,
   getAdvancedMatchingConfig,
   openExternalUrl,
@@ -41,6 +40,13 @@ import { Button } from '@first2apply/ui';
 import { Input } from '@first2apply/ui';
 import { useToast } from '@first2apply/ui';
 
+import {
+  companyListHas,
+  filterCompanyFromList,
+  mergeUniqueCompanies,
+  normalizeCompanyList,
+  parseCompanyInput,
+} from '@/lib/companyListUtils';
 import { DefaultLayout } from './defaultLayout';
 
 export function FiltersPage() {
@@ -72,9 +78,9 @@ export function FiltersPage() {
       return;
     }
     setUserAiInput(config.chatgpt_prompt);
-    setBlacklistedCompanies(config.blacklisted_companies);
-    setFavoriteCompanies(config.favorite_companies ?? []);
-    setWatchedCompanies(config.watched_companies ?? []);
+    setBlacklistedCompanies(normalizeCompanyList(config.blacklisted_companies));
+    setFavoriteCompanies(normalizeCompanyList(config.favorite_companies ?? []));
+    setWatchedCompanies(normalizeCompanyList(config.watched_companies ?? []));
   }, []);
 
   /**
@@ -96,35 +102,51 @@ export function FiltersPage() {
     asyncLoad();
   }, []); // Only run once on mount
 
-  const normalizeCompany = (company: string) => company.trim();
-  const companyListHas = (companies: string[], candidate: string) =>
-    companies.some((company) => company.toLowerCase() === candidate.toLowerCase());
-  const filterCompanyFromList = (companies: string[], candidate: string) =>
-    companies.filter((company) => company.toLowerCase() !== candidate.toLowerCase());
-
-  const handleAddBlacklistedCompany = () => {
-    const normalized = normalizeCompany(addBlacklistedCompany);
-    if (!normalized) {
+  const addCompaniesFromInput = (
+    input: string,
+    {
+      onAdded,
+      clearInput,
+    }: {
+      onAdded: (companies: string[]) => void;
+      clearInput: () => void;
+    },
+  ) => {
+    const companies = parseCompanyInput(input);
+    if (companies.length === 0) {
       return;
     }
 
-    if (companyListHas(blacklistedCompanies, normalized)) {
-      setAddBlacklistedCompany('');
-      return;
-    }
-
-    setBlacklistedCompanies([...blacklistedCompanies, normalized]);
-    setFavoriteCompanies((companies) => filterCompanyFromList(companies, normalized));
-    setAddBlacklistedCompany('');
+    onAdded(companies);
+    clearInput();
   };
 
-  const handleAddFavoriteCompany = async () => {
-    const normalized = normalizeCompany(addFavoriteCompany);
-    if (!normalized) {
+  const handleAddBlacklistedCompany = (rawInput?: string) => {
+    addCompaniesFromInput(rawInput ?? addBlacklistedCompany, {
+      clearInput: () => setAddBlacklistedCompany(''),
+      onAdded: (companies) => {
+        const updatedBlacklist = mergeUniqueCompanies(blacklistedCompanies, companies);
+        const addedKeys = new Set(companies.map((company) => company.toLowerCase()));
+
+        setBlacklistedCompanies(updatedBlacklist);
+        setFavoriteCompanies((existing) =>
+          existing.filter((company) => !addedKeys.has(company.toLowerCase())),
+        );
+        setWatchedCompanies((existing) =>
+          existing.filter((company) => !addedKeys.has(company.toLowerCase())),
+        );
+      },
+    });
+  };
+
+  const handleAddFavoriteCompany = async (rawInput?: string) => {
+    const companies = parseCompanyInput(rawInput ?? addFavoriteCompany);
+    if (companies.length === 0) {
       return;
     }
 
-    if (companyListHas(favoriteCompanies, normalized)) {
+    const newFavorites = companies.filter((company) => !companyListHas(favoriteCompanies, company));
+    if (newFavorites.length === 0) {
       setAddFavoriteCompany('');
       return;
     }
@@ -135,12 +157,14 @@ export function FiltersPage() {
         ? buildAdvancedMatchingAiPayload(buildAiFormStateFromConfig(currentConfig))
         : {};
 
-      // If company is in watched, it will be moved to favorites by the API
+      const addedKeys = new Set(newFavorites.map((company) => company.toLowerCase()));
       const updatedConfig = await updateAdvancedMatchingConfig({
         chatgpt_prompt: userAiInput,
-        blacklisted_companies: filterCompanyFromList(blacklistedCompanies, normalized),
-        favorite_companies: [...favoriteCompanies, normalized],
-        watched_companies: filterCompanyFromList(watchedCompanies, normalized),
+        blacklisted_companies: blacklistedCompanies.filter(
+          (company) => !addedKeys.has(company.toLowerCase()),
+        ),
+        favorite_companies: mergeUniqueCompanies(favoriteCompanies, newFavorites),
+        watched_companies: watchedCompanies.filter((company) => !addedKeys.has(company.toLowerCase())),
         ...preservedAiPayload,
       });
       hydrateConfigFromResponse(updatedConfig);
@@ -150,23 +174,51 @@ export function FiltersPage() {
     }
   };
 
-  const handleAddWatchedCompany = async () => {
-    const normalized = normalizeCompany(addWatchedCompanyInput);
-    if (!normalized) {
+  const handleAddWatchedCompany = async (rawInput?: string) => {
+    const companies = parseCompanyInput(rawInput ?? addWatchedCompanyInput);
+    if (companies.length === 0) {
       return;
     }
 
-    if (companyListHas(watchedCompanies, normalized) || companyListHas(favoriteCompanies, normalized)) {
+    const newWatched = companies.filter(
+      (company) => !companyListHas(watchedCompanies, company) && !companyListHas(favoriteCompanies, company),
+    );
+    if (newWatched.length === 0) {
       setAddWatchedCompanyInput('');
       return;
     }
 
     try {
-      const updatedConfig = await addWatchedCompany(normalized);
+      const currentConfig = await getAdvancedMatchingConfig();
+      const preservedAiPayload = currentConfig
+        ? buildAdvancedMatchingAiPayload(buildAiFormStateFromConfig(currentConfig))
+        : {};
+
+      const updatedConfig = await updateAdvancedMatchingConfig({
+        chatgpt_prompt: currentConfig?.chatgpt_prompt ?? userAiInput,
+        blacklisted_companies: currentConfig?.blacklisted_companies ?? blacklistedCompanies,
+        favorite_companies: currentConfig?.favorite_companies ?? favoriteCompanies,
+        watched_companies: mergeUniqueCompanies(watchedCompanies, newWatched),
+        ...preservedAiPayload,
+      });
       hydrateConfigFromResponse(updatedConfig);
       setAddWatchedCompanyInput('');
     } catch (error) {
       handleError({ error, title: 'Failed to add watched company' });
+    }
+  };
+
+  const handleCompanyPaste = (
+    evt: React.ClipboardEvent<HTMLInputElement>,
+    inputValue: string,
+    addHandler: (combinedInput: string) => void | Promise<void>,
+  ) => {
+    const pasted = evt.clipboardData.getData('text');
+    const combined = `${inputValue}${pasted}`;
+
+    if (parseCompanyInput(combined).length > 1) {
+      evt.preventDefault();
+      void addHandler(combined);
     }
   };
 
@@ -337,16 +389,18 @@ export function FiltersPage() {
               <div className="relative flex-1">
                 <Input
                   value={addBlacklistedCompany}
-                  placeholder="E.g. Luxoft"
+                  placeholder="E.g. Luxoft or Google, Meta, Apple"
                   onChange={(evt) => setAddBlacklistedCompany(evt.target.value)}
-                  maxLength={100}
-                  className="h-8 bg-card pr-14 text-xs focus-visible:ring-2"
+                  onPaste={(evt) => handleCompanyPaste(evt, addBlacklistedCompany, handleAddBlacklistedCompany)}
+                  onKeyDown={(evt) => {
+                    if (evt.key === 'Enter') {
+                      handleAddBlacklistedCompany();
+                    }
+                  }}
+                  className="h-8 bg-card text-xs focus-visible:ring-2"
                 />
-                <span className="absolute bottom-2 right-2 text-[10px] text-muted-foreground">
-                  {addBlacklistedCompany.length}/100
-                </span>
               </div>
-              <Button variant="secondary" size="sm" className="h-8" onClick={handleAddBlacklistedCompany}>
+              <Button variant="secondary" size="sm" className="h-8" onClick={() => handleAddBlacklistedCompany()}>
                 Add
               </Button>
             </div>
@@ -384,16 +438,18 @@ export function FiltersPage() {
               <div className="relative flex-1">
                 <Input
                   value={addFavoriteCompany}
-                  placeholder="E.g. Google"
+                  placeholder="E.g. Google or Google, Meta, Apple"
                   onChange={(evt) => setAddFavoriteCompany(evt.target.value)}
-                  maxLength={100}
-                  className="h-8 bg-card pr-14 text-xs focus-visible:ring-2"
+                  onPaste={(evt) => handleCompanyPaste(evt, addFavoriteCompany, handleAddFavoriteCompany)}
+                  onKeyDown={(evt) => {
+                    if (evt.key === 'Enter') {
+                      void handleAddFavoriteCompany();
+                    }
+                  }}
+                  className="h-8 bg-card text-xs focus-visible:ring-2"
                 />
-                <span className="absolute bottom-2 right-2 text-[10px] text-muted-foreground">
-                  {addFavoriteCompany.length}/100
-                </span>
               </div>
-              <Button variant="secondary" size="sm" className="h-8" onClick={handleAddFavoriteCompany}>
+              <Button variant="secondary" size="sm" className="h-8" onClick={() => void handleAddFavoriteCompany()}>
                 Add
               </Button>
             </div>
@@ -434,21 +490,18 @@ export function FiltersPage() {
               <div className="relative flex-1">
                 <Input
                   value={addWatchedCompanyInput}
-                  placeholder="E.g. Microsoft"
+                  placeholder="E.g. Microsoft or Google, Meta, Apple"
                   onChange={(evt) => setAddWatchedCompanyInput(evt.target.value)}
-                  maxLength={100}
-                  className="h-8 bg-card pr-14 text-xs focus-visible:ring-2"
+                  onPaste={(evt) => handleCompanyPaste(evt, addWatchedCompanyInput, handleAddWatchedCompany)}
                   onKeyDown={(evt) => {
                     if (evt.key === 'Enter') {
-                      handleAddWatchedCompany();
+                      void handleAddWatchedCompany();
                     }
                   }}
+                  className="h-8 bg-card text-xs focus-visible:ring-2"
                 />
-                <span className="absolute bottom-2 right-2 text-[10px] text-muted-foreground">
-                  {addWatchedCompanyInput.length}/100
-                </span>
               </div>
-              <Button variant="secondary" size="sm" className="h-8" onClick={handleAddWatchedCompany}>
+              <Button variant="secondary" size="sm" className="h-8" onClick={() => void handleAddWatchedCompany()}>
                 Add
               </Button>
             </div>

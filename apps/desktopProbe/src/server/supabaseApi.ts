@@ -3,6 +3,8 @@ import { FunctionsHttpError, PostgrestError, SupabaseClient, User } from '@supab
 import { backOff } from 'exponential-backoff';
 import * as luxon from 'luxon';
 
+import { normalizeCompanyList } from '../lib/companyListUtils';
+
 import { ILogger } from './logger';
 
 /**
@@ -832,25 +834,32 @@ export class F2aSupabaseApi {
     ai_jd_parse_model?: string | null;
     ai_api_keys?: Record<string, string> | null;
   }) {
+    const normalizedConfig = {
+      ...config,
+      blacklisted_companies: normalizeCompanyList(config.blacklisted_companies),
+      favorite_companies: normalizeCompanyList(config.favorite_companies),
+      watched_companies: normalizeCompanyList(config.watched_companies ?? []),
+    };
+
     // Use RPC function to handle encryption
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: updatedConfig, error } = await (this._supabase.rpc as any)(
       'update_advanced_matching_with_ai_config',
       {
-        p_chatgpt_prompt: config.chatgpt_prompt,
-        p_blacklisted_companies: config.blacklisted_companies,
-        p_favorite_companies: config.favorite_companies,
-        p_watched_companies: config.watched_companies || null,
-        p_ai_provider: config.ai_provider || null,
-        p_ai_model: config.ai_model || null,
-        p_ai_api_key: config.ai_api_key_encrypted || null,
-        p_ai_jd_filter_provider: config.ai_jd_filter_provider || null,
-        p_ai_jd_filter_model: config.ai_jd_filter_model || null,
-        p_ai_job_list_provider: config.ai_job_list_provider || null,
-        p_ai_job_list_model: config.ai_job_list_model || null,
-        p_ai_jd_parse_provider: config.ai_jd_parse_provider || null,
-        p_ai_jd_parse_model: config.ai_jd_parse_model || null,
-        p_ai_api_keys: config.ai_api_keys || null,
+        p_chatgpt_prompt: normalizedConfig.chatgpt_prompt,
+        p_blacklisted_companies: normalizedConfig.blacklisted_companies,
+        p_favorite_companies: normalizedConfig.favorite_companies,
+        p_watched_companies: normalizedConfig.watched_companies,
+        p_ai_provider: normalizedConfig.ai_provider || null,
+        p_ai_model: normalizedConfig.ai_model || null,
+        p_ai_api_key: normalizedConfig.ai_api_key_encrypted || null,
+        p_ai_jd_filter_provider: normalizedConfig.ai_jd_filter_provider || null,
+        p_ai_jd_filter_model: normalizedConfig.ai_jd_filter_model || null,
+        p_ai_job_list_provider: normalizedConfig.ai_job_list_provider || null,
+        p_ai_job_list_model: normalizedConfig.ai_job_list_model || null,
+        p_ai_jd_parse_provider: normalizedConfig.ai_jd_parse_provider || null,
+        p_ai_jd_parse_model: normalizedConfig.ai_jd_parse_model || null,
+        p_ai_api_keys: normalizedConfig.ai_api_keys || null,
       },
     );
 
@@ -866,20 +875,7 @@ export class F2aSupabaseApi {
   }
 
   private _ensureUniqueCompanies(companies: string[]): string[] {
-    const seen = new Set<string>();
-    const normalized: string[] = [];
-    for (const company of companies) {
-      const trimmed = this._normalizeCompanyName(company);
-      if (!trimmed) {
-        continue;
-      }
-      const key = trimmed.toLowerCase();
-      if (!seen.has(key)) {
-        seen.add(key);
-        normalized.push(trimmed);
-      }
-    }
-    return normalized;
+    return normalizeCompanyList(companies);
   }
 
   private async _getOrCreateAdvancedMatchingConfig() {
