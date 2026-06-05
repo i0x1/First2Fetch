@@ -3,6 +3,8 @@ import { FunctionsHttpError, PostgrestError, SupabaseClient, User } from '@supab
 import { backOff } from 'exponential-backoff';
 import * as luxon from 'luxon';
 
+import { ILogger } from './logger';
+
 /**
  * Class used to interact with our Supabase API.
  */
@@ -10,6 +12,7 @@ export class F2aSupabaseApi {
   constructor(
     private _supabase: SupabaseClient<DbSchema>,
     private _supabasePublishableKey: string | undefined,
+    private _logger?: ILogger,
   ) {}
 
   /**
@@ -435,17 +438,16 @@ export class F2aSupabaseApi {
     } = await this._supabase.auth.getSession();
 
     if (sessionError) {
-      console.error('[_getAuthHeaders] Failed to get session:', sessionError);
+      this._logger?.warn('supabase session lookup failed', { error: sessionError.message });
       throw new Error(`Failed to get session: ${sessionError.message}`);
     }
 
     if (!session?.access_token) {
-      console.error('[_getAuthHeaders] No access token in session:', session);
+      this._logger?.warn('supabase edge call missing active session');
       throw new Error('No active session found. Please sign in again.');
     }
 
     this._validateSessionProject(session.access_token);
-    console.log('[_getAuthHeaders] Successfully retrieved auth token, length:', session.access_token.length);
     const headers: Record<string, string> = {
       Authorization: `Bearer ${session.access_token}`,
     };
@@ -453,9 +455,6 @@ export class F2aSupabaseApi {
     const publishableKey = this._supabasePublishableKey?.trim();
     if (publishableKey) {
       headers.apikey = publishableKey;
-    } else {
-      // Let supabase-js include the key automatically, but log for diagnostics.
-      console.warn('[_getAuthHeaders] Missing explicit Supabase publishable key, relying on default SDK headers');
     }
 
     return headers;
@@ -481,9 +480,7 @@ export class F2aSupabaseApi {
         throw error;
       }
 
-      console.warn(
-        `[_invokeEdgeFunction] ${functionName} returned 401. Attempting a one-time session refresh and retry.`,
-      );
+      this._logger?.warn('supabase edge call unauthorized; refreshing session once', { functionName });
       await this._refreshSessionForEdgeFunctionCall();
       const refreshedHeaders = await this._getAuthHeaders();
       return await invoke(refreshedHeaders);
@@ -581,7 +578,7 @@ export class F2aSupabaseApi {
         if (result.error) {
           if (!this._isExpectedMissingSession(result.error)) {
             const errorInfo = await this._formatErrorForLogging(result.error);
-            console.error('[supabaseApiCall] Supabase call error:', errorInfo);
+            this._logger?.error('supabase call failed', errorInfo);
           }
           throw result.error;
         }
@@ -599,12 +596,12 @@ export class F2aSupabaseApi {
     // edge functions don't throw errors, instead they return an errorMessage field in the data object
     // work around for this issue https://github.com/supabase/functions-js/issues/45
     if (!!data && typeof data === 'object' && 'errorMessage' in data && typeof data.errorMessage === 'string') {
-      console.error('[supabaseApiCall] Edge function returned errorMessage in response body:', data.errorMessage);
+      this._logger?.error('supabase edge function returned error', { error: data.errorMessage });
       throw new Error(data.errorMessage);
     }
 
     if (error) {
-      console.error('[supabaseApiCall] Unexpected error after backoff:', error);
+      this._logger?.error('supabase unexpected error after retries', this._formatGenericError(error));
       throw error;
     }
 
@@ -630,11 +627,7 @@ export class F2aSupabaseApi {
 
   private async _formatErrorForLogging(error: unknown) {
     if (!(error instanceof FunctionsHttpError)) {
-      return {
-        errorType: error instanceof Error ? error.constructor.name : 'UnknownError',
-        errorMessage: error instanceof Error ? error.message : String(error),
-        error,
-      };
+      return this._formatGenericError(error);
     }
 
     let responseBody: string | null = null;
@@ -653,6 +646,21 @@ export class F2aSupabaseApi {
       statusText: error.context?.statusText,
       requestUrl: error.context?.url,
       responseBody,
+    };
+  }
+
+  private _formatGenericError(error: unknown) {
+    if (error instanceof Error) {
+      return {
+        errorType: error.constructor.name,
+        errorMessage: error.message,
+        stack: error.stack?.split('\n').slice(0, 5).join('\n'),
+      };
+    }
+
+    return {
+      errorType: 'UnknownError',
+      errorMessage: String(error),
     };
   }
 

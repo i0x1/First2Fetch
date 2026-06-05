@@ -60,11 +60,11 @@ export async function getEdgeFunctionContext({
   if (checkAuthorization) {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
-      logger.error('Missing Authorization header');
+      logger.warn('auth missing');
       throw new Error('Missing Authorization header');
     }
 
-    logger.info(`Authorization header present, length: ${authHeader.length}`);
+    logger.debug('auth header received');
 
     // Create admin client for database operations (uses service role key)
     // But create a separate client for auth verification (uses anon key with user's JWT)
@@ -75,12 +75,12 @@ export async function getEdgeFunctionContext({
 
     const { data: userData, error: getUserError } = await authClient.auth.getUser();
     if (getUserError) {
-      logger.error(`getUser error: ${getUserError.message}`, { error: getUserError });
+      logger.warn('auth failed', { reason: getUserError.message, error: getUserError });
       throw new Error(getUserError.message);
     }
 
     if (!userData?.user) {
-      logger.error('getUser returned no user data', { userData });
+      logger.warn('auth returned no user');
       throw new Error('Invalid authentication token');
     }
 
@@ -89,8 +89,7 @@ export async function getEdgeFunctionContext({
       email: userData?.user?.email ?? '',
     };
     logger.addMeta('user_id', user?.id ?? '');
-    logger.addMeta('user_email', user?.email ?? '');
-    logger.info(`User authenticated successfully: ${user.id}`);
+    logger.debug('auth ok');
     
     // Keep a user-scoped client for regular DB operations so auth.uid() and RLS work as expected.
     // Use supabaseAdminClient explicitly only where elevated privileges are required.

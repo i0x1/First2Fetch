@@ -67,7 +67,6 @@ export function buildOpenAiClient({ modelName }: { modelName?: SupportedModel })
   if (!(model in COST_PER_MODEL)) {
     throw new Error(`Unsupported model: ${model}`);
   }
-  console.log(`Using model ${model} for Azure OpenAI calls.`);
   const { input, output } = COST_PER_MODEL[model];
   const llmConfig = {
     model,

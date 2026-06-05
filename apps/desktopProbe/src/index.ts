@@ -271,7 +271,7 @@ function configureSupabase(): SupabaseInit {
   return {
     ok: true,
     supabase: supabaseClient,
-    supabaseApi: new F2aSupabaseApi(supabaseClient, key),
+    supabaseApi: new F2aSupabaseApi(supabaseClient, key, logger),
   };
 }
 
@@ -498,6 +498,7 @@ async function bootstrap() {
       nodeEnv: ENV.nodeEnv,
       analytics,
       onForceQuit: forceQuit,
+      logger,
     });
 
     // init the tray menu

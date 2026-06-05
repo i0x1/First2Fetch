@@ -70,41 +70,88 @@ export function shouldLog(level: LogLevel, threshold: LogLevel): boolean {
 
 type SerializableRecord = Record<string, unknown>;
 
+const SENSITIVE_KEY_RE = /api[-_]?key|authorization|cookie|token|secret|password|session/i;
+const MAX_STRING_LENGTH = 500;
+const MAX_ARRAY_ITEMS = 8;
+const MAX_OBJECT_KEYS = 20;
+const MAX_DEPTH = 4;
+
+function truncateString(value: string, maxLength = MAX_STRING_LENGTH): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength)}...<${value.length - maxLength} more chars>`;
+}
+
+function compactError(error: Error): Record<string, unknown> {
+  const stack = error.stack?.split('\n').slice(0, 5).join('\n');
+  return {
+    name: error.name,
+    message: error.message,
+    stack,
+    cause: (error as Error & { cause?: unknown }).cause,
+  };
+}
+
+function sanitizeLogValue(value: unknown, key = '', depth = 0, seen = new WeakSet<object>()): unknown {
+  if (SENSITIVE_KEY_RE.test(key)) {
+    return '<redacted>';
+  }
+
+  if (typeof value === 'string') {
+    return truncateString(value);
+  }
+
+  if (typeof value === 'bigint') {
+    return value.toString();
+  }
+
+  if (value instanceof Error) {
+    return compactError(value);
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  if (seen.has(value)) {
+    return '[Circular]';
+  }
+
+  if (depth >= MAX_DEPTH) {
+    return `[${Array.isArray(value) ? 'Array' : 'Object'}]`;
+  }
+
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    const compact = value.slice(0, MAX_ARRAY_ITEMS).map((item) => sanitizeLogValue(item, key, depth + 1, seen));
+    if (value.length > MAX_ARRAY_ITEMS) {
+      compact.push(`...${value.length - MAX_ARRAY_ITEMS} more`);
+    }
+    return compact;
+  }
+
+  const entries = Object.entries(value);
+  const compactEntries = entries.slice(0, MAX_OBJECT_KEYS).map(([childKey, childValue]) => [
+    childKey,
+    sanitizeLogValue(childValue, childKey, depth + 1, seen),
+  ]);
+  if (entries.length > MAX_OBJECT_KEYS) {
+    compactEntries.push(['_truncated_keys', entries.length - MAX_OBJECT_KEYS]);
+  }
+
+  return Object.fromEntries(compactEntries);
+}
+
 export function safeStringify(data?: SerializableRecord): string | undefined {
   if (!data) {
     return undefined;
   }
 
   try {
-    const seen = new WeakSet<object>();
-    return JSON.stringify(
-      data,
-      (_key, value) => {
-        if (value instanceof Error) {
-          return {
-            name: value.name,
-            message: value.message,
-            stack: value.stack,
-            cause: (value as Error & { cause?: unknown }).cause,
-          };
-        }
-
-        if (typeof value === 'bigint') {
-          return value.toString();
-        }
-
-        if (value && typeof value === 'object') {
-          if (seen.has(value as object)) {
-            return '[Circular]';
-          }
-
-          seen.add(value as object);
-        }
-
-        return value;
-      },
-      0,
-    );
+    return JSON.stringify(sanitizeLogValue(data), undefined, 0);
   } catch {
     return '[Unserializable payload]';
   }
@@ -118,6 +165,18 @@ export type FormatConsoleLogOptions = {
   data?: SerializableRecord;
   timestamp?: Date | string;
 };
+
+function formatMetaValue(key: string, value: string): string {
+  if (SENSITIVE_KEY_RE.test(key) || key === 'user_email') {
+    return '<redacted>';
+  }
+
+  if ((key === 'request_id' || key === 'user_id') && value.length > 8) {
+    return value.slice(0, 8);
+  }
+
+  return truncateString(value, 80);
+}
 
 export function formatConsoleLog(options: FormatConsoleLogOptions): string {
   const time =
@@ -136,7 +195,7 @@ export function formatConsoleLog(options: FormatConsoleLogOptions): string {
 
   if (options.meta) {
     contextParts.push(
-      ...Object.entries(options.meta).map(([key, value]) => `${key}=${value ?? ''}`.trim()),
+      ...Object.entries(options.meta).map(([key, value]) => `${key}=${formatMetaValue(key, value ?? '')}`.trim()),
     );
   }
 
@@ -146,4 +205,3 @@ export function formatConsoleLog(options: FormatConsoleLogOptions): string {
 
   return `${timestampSegment} ${levelSegment} ${messageSegment}${contextSegment}${dataSegment}`;
 }
-

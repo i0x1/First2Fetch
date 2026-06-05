@@ -7,9 +7,12 @@ import os from 'os';
 import { IAnalyticsClient } from '../lib/analytics';
 import { F2aAutoUpdater } from './autoUpdater';
 import { JobScanner } from './jobScanner';
+import { ILogger } from './logger';
 import { OverlayBrowserView } from './overlayBrowserView';
 import { getStripeConfig } from './stripeConfig';
 import { F2aSupabaseApi } from './supabaseApi';
+
+let ipcLogger: ILogger | undefined;
 
 /**
  * Helper methods used to centralize error handling.
@@ -19,7 +22,7 @@ async function _apiCall<T>(method: () => Promise<T>) {
     const data = await method();
     return { data };
   } catch (error) {
-    console.error(getExceptionMessage(error));
+    ipcLogger?.error('ipc action failed', { error: getExceptionMessage(error) });
     return { error: getExceptionMessage(error, true) };
   }
 }
@@ -36,6 +39,7 @@ export function initRendererIpcApi({
   nodeEnv,
   analytics,
   onForceQuit,
+  logger,
 }: {
   supabaseApi: F2aSupabaseApi;
   jobScanner: JobScanner;
@@ -44,7 +48,10 @@ export function initRendererIpcApi({
   nodeEnv: string;
   analytics: IAnalyticsClient;
   onForceQuit: () => Promise<void>;
+  logger: ILogger;
 }) {
+  ipcLogger = logger;
+
   ipcMain.handle('get-os-type', (_) =>
     _apiCall(async () => {
       return os.platform();
@@ -108,7 +115,7 @@ export function initRendererIpcApi({
 
         // intentionally not awaited to not have the user wait until JDs are in
         jobScanner.scanJobs(newJobs).catch((error) => {
-          console.error(getExceptionMessage(error));
+          logger.error('background job description scan failed', { error: getExceptionMessage(error) });
         });
 
         analytics.trackEvent('link_created', { link_id: link.id, user_id: link.user_id, site_id: link.site_id });

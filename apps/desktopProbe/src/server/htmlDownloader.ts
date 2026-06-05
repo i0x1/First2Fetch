@@ -20,6 +20,21 @@ function getRandomUserAgent(): string {
   return isMac ? CHROME_USER_AGENTS[0] : CHROME_USER_AGENTS[1];
 }
 
+function getUrlSummary(url: string) {
+  try {
+    const parsed = new URL(url);
+    return {
+      host: parsed.hostname,
+      path: parsed.pathname,
+    };
+  } catch {
+    return {
+      host: 'unknown',
+      path: '',
+    };
+  }
+}
+
 /**
  * Wrapper over a headless window that can be used to download HTML.
  */
@@ -129,7 +144,7 @@ export class HtmlDownloader {
   private async _loadUrl(window: BrowserWindow, url: string, scrollTimes: number) {
     if (!this._isRunning) return '<html></html>';
 
-    this._logger.info(`loading url: ${url} ...`);
+    this._logger.debug('page load started', getUrlSummary(url));
     await backOff(
       async () => {
         let statusCode: number | undefined;
@@ -141,7 +156,7 @@ export class HtmlDownloader {
         // handle rate limits
         const title = await window.webContents.executeJavaScript('document.title');
         if (statusCode === 429 || title?.toLowerCase().startsWith('just a moment')) {
-          this._logger.debug(`429 status code detected: ${url}`);
+          this._logger.warn('page load rate limited', { ...getUrlSummary(url), statusCode });
           await waitRandomBetween(30_000, 60_000);
           throw new Error('rate limit exceeded');
         }
@@ -191,7 +206,7 @@ export class HtmlDownloader {
           // check if page was redirected to a login page
           const finalUrl = window.webContents.getURL();
           if (KNOWN_AUTHWALLS.some((authwall) => finalUrl?.includes(authwall))) {
-            this._logger.debug(`authwall detected: ${finalUrl}`);
+            this._logger.warn('page load authwall detected', getUrlSummary(finalUrl));
             throw new Error('authwall');
           }
         }
@@ -207,7 +222,7 @@ export class HtmlDownloader {
       },
     );
 
-    this._logger.info(`finished loading url: ${url}`);
+    this._logger.debug('page load completed', getUrlSummary(url));
   }
 }
 
@@ -239,8 +254,9 @@ class BrowserWindowPool {
       });
 
       // Set Chrome User-Agent instead of Electron default (safe anti-detection measure)
-      window.webContents.setUserAgent(getRandomUserAgent());
-      logger.debug(`Browser window ${i} using User-Agent: ${getRandomUserAgent()}`);
+      const userAgent = getRandomUserAgent();
+      window.webContents.setUserAgent(userAgent);
+      logger.debug('browser worker ready', { workerId: i, incognitoMode });
 
       // Suppress DevTools protocol warnings
       window.webContents.on('console-message', (event, level, message) => {

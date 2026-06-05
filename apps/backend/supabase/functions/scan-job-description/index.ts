@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
       retryCount?: number;
     } = await req.json();
     const { jobId, html, maxRetries, retryCount } = body;
-    logger.info(`processing job description for ${jobId}  ...`);
+    logger.info('job description scan started', { jobId, retryCount, maxRetries });
 
     // find the job and its site
     const { data: job, error: findJobErr } = await supabaseClient.from('jobs').select('*').eq('id', jobId).single();
@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
         let updatedJob: Job = { ...job, status: 'new' };
 
         // parse the job description
-        logger.info(`[${site.provider}] parsing job description for ${jobId} ...`);
+        logger.debug('job description parse started', { jobId, provider: site.provider });
 
         // update the job with the description
         const updates = await parseJobDescriptionUpdates({
@@ -72,20 +72,20 @@ Deno.serve(async (req) => {
           tags: Array.from(new Set((job.tags ?? []).concat(updates.tags ?? []))),
         };
         if (!updates.description && isLastRetry) {
-          logger.error(
-            `[${site.provider}] no JD details extracted from the html of job ${jobId}, this could be a problem with the parser`,
-            {
-              url: job.externalUrl,
-              site: site.provider,
-            },
-          );
+          logger.error('job description parser returned no description', {
+            jobId,
+            url: job.externalUrl,
+            site: site.provider,
+          });
 
           await supabaseClient.from('html_dumps').insert([{ url: job.externalUrl, html }]);
         }
 
         if (updates.description) {
-          logger.info(`[${site.provider}] finished parsing job description for ${job.title}`, {
+          logger.debug('job description parsed', {
+            jobId,
             site: site.provider,
+            title: job.title,
           });
         }
 
@@ -107,7 +107,11 @@ Deno.serve(async (req) => {
           updatedJob.description = job.description;
         }
 
-        logger.info(`[${site.provider}] ${updatedJob.status} ${job.title}`);
+        logger.info('job description scan completed', {
+          jobId,
+          status: updatedJob.status,
+          site: site.provider,
+        });
 
         const { error: updateJobErr } = await supabaseClient
           .from('jobs')
@@ -140,7 +144,7 @@ Deno.serve(async (req) => {
       } catch (error) {
         // If parsing fails, log the error and update job status to 'new' so it can be retried
         // This ensures the function doesn't crash and jobs don't get stuck in 'processing' status
-        logger.error(`Error in parseDescriptionAndSaveUpdates for job ${jobId}: ${getExceptionMessage(error)}`);
+        logger.error('job description scan failed', { jobId, error: getExceptionMessage(error) });
         
         // Update job status back to 'new' so it can be retried and shows up in frontend
         try {
@@ -153,7 +157,10 @@ Deno.serve(async (req) => {
             .eq('id', jobId)
             .in('status', ['processing', 'new']);
         } catch (updateError) {
-          logger.error(`Failed to update job status after parsing error: ${getExceptionMessage(updateError)}`);
+          logger.error('failed to reset job status after parser error', {
+            jobId,
+            error: getExceptionMessage(updateError),
+          });
         }
         
         return {
@@ -180,7 +187,7 @@ Deno.serve(async (req) => {
     const { updatedJob, parseFailed } = await Promise.race([
       parseDescriptionAndSaveUpdates().catch((error) => {
         // If Promise.race rejects, catch it and return the original job
-        logger.error(`Promise.race error for job ${jobId}: ${getExceptionMessage(error)}`);
+        logger.error('job description scan promise failed', { jobId, error: getExceptionMessage(error) });
         return {
           updatedJob: job,
           parseFailed: true,

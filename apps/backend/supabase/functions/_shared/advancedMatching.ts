@@ -22,14 +22,14 @@ export async function applyAdvancedMatchingFilters({
   supabaseAdminClient: SupabaseClient<DbSchema, 'public'>;
   job: Job;
 }): Promise<{ newStatus: JobStatus; excludeReason?: string }> {
-  logger.info(`applying advanced matching filters to job ${job.id} ...`);
+  logger.debug('advanced matching started', { jobId: job.id });
   // check if the user has advanced matching enabled
   const { hasAdvancedMatching } = await checkUserSubscription({
     supabaseAdminClient,
     userId: job.user_id,
   });
   if (!hasAdvancedMatching) {
-    logger.info('user does not have advanced matching enabled');
+    logger.debug('advanced matching skipped', { jobId: job.id, reason: 'subscription_disabled' });
     return { newStatus: 'new' };
   }
 
@@ -43,17 +43,17 @@ export async function applyAdvancedMatchingFilters({
   }
   const advancedMatching: AdvancedMatchingConfig = advancedMatchingArr?.[0];
   if (!advancedMatching) {
-    logger.info(`advanced matching config not found for user ${job.user_id}`);
+    logger.debug('advanced matching skipped', { jobId: job.id, reason: 'missing_config' });
     return { newStatus: 'new' };
   }
 
   if (isFavoriteCompany({ companyName: job.companyName, advancedMatching })) {
-    logger.info(`job marked as favorite due to company name: ${job.companyName}`);
+    logger.debug('advanced matching favorite company', { jobId: job.id, companyName: job.companyName });
   }
 
   // exclude jobs from specific companies if it fully matches the entire company name
   if (isExcludedCompany({ companyName: job.companyName, advancedMatching })) {
-    logger.info(`job excluded due to company name: ${job.companyName}`);
+    logger.info('job excluded by company blacklist', { jobId: job.id, companyName: job.companyName });
     return {
       newStatus: 'excluded_by_advanced_matching',
       excludeReason: `${job.companyName} is blacklisted.`,
@@ -62,7 +62,7 @@ export async function applyAdvancedMatchingFilters({
 
   // prompt AI to determine if the job should be excluded
   if (job.description && advancedMatching.chatgpt_prompt) {
-    logger.info('prompting AI to determine if the job should be excluded ...');
+    logger.debug('advanced matching ai check started', { jobId: job.id });
 
     const { exclusionDecision } = await promptAI({
       prompt: advancedMatching.chatgpt_prompt,
@@ -72,7 +72,7 @@ export async function applyAdvancedMatchingFilters({
     });
 
     if (exclusionDecision.excluded) {
-      logger.info(`job excluded by AI: ${exclusionDecision.reason}`);
+      logger.info('job excluded by AI filter', { jobId: job.id, reason: exclusionDecision.reason });
       return {
         newStatus: 'excluded_by_advanced_matching',
         excludeReason: exclusionDecision.reason ?? undefined,
@@ -80,7 +80,7 @@ export async function applyAdvancedMatchingFilters({
     }
   }
 
-  logger.info('job passed all advanced matching filters');
+  logger.debug('advanced matching passed', { jobId: job.id });
   return { newStatus: 'new' };
 }
 

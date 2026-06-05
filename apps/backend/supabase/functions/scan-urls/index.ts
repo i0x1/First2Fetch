@@ -34,6 +34,7 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const htmls: Array<HtmlParseRequest> = body.htmls;
     if (htmls.length === 0) {
+      logger.info('scan urls skipped', { reason: 'empty_batch' });
       return new Response(JSON.stringify({ newJobs: [] }), {
         headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
       });
@@ -44,7 +45,7 @@ Deno.serve(async (req) => {
     const { data: linksData, error: linksError } = await supabaseClient.from('links').select('*').in('id', linkIds);
     if (linksError) throw new Error(linksError.message);
     const links = linksData as Link[];
-    logger.info(`found ${links.length} links`);
+    logger.info('scan urls started', { linksCount: links.length });
 
     const userId = user.id;
     const { subscriptionHasExpired } = await checkUserSubscription({
@@ -52,7 +53,7 @@ Deno.serve(async (req) => {
       ...context,
     });
     if (subscriptionHasExpired) {
-      logger.info(`subscription has expired for user ${userId}`);
+      logger.warn('scan urls skipped', { reason: 'subscription_expired' });
       return new Response(JSON.stringify({ newJobs: [], parseFailed: false }), {
         headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
       });
@@ -102,7 +103,12 @@ Deno.serve(async (req) => {
       if (insertError) throw new Error(insertError.message);
 
       const newJobs = upsertedJobs?.filter((job) => job.status === 'processing') ?? [];
-      logger.info(`found ${newJobs.length} new jobs`);
+      logger.info('scan urls completed', {
+        linksCount: links.length,
+        parsedJobsCount: parsedJobs.length,
+        newJobsCount: newJobs.length,
+        parseFailed,
+      });
 
       return { newJobs, parseFailed };
     };
@@ -141,13 +147,13 @@ async function parseHtmlToJobsList({
   const link = links.find((link) => link.id === html.linkId);
   // ignore links that are not in the db
   if (!link) {
-    logger.error(`link not found: ${html.linkId}`);
+    logger.warn('scan url skipped', { reason: 'link_not_found', linkId: html.linkId });
     return { jobs: [], currentUrlParseFailed: false };
   }
   // ignore links for sites that are deprecated
   const targetSite = allJobSites.find((site) => site.id === link.site_id);
   if (targetSite?.deprecated) {
-    logger.info(`skip parsing for deprecated site ${targetSite.name}`);
+    logger.debug('scan url skipped', { reason: 'deprecated_site', linkId: link.id, site: targetSite.name });
     return { jobs: [], currentUrlParseFailed: false };
   }
 
@@ -163,7 +169,7 @@ async function parseHtmlToJobsList({
     context,
   });
 
-  logger.info(`[${site.provider}] found ${jobs.length} jobs from link ${link.id}`);
+  logger.debug('scan url parsed', { provider: site.provider, linkId: link.id, jobsCount: jobs.length });
 
   // if the parsing failed, save the html dump for debugging
   if (currentUrlParseFailed) {
@@ -211,13 +217,14 @@ async function handleParsingFailureForLink({
     .update({ scrape_failure_count: link.scrape_failure_count + 1 })
     .eq('id', link.id);
   if (linkUpdateError) {
-    logger.error(linkUpdateError.message);
+    logger.error('failed to update link failure count', { linkId: link.id, error: linkUpdateError.message });
     return;
   }
 
   const isLinkInErrorMode = link.scrape_failure_count >= 5;
   if (isLastRetry && site.provider !== SiteProvider.echojobs && !isLinkInErrorMode) {
-    logger.error(`[${site.provider}] no jobs found for ${link.id}, this might indicate a problem with the parser`, {
+    logger.error('parser found no jobs', {
+      linkId: link.id,
       url: link.url,
       site: site.provider,
     });
@@ -249,7 +256,8 @@ async function handleParsingSuccessForLink({
     })
     .eq('id', link.id);
 
-  logger.info(`[${site.provider}] successfully parsed jobs list for link ${link.id}`, {
+  logger.debug('scan url stored success state', {
+    linkId: link.id,
     site: site.provider,
   });
 }

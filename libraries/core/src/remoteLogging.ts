@@ -42,17 +42,81 @@ export type RemoteLogEvent = {
   data?: Record<string, unknown>;
 };
 
+const MAX_REMOTE_STRING_LENGTH = 2_000;
+const MAX_REMOTE_ARRAY_ITEMS = 25;
+const MAX_REMOTE_OBJECT_KEYS = 50;
+const MAX_REMOTE_DEPTH = 6;
+const SENSITIVE_LOG_KEY_RE = /api[-_]?key|authorization|cookie|token|secret|password|session/i;
+
+function truncateRemoteString(value: string): string {
+  if (value.length <= MAX_REMOTE_STRING_LENGTH) {
+    return value;
+  }
+
+  return `${value.slice(0, MAX_REMOTE_STRING_LENGTH)}...<${value.length - MAX_REMOTE_STRING_LENGTH} more chars>`;
+}
+
 export function redactSensitiveLogMeta(value: unknown): unknown {
+  return redactSensitiveLogValue(value);
+}
+
+function redactSensitiveLogValue(value: unknown, key = '', depth = 0, seen = new WeakSet<object>()): unknown {
+  if (SENSITIVE_LOG_KEY_RE.test(key)) {
+    return '<redacted>';
+  }
+
   if (Array.isArray(value)) {
-    return value.map(redactSensitiveLogMeta);
+    if (depth >= MAX_REMOTE_DEPTH) {
+      return '[Array]';
+    }
+
+    const compact = value
+      .slice(0, MAX_REMOTE_ARRAY_ITEMS)
+      .map((item) => redactSensitiveLogValue(item, key, depth + 1, seen));
+    if (value.length > MAX_REMOTE_ARRAY_ITEMS) {
+      compact.push(`...${value.length - MAX_REMOTE_ARRAY_ITEMS} more`);
+    }
+    return compact;
+  }
+
+  if (typeof value === 'string') {
+    return truncateRemoteString(value);
+  }
+
+  if (typeof value === 'bigint') {
+    return value.toString();
+  }
+
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: value.message,
+      stack: value.stack?.split('\n').slice(0, 12).join('\n'),
+      cause: (value as Error & { cause?: unknown }).cause,
+    };
   }
 
   if (value && typeof value === 'object') {
+    if (seen.has(value)) {
+      return '[Circular]';
+    }
+
+    if (depth >= MAX_REMOTE_DEPTH) {
+      return '[Object]';
+    }
+
+    seen.add(value);
+    const entries = Object.entries(value);
+    const compactEntries = entries.slice(0, MAX_REMOTE_OBJECT_KEYS).map(([childKey, child]) => [
+      childKey,
+      redactSensitiveLogValue(child, childKey, depth + 1, seen),
+    ]);
+    if (entries.length > MAX_REMOTE_OBJECT_KEYS) {
+      compactEntries.push(['_truncated_keys', entries.length - MAX_REMOTE_OBJECT_KEYS]);
+    }
+
     return Object.fromEntries(
-      Object.entries(value).map(([key, child]) => [
-        key,
-        /api[-_]?key|authorization|token|secret|password/i.test(key) ? '<redacted>' : redactSensitiveLogMeta(child),
-      ]),
+      compactEntries,
     );
   }
 
