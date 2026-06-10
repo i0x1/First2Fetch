@@ -15,6 +15,8 @@ import { rendererConfig } from './webpack.renderer.config';
 // load env vars for Forge / webpack (must match `.env` next to this file)
 loadEnvVars({ path: path.join(__dirname, '.env') });
 
+const windowsCertificatePath = process.env.WINDOWS_APPX_CERT_PATH;
+
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
@@ -60,9 +62,13 @@ const config: ForgeConfig = {
       publisherDisplayName: 'BeastX Industries',
       assets: './packagers/appx/icons',
       manifest: './packagers/appx/AppXManifest.xml',
-      // Use development certificate
-      devCert: path.join(__dirname, 'packagers', 'appx', 'devcert.pfx'),
-      certPass: 'first2apply',
+      // Signing material must stay outside the repository.
+      ...(windowsCertificatePath
+        ? {
+            devCert: path.resolve(windowsCertificatePath),
+            certPass: process.env.WINDOWS_APPX_CERT_PASSWORD,
+          }
+        : {}),
     }),
     // new MakerRpm({}),
     new MakerDeb({

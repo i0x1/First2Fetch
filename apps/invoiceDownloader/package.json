@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc --noEmit",
-    "test": "echo \"Error: no test specified\"",
+    "test": "echo \"No tests configured\"",
     "lint": "eslint src/",
     "watch": "nodemon --exec \"node --require ts-node/register --inspect=0.0.0.0:9229 src/main.ts\"",
     "prettier": "npx prettier --check \"src/**/*.ts\""

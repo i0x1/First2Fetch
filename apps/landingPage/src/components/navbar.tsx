@@ -1,16 +1,12 @@
 import { useEffect, useState } from 'react';
 
-import { Button } from '@first2apply/ui';
 import Link from 'next/link';
+
+import { BrandMark } from './brandMark';
 
 function useScrollLock(lock: boolean) {
   useEffect(() => {
-    if (lock) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'auto';
-    }
-
+    document.body.style.overflow = lock ? 'hidden' : 'auto';
     return () => {
       document.body.style.overflow = 'auto';
     };
@@ -24,131 +20,79 @@ export function Navbar() {
   useScrollLock(isOpen);
 
   useEffect(() => {
-    const handleScroll = () => {
-      const offset = window.scrollY;
-      setHasScrolled(offset > 10);
-    };
-
-    window.addEventListener('scroll', handleScroll);
-
-    return () => {
-      window.removeEventListener('scroll', handleScroll);
-    };
+    const handleScroll = () => setHasScrolled(window.scrollY > 10);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   return (
-    <>
-      {/* Mobile menu */}
-      <nav
-        className={`fixed left-0 right-0 top-0 z-[100] flex h-14 w-full items-center justify-between px-4 md:hidden ${
-          hasScrolled && 'dark:border-background border-b'
-        } from-background to-background/60 dark:to-background/90 bg-gradient-to-b backdrop-blur-md backdrop-filter transition-all duration-100`}
-      >
-        <Link href="/" className="flex items-center gap-3">
-          <svg
-            version="1.0"
-            xmlns="http://www.w3.org/2000/svg"
-            width="24px"
-            height="24px"
-            viewBox="150 150 472 452"
-            preserveAspectRatio="xMidYMid meet"
-            fill="currentColor"
-          >
-            <g transform="translate(0.000000,752.000000) scale(0.100000,-0.100000)" stroke="none">
-              <path
-                d="M5799 5751 c-520 -299 -4122 -2430 -4144 -2452 -24 -24 -28 -32 -19
--47 6 -9 24 -20 40 -23 16 -4 306 -7 644 -8 l615 -1 355 -744 c370 -777 372
--782 420 -756 18 9 727 1008 732 1031 2 7 -146 46 -402 105 -223 51 -406 94
--407 94 -2 0 -4 -207 -5 -459 l-3 -459 -293 615 c-241 505 -291 618 -280 628
-60 55 2788 2483 2802 2495 21 16 22 17 -1272 -1605 -491 -616 -889 -1121 -885
--1122 54 -17 1637 -375 1660 -376 39 -1 85 29 96 64 9 27 438 3061 434 3066
--2 1 -41 -19 -88 -46z"
-              />
-            </g>
-          </svg>
-          <span className="text-lg font-medium">First 2 Fetch</span>
+    <header
+      className={`fixed inset-x-0 top-0 z-50 border-b transition-colors ${
+        hasScrolled || isOpen ? 'border-slate-200 bg-white/95' : 'border-transparent bg-white/85'
+      } backdrop-blur-xl`}
+    >
+      <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-5 sm:px-8">
+        <Link
+          href="/"
+          className="flex items-center gap-2.5 font-bold tracking-tight text-[#17324d]"
+          onClick={() => setIsOpen(false)}
+        >
+          <BrandMark className="h-8 w-8 text-[#81966b]" />
+          <span className="text-lg">First 2 Fetch</span>
         </Link>
 
-        {/* Burger menu */}
-        <div
-          className={`relative z-[99999] flex h-10 w-10 flex-col items-center justify-center focus-visible:outline-none md:hidden ${
-            isOpen ? 'gap-0.5' : 'gap-2'
-          }`}
-          onClick={() => setIsOpen(!isOpen)}
-        >
-          {/* Line 1 */}
-          <div
-            className={`bg-foreground h-0.5 w-7 transform transition-all duration-300 ease-in-out ${
-              isOpen && 'translate-y-1 rotate-45'
-            }`}
-          ></div>
-
-          {/* Line 2 */}
-          <div
-            className={`bg-foreground h-0.5 w-7 transform transition-all duration-300 ease-in-out ${
-              isOpen && 'translate-x-full opacity-0'
-            }`}
-          ></div>
-
-          {/* Line 3 */}
-          <div
-            className={`bg-foreground h-0.5 w-7 transform transition-all duration-300 ease-in-out ${
-              isOpen && '-translate-y-1 -rotate-45'
-            }`}
-          ></div>
+        <div className="hidden items-center gap-8 text-sm font-medium text-slate-600 md:flex">
+          <Link href="/#features" className="transition-colors hover:text-[#17324d]">
+            Features
+          </Link>
+          <Link href="/#architecture" className="transition-colors hover:text-[#17324d]">
+            Architecture
+          </Link>
+          <a href="https://github.com/i0x1/First2Fetch#quick-start" className="transition-colors hover:text-[#17324d]">
+            Docs
+          </a>
+          <a
+            href="https://github.com/i0x1/First2Fetch"
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-md bg-[#81966b] px-4 py-2.5 font-semibold text-white transition-colors hover:bg-[#6f835b]"
+          >
+            View on GitHub
+          </a>
         </div>
 
-        <dialog
-          className={`bg-background fixed top-0 z-[9999] flex h-screen w-full flex-col items-start gap-6 pl-12 pt-24 md:hidden ${
-            !isOpen && 'hidden'
-          }`}
-          open={isOpen}
+        <button
+          type="button"
+          aria-label={isOpen ? 'Close menu' : 'Open menu'}
+          aria-expanded={isOpen}
+          className="grid h-10 w-10 place-items-center rounded-md border border-slate-200 text-xl leading-none text-[#17324d] md:hidden"
+          onClick={() => setIsOpen((open) => !open)}
         >
-          <Link href="/download" passHref onClick={() => setIsOpen(false)}>
-            <Button className="-ml-3 h-10 px-3 text-xl">Download</Button>
-          </Link>
-        </dialog>
+          {isOpen ? '×' : '≡'}
+        </button>
       </nav>
 
-      {/* Desktop menu */}
-      <nav
-        className={`fixed z-[100] hidden h-16 w-full md:block ${
-          hasScrolled && 'dark:border-background border-b'
-        } bg-background/60 dark:bg-background/90 backdrop-blur-md backdrop-filter transition-all duration-100`}
-      >
-        <div className="mx-auto flex h-full w-full max-w-7xl items-center justify-between px-10">
-          <Link href="/" className="flex items-center gap-3">
-            <svg
-              version="1.0"
-              xmlns="http://www.w3.org/2000/svg"
-              width="28px"
-              height="28px"
-              viewBox="150 150 472 452"
-              preserveAspectRatio="xMidYMid meet"
-              fill="currentColor"
-            >
-              <g transform="translate(0.000000,752.000000) scale(0.100000,-0.100000)" stroke="none">
-                <path
-                  d="M5799 5751 c-520 -299 -4122 -2430 -4144 -2452 -24 -24 -28 -32 -19
--47 6 -9 24 -20 40 -23 16 -4 306 -7 644 -8 l615 -1 355 -744 c370 -777 372
--782 420 -756 18 9 727 1008 732 1031 2 7 -146 46 -402 105 -223 51 -406 94
--407 94 -2 0 -4 -207 -5 -459 l-3 -459 -293 615 c-241 505 -291 618 -280 628
-60 55 2788 2483 2802 2495 21 16 22 17 -1272 -1605 -491 -616 -889 -1121 -885
--1122 54 -17 1637 -375 1660 -376 39 -1 85 29 96 64 9 27 438 3061 434 3066
--2 1 -41 -19 -88 -46z"
-                />
-              </g>
-            </svg>
-            <span className="text-lg font-medium">First 2 Fetch</span>
-          </Link>
-
-          <div className="flex items-center gap-10">
-            <Link href="/download" passHref>
-              <Button className="h-10 px-3">Download</Button>
+      {isOpen ? (
+        <div className="border-t border-slate-200 bg-white px-5 py-5 md:hidden">
+          <div className="mx-auto flex max-w-7xl flex-col gap-4 text-sm font-semibold text-[#17324d]">
+            <Link href="/#features" onClick={() => setIsOpen(false)}>
+              Features
             </Link>
+            <Link href="/#architecture" onClick={() => setIsOpen(false)}>
+              Architecture
+            </Link>
+            <a href="https://github.com/i0x1/First2Fetch#quick-start">Docs</a>
+            <a
+              href="https://github.com/i0x1/First2Fetch"
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1 rounded-md bg-[#81966b] px-4 py-3 text-center text-white"
+            >
+              View on GitHub
+            </a>
           </div>
         </div>
-      </nav>
-    </>
+      ) : null}
+    </header>
   );
 }

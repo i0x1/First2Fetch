@@ -12,7 +12,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "pages"
+  group: 'pages'
   cancel-in-progress: false
 
 jobs:
@@ -21,32 +21,30 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
+
       - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 8
-      
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
           cache: 'pnpm'
-      
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
-      
+
       - name: Build core library
         run: cd libraries/core && pnpm build
-      
+
       - name: Build UI library
         run: cd libraries/ui && pnpm build
-      
+
       - name: Build landing page
         run: |
           cd apps/landingPage
           NODE_ENV=production pnpm build
-      
+
       - name: Verify build output
         run: |
           if [ ! -d "apps/landingPage/out" ]; then
@@ -54,7 +52,7 @@ jobs:
             exit 1
           fi
           ls -la apps/landingPage/out
-      
+
       - name: Upload pages artifact
         uses: actions/upload-pages-artifact@v3
         with:

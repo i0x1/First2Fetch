@@ -74,10 +74,9 @@ web_modules/
 
 # dotenv environment variable files
 .env
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
+.env.*
+!.env.example
+!**/.env.example
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -125,6 +124,7 @@ dist
 invoice-downloader/invoices
 test.html
 .DS_Store
+Thumbs.db
 
 # compiled output
 build/
@@ -135,10 +135,26 @@ build/
 
 .pnpm-store/
 
-ssl
+# Local certificates and signing material
+ssl/
+*.key
+*.pem
+*.pfx
+*.p12
+*.cer
+*.crt
 
 # Development environment PID files
 .dev-pids/
 
 # Supabase local state (do not commit)
 **/supabase/.branches/
+**/supabase/.temp/
+
+
+
+# Generated desktop and website artifacts
+**/.webpack/
+**/.vite/
+**/out/
+**/dist/

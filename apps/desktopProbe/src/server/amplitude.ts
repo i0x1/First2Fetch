@@ -1,6 +1,6 @@
 import { ENV } from '../env';
 
-import { IAnalyticsClient } from '@/lib/analytics';
+import { AnalyticsProperties, IAnalyticsClient } from '@/lib/analytics';
 import * as amplitude from '@amplitude/analytics-node';
 import { createHash } from 'crypto';
 import { app } from 'electron';
@@ -29,7 +29,7 @@ export class AmplitudeAnalyticsClient implements IAnalyticsClient {
     this._userId = userId;
   }
 
-  public trackEvent(event: string, properties?: Record<string, any>) {
+  public trackEvent(event: string, properties?: AnalyticsProperties) {
     if (!this._isInitialized) return;
 
     amplitude.track(

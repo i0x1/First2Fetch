@@ -2,12 +2,12 @@
   "name": "first2fetch-desktop",
   "productName": "First 2 Fetch",
   "version": "2.3.0",
-  "description": "First 2 Apply - Job Alert App | Instant Notifications for New Job Listings",
+  "description": "Open-source desktop app for monitoring, filtering, and organizing job listings.",
   "main": ".webpack/main",
   "scripts": {
     "start": "NODE_OPTIONS=--dns-result-order=ipv4first electron-forge start",
     "publish": "electron-forge publish",
-    "lint": "eslint --ext .ts,.tsx .",
+    "lint": "eslint --ext .ts,.tsx src e2e",
     "build": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -17,8 +17,8 @@
     "make": "electron-forge make --arch x64",
     "release": "npx release-it --ci"
   },
-  "keywords": [],
-  "author": "BeastX Industries",
+  "keywords": ["electron", "job-search", "job-alerts", "supabase"],
+  "author": "First 2 Fetch contributors",
   "license": "MIT",
   "release-it": {
     "git": {

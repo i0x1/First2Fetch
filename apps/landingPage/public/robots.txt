@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
-Disallow: /terms-of-service
-Disallow: /privacy-policy
+
+Sitemap: https://i0x1.github.io/First2Fetch/sitemap.xml

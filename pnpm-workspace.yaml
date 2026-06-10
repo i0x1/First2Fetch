@@ -13,7 +13,6 @@ enablePrePostScripts: true
 onlyBuiltDependencies:
   - '@parcel/watcher'
   - aws-sdk
-  - contentlayer
   - core-js
   - electron
   - electron-forge

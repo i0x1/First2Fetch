@@ -6,18 +6,17 @@ This document is written for LLM agents and developers who need to work in this 
 
 This is a pnpm/Nx monorepo.
 
-| Path | Purpose |
-| --- | --- |
-| `apps/desktopProbe` | Main Electron desktop application. It owns the React UI, Electron main process, local browser scraping, scheduled scans, IPC, tray behavior, auto updates, notifications, and Supabase client wrapper. |
-| `apps/backend` | Supabase project: migrations, seed data, config, and Deno edge functions. This is the real backend for auth-aware operations, parsing, subscriptions, Stripe webhooks, email hooks, and LLM-powered matching. |
-| `apps/landingPage` | Next.js marketing/download site. It imports shared UI components and has no direct scraping runtime responsibility. |
-| `apps/blog` | Next.js/contentlayer blog. Mostly content and SEO. |
-| `apps/nodeBackend` | Small Node migration utility for batch job tag updates through Supabase RPCs. Not the main backend. |
-| `apps/invoiceDownloader` | Stripe/Keez invoice utility. Operational side tool, separate from the job scanning product. |
-| `libraries/core` | Shared TypeScript types, errors, and logging exports used by desktop and backend functions. Important for `DbSchema`, `Job`, `Link`, `JobSite`, status enums, and provider names. |
-| `libraries/ui` | Shared React UI primitives and theme utilities built around Radix, Tailwind, shadcn-style components, and local helpers. |
-| `other/emailTemplates` | HTML email templates and related assets. |
-| `docs` | Human/agent documentation. |
+| Path                     | Purpose                                                                                                                                                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/desktopProbe`      | Main Electron desktop application. It owns the React UI, Electron main process, local browser scraping, scheduled scans, IPC, tray behavior, auto updates, notifications, and Supabase client wrapper.        |
+| `apps/backend`           | Supabase project: migrations, seed data, config, and Deno edge functions. This is the real backend for auth-aware operations, parsing, subscriptions, Stripe webhooks, email hooks, and LLM-powered matching. |
+| `apps/landingPage`       | Static Next.js project website deployed to GitHub Pages. It presents the product, documentation, releases, privacy notes, and fictional demo previews.                                                        |
+| `apps/nodeBackend`       | Small Node migration utility for batch job tag updates through Supabase RPCs. Not the main backend.                                                                                                           |
+| `apps/invoiceDownloader` | Stripe/Keez invoice utility. Operational side tool, separate from the job scanning product.                                                                                                                   |
+| `libraries/core`         | Shared TypeScript types, errors, and logging exports used by desktop and backend functions. Important for `DbSchema`, `Job`, `Link`, `JobSite`, status enums, and provider names.                             |
+| `libraries/ui`           | Shared React UI primitives and theme utilities built around Radix, Tailwind, shadcn-style components, and local helpers.                                                                                      |
+| `other/emailTemplates`   | HTML email templates and related assets.                                                                                                                                                                      |
+| `docs`                   | Human/agent documentation and sanitized project screenshots.                                                                                                                                                  |
 
 Root scripts call Nx targets. Common commands:
 
@@ -504,6 +503,7 @@ Desktop `.env` is loaded from `apps/desktopProbe/.env`:
 - `REMOTE_LOG_LEVEL` (optional — minimum level sent to Axiom; default `info`)
 - `AXIOM_TOKEN`, `AXIOM_DATASET`, `AXIOM_URL` (optional remote logging — see `docs/logging.md`)
 - `AMPLITUDE_API_KEY` (optional)
+- `WINDOWS_APPX_CERT_PATH`, `WINDOWS_APPX_CERT_PASSWORD` (optional AppX signing; certificate stays outside Git)
 - Release/notarization variables used by Electron Forge when packaging.
 
 Backend edge functions use Deno env through `_shared/env.ts`:
@@ -532,7 +532,8 @@ Desktop:
 - Main bundle path is `.webpack/main`.
 - Renderer dev server port is `3049`.
 - Packagers include Squirrel, DMG, AppX, Deb, and Zip.
-- Publisher uploads release artifacts to S3 bucket `first2apply.com`.
+- The inherited release publisher still uses the legacy `first2apply.com` S3 bucket and artifact naming. Treat this as compatibility infrastructure, not current product branding.
+- AppX signing material is loaded from `WINDOWS_APPX_CERT_PATH`; certificates and private keys must never be stored in the repository.
 - Custom protocol in packaging is `first2fetch`.
 
 Backend:
@@ -541,10 +542,12 @@ Backend:
 - `npx supabase functions serve` runs edge functions locally.
 - `npx supabase db push --include-seed` applies migrations and seed to linked cloud projects.
 
-Marketing/blog:
+Website:
 
-- `apps/landingPage` and `apps/blog` are independent Next.js apps.
-- `libraries/ui` is shared by desktop and landing page.
+- `apps/landingPage` is an independent static Next.js app.
+- It keeps its presentation components local instead of importing the desktop UI library, which reduces the public site bundle.
+- `apps/landingPage` exports under the `/First2Fetch` base path for GitHub Pages.
+- Product previews and documentation screenshots must use fictional data only.
 
 ## Agent Working Notes
 
@@ -561,4 +564,3 @@ Marketing/blog:
 - Deep-link naming is mixed in historical config. The active desktop protocol in `index.ts`, `forge.config.ts`, and password reset code is `first2fetch://`; `apps/backend/supabase/config.toml` still contains an older `first2apply://**` redirect entry, so verify redirect allow-lists when changing auth links. On Supabase Cloud, add `first2fetch://reset-password` under Dashboard → Authentication → URL Configuration.
 - Auth emails (signup confirm, password reset) use Dashboard → Authentication → SMTP, not `RESEND_*` edge secrets. Default Supabase SMTP only delivers to org team addresses; configure Resend (or another SMTP provider) for production auth mail.
 - Some networks block outbound connections to `*.supabase.co` (`ECONNREFUSED` in the desktop terminal). If auth/API calls fail while other HTTPS sites work, try another network (e.g. mobile hotspot).
-- There are existing modified files in backend function areas in some worktrees. Check `git status` before editing and avoid reverting unrelated user changes.
