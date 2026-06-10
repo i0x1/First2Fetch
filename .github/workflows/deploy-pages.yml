@@ -2,8 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -12,12 +11,13 @@ permissions:
   id-token: write
 
 concurrency:
-  group: 'pages'
-  cancel-in-progress: false
+  group: pages
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,27 +31,23 @@ jobs:
           node-version: '22'
           cache: 'pnpm'
 
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts
-
-      - name: Build core library
-        run: cd libraries/core && pnpm build
-
-      - name: Build UI library
-        run: cd libraries/ui && pnpm build
+        run: pnpm install --frozen-lockfile
 
       - name: Build landing page
-        run: |
-          cd apps/landingPage
-          NODE_ENV=production pnpm build
+        run: pnpm --filter @first2fetch/landing-page build
+        env:
+          NODE_ENV: production
 
       - name: Verify build output
         run: |
-          if [ ! -d "apps/landingPage/out" ]; then
-            echo "Error: Build output directory not found"
-            exit 1
-          fi
-          ls -la apps/landingPage/out
+          test -f apps/landingPage/out/index.html
+          test -f apps/landingPage/out/404.html
+          test -d apps/landingPage/out/_next
+          echo "GitHub Pages artifact is ready."
 
       - name: Upload pages artifact
         uses: actions/upload-pages-artifact@v3
@@ -64,6 +60,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     needs: build
+    timeout-minutes: 10
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
