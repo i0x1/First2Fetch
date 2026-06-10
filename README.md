@@ -167,8 +167,16 @@ Bug reports and focused pull requests are welcome. Read [CONTRIBUTING.md](CONTRI
 
 First 2 Fetch is released under the [MIT License](LICENSE.txt).
 
-## Credits
+## Fork Lineage
 
-- [First 2 Apply](https://github.com/beastx-ro/first2apply) by BeastX Industries provided the original application, monorepo structure, scanner architecture, backend foundation, and product workflow that this fork extends.
-- The shared component library follows patterns from [shadcn/ui](https://ui.shadcn.com/) and uses [Radix UI](https://www.radix-ui.com/) primitives.
-- Job-board names and logos belong to their respective owners and are used only to identify supported sources.
+First 2 Fetch is a fork of [First 2 Apply](https://github.com/beastx-ro/first2apply) by BeastX Industries. It retains the core foundation while adding:
+
+- Faster date-grouped job loading, database indexes, and timezone-aware queries
+- Expanded job sources, custom sources, scanner controls, and failure visibility
+- Advanced filtering, company lists, configurable AI providers, and task-specific AI models
+- Improved job organization with labels, notes, bulk actions, CSV export, and job counts
+- UX/UI decisions catering to larger job chunk 
+- Broader API vendor support 
+- etc.
+
+The shared component library follows patterns from [shadcn/ui](https://ui.shadcn.com/) and uses [Radix UI](https://www.radix-ui.com/) primitives. Job-board names and logos belong to their respective owners.
