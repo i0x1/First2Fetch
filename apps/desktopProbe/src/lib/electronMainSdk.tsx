@@ -138,6 +138,10 @@ export async function listLinks(): Promise<Link[]> {
   return links;
 }
 
+export async function getLinkJobCounts(): Promise<Record<number, number>> {
+  return _mainProcessApiCall<Record<number, number>>('get-link-job-counts', {});
+}
+
 /**
  * Delete a link.
  */

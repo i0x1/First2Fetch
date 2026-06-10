@@ -341,6 +341,14 @@ export type DbSchema = {
         Args: {};
         Returns: {};
       };
+      count_jobs_by_link: {
+        Params: Record<string, never>;
+        Args: {};
+        Returns: Array<{
+          link_id: number;
+          job_count: number;
+        }>;
+      };
     };
   };
 };

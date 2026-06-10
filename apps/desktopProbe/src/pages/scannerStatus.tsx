@@ -8,7 +8,49 @@ import { useEffect, useMemo, useState } from 'react';
 import { CompactPageHeader, CompactPanel } from '@/components/compact/compactLayout';
 import { useLinks } from '@/hooks/links';
 import { useSites } from '@/hooks/sites';
+import { Link } from '@first2apply/core';
 import { DefaultLayout } from './defaultLayout';
+
+const scrapeFailureThreshold = 3;
+
+function isErrorLog(log: string) {
+  return /error|failed|failure/i.test(log);
+}
+
+function buildAttentionSummary({
+  failingLinks,
+  logErrors,
+  boardErrorCount,
+}: {
+  failingLinks: Link[];
+  logErrors: string[];
+  boardErrorCount: number;
+}) {
+  const items: string[] = [];
+
+  if (failingLinks.length > 0) {
+    items.push(
+      `${failingLinks.length} saved search${failingLinks.length === 1 ? '' : 'es'} failed to load job lists (3+ failures). Open Searches → click the row → Retry.`,
+    );
+  }
+
+  const parseFailures = logErrors.filter((log) => /failed to parse|parse failed|error processing job/i.test(log)).length;
+  if (parseFailures > 0) {
+    items.push(
+      `${parseFailures} job description${parseFailures === 1 ? '' : 's'} could not be read. Check you are logged into job boards in the in-app browser, then run another scan.`,
+    );
+  }
+
+  if (boardErrorCount > 0 && failingLinks.length === 0) {
+    items.push('Some job boards reported scrape errors. See Boards Health below.');
+  }
+
+  if (items.length === 0 && logErrors.length > 0) {
+    items.push('Recent scan errors were logged. Expand Activity Log below for details.');
+  }
+
+  return items;
+}
 
 export function ScannerStatusPage() {
   const [status, setStatus] = useState<ScannerStatus | null>(null);
@@ -81,9 +123,12 @@ export function ScannerStatusPage() {
 
   const logs = status.logs ?? [];
   const currentJobs = status.currentJobs ?? [];
-  const logErrorCount = logs.filter((log) => /error|failed|failure/i.test(log)).length;
+  const errorLogs = logs.filter(isErrorLog);
+  const logErrorCount = errorLogs.length;
   const boardErrorCount = boardHealth.reduce((sum, board) => sum + board.errors, 0);
+  const failingLinks = links.filter((link) => link.scrape_failure_count >= scrapeFailureThreshold);
   const totalErrors = logErrorCount + boardErrorCount;
+  const attentionItems = buildAttentionSummary({ failingLinks, logErrors: errorLogs, boardErrorCount });
   const lastScanDate = boardHealth
     .map((board) => board.lastScrapedAt)
     .filter((date): date is Date => !!date)
@@ -93,6 +138,19 @@ export function ScannerStatusPage() {
   return (
     <DefaultLayout className="max-w-5xl space-y-3">
       <CompactPageHeader title="Scanner Status" />
+
+      {totalErrors > 0 && (
+        <CompactPanel title="Needs attention">
+          <ul className="space-y-1.5 px-2 py-2 text-[11px] text-foreground">
+            {attentionItems.map((item) => (
+              <li key={item} className="flex gap-2">
+                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-destructive" />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </CompactPanel>
+      )}
 
       <CompactPanel title="Scanner">
         <div className="grid grid-cols-2 divide-x divide-y divide-border text-xs md:grid-cols-5 md:divide-y-0">
@@ -187,13 +245,19 @@ export function ScannerStatusPage() {
         </CompactPanel>
       )}
 
-      <CompactPanel title="Activity Log">
+      <CompactPanel title={`Activity Log${errorLogs.length > 0 ? ` · ${errorLogs.length} error${errorLogs.length === 1 ? '' : 's'}` : ''}`}>
         <div className="h-56 space-y-1 overflow-y-auto p-2 font-mono text-[11px]">
           {logs.length === 0 ? (
             <div className="text-muted-foreground">No recent activity.</div>
           ) : (
             logs.map((log, i) => (
-              <div key={i} className="border-b border-border/50 pb-1 last:border-0 last:pb-0">
+              <div
+                key={i}
+                className={cn(
+                  'border-b border-border/50 pb-1 last:border-0 last:pb-0',
+                  isErrorLog(log) && 'rounded bg-destructive/10 px-1 text-destructive',
+                )}
+              >
                 {log}
               </div>
             ))

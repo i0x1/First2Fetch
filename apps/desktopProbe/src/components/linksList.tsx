@@ -16,11 +16,13 @@ const scrapeFailureThreshold = 3;
 
 export function LinksList({
   links,
+  jobCountsByLinkId = {},
   onDeleteLink,
   onDebugLink,
   onUpdateLink,
 }: {
   links: Link[];
+  jobCountsByLinkId?: Record<number, number>;
   onDeleteLink: (linkId: number) => void;
   onDebugLink: (linkId: number) => void;
   onUpdateLink: (data: { linkId: number; title: string; url: string }) => Promise<void>;
@@ -78,7 +80,9 @@ export function LinksList({
               <CompactTd className="whitespace-nowrap text-[10px] text-muted-foreground">
                 <ReactTimeAgo date={new Date(link.created_at)} locale="en-US" />
               </CompactTd>
-              <CompactTd className="whitespace-nowrap text-[11px] text-muted-foreground">—</CompactTd>
+              <CompactTd className="whitespace-nowrap text-[11px] text-muted-foreground">
+                {jobCountsByLinkId[link.id] ?? 0}
+              </CompactTd>
               <CompactTd className="whitespace-nowrap">
                 <span className={cn('text-[11px] font-medium', isFailure ? 'text-destructive' : 'text-foreground')}>
                   {isFailure ? 'Needs attention' : 'OK'}

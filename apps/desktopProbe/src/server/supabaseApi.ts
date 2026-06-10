@@ -115,6 +115,22 @@ export class F2aSupabaseApi {
     );
   }
 
+  async getLinkJobCounts(): Promise<Record<number, number>> {
+    const rows = await this._supabaseApiCall<
+      Array<{
+        link_id: number;
+        job_count: number;
+      }>,
+      PostgrestError
+    >(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (this._supabase.rpc as any)('count_jobs_by_link');
+      return { data, error };
+    });
+
+    return Object.fromEntries(rows.map((row) => [row.link_id, Number(row.job_count)]));
+  }
+
   /**
    * Delete a link.
    */

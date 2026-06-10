@@ -134,6 +134,8 @@ export function initRendererIpcApi({
 
   ipcMain.handle('list-links', async (_) => _apiCall(() => supabaseApi.listLinks()));
 
+  ipcMain.handle('get-link-job-counts', async (_) => _apiCall(() => supabaseApi.getLinkJobCounts()));
+
   ipcMain.handle('delete-link', async (_, { linkId }) =>
     _apiCall(async () => {
       const res = await supabaseApi.deleteLink(linkId);

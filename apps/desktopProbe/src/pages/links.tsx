@@ -6,7 +6,7 @@ import { LinksList } from '@/components/linksList';
 import { LinksListSkeleton } from '@/components/skeletons/linksListSkeleton';
 import { useError } from '@/hooks/error';
 import { useLinks } from '@/hooks/links';
-import { scanLink } from '@/lib/electronMainSdk';
+import { getLinkJobCounts, scanLink } from '@/lib/electronMainSdk';
 import { throwError } from '@first2apply/core';
 import { toast } from '@first2apply/ui';
 
@@ -18,12 +18,15 @@ export function LinksPage() {
   const { isLoading, links, removeLink, updateLink, reloadLinks } = useLinks();
   const browserWindowRef = useRef<BrowserWindowHandle>(null);
   const [currentDebugLinkId, setCurrentDebugLinkId] = useState<number | null>(null);
+  const [jobCountsByLinkId, setJobCountsByLinkId] = useState<Record<number, number>>({});
 
   // refresh links on component mount
   useEffect(() => {
     const asyncLoad = async () => {
       try {
         await reloadLinks();
+        const counts = await getLinkJobCounts();
+        setJobCountsByLinkId(counts);
       } catch (error) {
         handleError({ error });
       }
@@ -105,6 +108,7 @@ export function LinksPage() {
       {links.length > 0 && (
         <LinksList
           links={links}
+          jobCountsByLinkId={jobCountsByLinkId}
           onDeleteLink={handleDeleteLink}
           onDebugLink={handleDebugLink}
           onUpdateLink={handleUpdateLink}
