@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dashboard UI Contract</title>
+    <style>
+      :root {
+        --bg: #f8fafc;
+        --panel: #ffffff;
+        --panel-soft: #f1f5f9;
+        --ink: #1e3a5f;
+        --muted: #64748b;
+        --line: #e2e8f0;
+        --orange: #ea580c;
+        --orange-soft: rgba(234, 88, 12, 0.12);
+        --nav-bg: #1e3a5f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 13px;
+      }
+
+      .app {
+        display: grid;
+        min-height: 100vh;
+        grid-template-columns: 56px minmax(0, 1fr);
+      }
+
+      .sidebar {
+        background: var(--nav-bg);
+        padding: 10px 6px;
+      }
+
+      .mark {
+        display: grid;
+        width: 32px;
+        height: 32px;
+        place-items: center;
+        border-radius: 8px;
+        background: var(--orange);
+        color: white;
+        font-size: 11px;
+        font-weight: 800;
+      }
+
+      main {
+        padding: 8px 12px 6px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 6px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 17px;
+        font-weight: 650;
+      }
+
+      .toolbar {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 4px;
+      }
+
+      input {
+        min-height: 30px;
+        flex: 1;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 4px 8px;
+      }
+
+      .seg {
+        display: inline-flex;
+        gap: 2px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+        padding: 2px;
+      }
+
+      .seg button {
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--muted);
+        padding: 5px 8px;
+        font-size: 11px;
+        font-weight: 600;
+      }
+
+      .seg button.active {
+        background: var(--orange);
+        color: white;
+      }
+
+      .jobs-shell {
+        display: grid;
+        height: calc(100vh - 148px);
+        grid-template-columns: minmax(420px, 1.65fr) minmax(280px, 1fr);
+        gap: 6px;
+      }
+
+      .panel {
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+      }
+
+      .jobs-table {
+        width: 100%;
+        min-width: 720px;
+        border-collapse: collapse;
+        table-layout: fixed;
+        font-size: 11px;
+      }
+
+      th,
+      td {
+        border-bottom: 1px solid var(--line);
+        padding: 3px 5px;
+        text-align: left;
+      }
+
+      th {
+        background: var(--panel-soft);
+        color: var(--muted);
+        font-size: 9px;
+        text-transform: uppercase;
+      }
+
+      tr.selected {
+        border-left: 2px solid var(--orange);
+        background: var(--orange-soft);
+      }
+
+      .co-logo {
+        width: 26px;
+        height: 26px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel-soft);
+      }
+
+      .co-logo img {
+        width: 100%;
+        height: 100%;
+      }
+
+      .settings {
+        margin-top: 8px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+        padding: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar"><span class="mark">F2</span></aside>
+      <main>
+        <div class="topbar"><h1 data-testid="page-title">Jobs</h1></div>
+        <div class="toolbar">
+          <input placeholder="Search title or company..." />
+          <div class="seg" data-testid="job-status-seg">
+            <button class="active">New 18</button>
+            <button>Applied 3</button>
+            <button>Archived 12</button>
+            <button>Skipped 5</button>
+          </div>
+        </div>
+        <div class="jobs-shell">
+          <section class="panel">
+            <table class="jobs-table" data-testid="jobs-table">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>Job / company</th>
+                  <th>Location</th>
+                  <th>Found</th>
+                  <th>Posted</th>
+                  <th>Search</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="selected" data-testid="job-row">
+                  <td>
+                    <div class="co-logo">
+                      <img src="https://logo.clearbit.com/northstarlabs.com" alt="" />
+                    </div>
+                  </td>
+                  <td><strong>Product Designer</strong><br />Northstar Labs</td>
+                  <td>Remote</td>
+                  <td>12m</td>
+                  <td>2h</td>
+                  <td>Remote Product Designer</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+          <section class="panel"><div class="settings" data-testid="settings-panel">Plan <strong>PRO</strong></div></section>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

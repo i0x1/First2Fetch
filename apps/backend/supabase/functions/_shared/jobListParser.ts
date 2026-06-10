@@ -1,6 +1,6 @@
-import { JobSite } from '@first2apply/core';
+import { JobSite, WebPageRuntimeData } from '@first2apply/core';
 import { throwError } from '@first2apply/core';
-import { DbSchema, Job, JobType, Link, SiteProvider, User } from '@first2apply/core';
+import { DbSchema, JobType, Link, SiteProvider, User } from '@first2apply/core';
 import { SupabaseClient } from '@supabase/supabasefork';
 import { DOMParser, Element } from 'https://deno.land/x/deno_dom@v0.1.43/deno-dom-wasm.ts';
 import { encodeHex } from 'jsr:@std/encoding/hex';
@@ -9,6 +9,11 @@ import turndown from 'turndown';
 import { parseCustomJobs } from './customJobsParser.ts';
 import { EdgeFunctionAuthorizedContext } from './edgeFunctions.ts';
 import { ILogger } from './logger.ts';
+import { parseDiceJobs } from './parsers/dice.ts';
+import { parseHiringCafeJobs } from './parsers/hiringCafe.ts';
+import { parseLinkedInJobs } from './parsers/linkedin.ts';
+import { JobSiteParseResult, ParsedJob } from './parsers/parserTypes.ts';
+import { parseRemoteioJobs } from './parsers/remoteio.ts';
 import { checkUserSubscription } from './subscription.ts';
 
 const turndownService = new turndown({
@@ -54,7 +59,7 @@ export function getJobSite({
     const hostname = new URL(url).hostname.replace('emplois.', '');
     const parts = hostname.split('.').reverse();
     while (parts.length > 3) parts.shift();
-    const [_, domain] = parts;
+    const [, domain] = parts;
     return domain;
   };
 
@@ -132,11 +137,13 @@ export async function parseJobsListUrl({
   allJobSites,
   link,
   html,
+  webPageRuntimeData,
   context,
 }: {
   allJobSites: JobSite[];
   link: Link;
   html: string;
+  webPageRuntimeData?: WebPageRuntimeData;
   // dependencies
   context: EdgeFunctionAuthorizedContext;
 }) {
@@ -146,11 +153,21 @@ export async function parseJobsListUrl({
   });
 
   const { url } = link;
-  const site = getJobSite({ allJobSites, url, hasCustomJobsParsing });
+  const site = allJobSites.find((s) => s.id === link.site_id) ?? throwError('Job site not found');
 
+  if (site.provider === SiteProvider.custom && !hasCustomJobsParsing) {
+    context.logger.info(
+      `User ${context.user.id} tried to parse a custom job site without having the required subscription.`,
+    );
+    // don't throw an error here, just return no jobs
+    return { jobs: [], site, parseFailed: false };
+  }
+
+  context.logger.addMeta('provider', site.provider);
   const { jobs, listFound, elementsCount, llmApiCallCost } = await parseSiteJobsList({
     site,
     html,
+    webPageRuntimeData,
     url,
     ...context,
   });
@@ -160,18 +177,6 @@ export async function parseJobsListUrl({
   return { jobs, site, parseFailed, llmApiCallCost };
 }
 
-export type ParsedJob = Omit<Job, 'id' | 'user_id' | 'visible' | 'status' | 'created_at' | 'updated_at'>;
-export type JobSiteParseResult = {
-  jobs: ParsedJob[];
-  listFound: boolean;
-  elementsCount: number;
-  llmApiCallCost?: {
-    cost: number;
-    inputTokensUsed: number;
-    outputTokensUsed: number;
-  };
-};
-
 /**
  * Parse jobs list from a site provided url.
  */
@@ -179,11 +184,13 @@ async function parseSiteJobsList({
   site,
   html,
   url,
+  webPageRuntimeData,
   ...context
 }: {
   site: JobSite;
   html: string;
   url: string;
+  webPageRuntimeData?: WebPageRuntimeData;
 
   logger: ILogger;
   supabaseAdminClient: SupabaseClient<DbSchema, 'public'>;
@@ -191,7 +198,7 @@ async function parseSiteJobsList({
 }): Promise<JobSiteParseResult> {
   switch (site.provider) {
     case SiteProvider.linkedin:
-      return parseLinkedInJobs({ siteId: site.id, html });
+      return parseLinkedInJobs({ siteId: site.id, html, webPageRuntimeData, ...context });
     case SiteProvider.glassdoor:
       return parseGlassDoorJobs({ siteId: site.id, html });
     case SiteProvider.indeed:
@@ -224,358 +231,11 @@ async function parseSiteJobsList({
       return parseUSAJobsJobs({ siteId: site.id, html });
     case SiteProvider.talent:
       return parseTalentJobs({ siteId: site.id, html });
+    case SiteProvider.hiringCafe:
+      return parseHiringCafeJobs({ siteId: site.id, html });
     case SiteProvider.custom:
       return parseCustomJobs({ siteId: site.id, html, url, ...context });
   }
-}
-
-/**
- * Extract posting date from a LinkedIn job element using hybrid approach:
- * 1. Try specific CSS selectors
- * 2. Search footer items for time patterns
- * 3. Fall back to broad text pattern matching
- */
-function extractPostingDate(el: Element): {
-  posted_at_raw?: string;
-  is_repost: boolean;
-} {
-  let posted_at_raw: string | undefined;
-
-  // STEP 1: Try specific selectors (V1 - non-logged-in layout)
-  const dateSelectors = [
-    '.job-search-card__listdate',
-    'time',
-    '.job-result-card__listdate',
-    '.job-search-card__listdate--new',
-  ];
-
-  for (const selector of dateSelectors) {
-    const dateEl = el.querySelector(selector);
-    if (dateEl?.textContent?.trim()) {
-      posted_at_raw = dateEl.textContent.trim();
-      break;
-    }
-  }
-
-  // STEP 2: Try V2 selectors (logged-in layout) - search footer items
-  if (!posted_at_raw) {
-    const footerItems = el.querySelectorAll(
-      '.job-card-container__metadata-item, ' +
-        '.job-card-list__footer-wrapper li, ' +
-        '.job-card-job-posting-card-wrapper__footer-items li',
-    );
-
-    for (const item of footerItems) {
-      const text = item.textContent?.trim() || '';
-      // Pattern: "X minute(s)/hour(s)/day(s)/week(s)/month(s) ago"
-      if (/\d+\s+(minute|hour|day|week|month)s?\s+ago/i.test(text)) {
-        posted_at_raw = text;
-        break;
-      }
-    }
-  }
-
-  // STEP 3: Broad pattern search as fallback
-  if (!posted_at_raw) {
-    const allText = el.textContent || '';
-    const timePattern = /(Reposted\s+)?\d+\s+(minute|hour|day|week|month)s?\s+ago/gi;
-    const matches = allText.match(timePattern);
-    if (matches && matches.length > 0) {
-      // Take the first match, preferring "Reposted" ones
-      const repostedMatch = matches.find((m) => m.toLowerCase().includes('repost'));
-      posted_at_raw = (repostedMatch || matches[0]).trim();
-    }
-  }
-
-  // Clean up the text
-  if (posted_at_raw) {
-    // Remove extra whitespace, normalize
-    posted_at_raw = posted_at_raw.replace(/\s+/g, ' ').replace(/\n/g, ' ').trim();
-  }
-
-  // Extract repost flag
-  const is_repost = posted_at_raw?.toLowerCase().includes('repost') ?? false;
-
-  return { posted_at_raw, is_repost };
-}
-
-/**
- * Method used to parse a linkedin job page.
- */
-export function parseLinkedInJobs({ siteId, html }: { siteId: number; html: string }): JobSiteParseResult {
-  const document = new DOMParser().parseFromString(html, 'text/html');
-  if (!document) throw new Error('Could not parse html');
-
-  // check if the list is empty first
-  const noResultsNode =
-    document.querySelector('.no-results') ||
-    document.querySelector('.jobs-search-no-results-banner') ||
-    document.querySelector('.jobs-semantic-search__no-results');
-  if (noResultsNode) {
-    return {
-      jobs: [],
-      listFound: true,
-      elementsCount: 0,
-    };
-  }
-
-  let parserVersion = 1;
-  let jobsList = document.querySelector('.jobs-search__results-list');
-  if (!jobsList) {
-    // check if the user is logged into LinkedIn because then it has a totally different layout
-    jobsList =
-      document.querySelector('ul li[data-occludable-job-id]')?.closest('ul') ??
-      document.querySelector('.scaffold-layout__list ul') ??
-      null;
-    if (jobsList) parserVersion = 2;
-  }
-  if (!jobsList) {
-    // try to find the new layout
-    jobsList =
-      document.querySelector('div[data-view-name="jobs-home-infinite-jymbii-jobs-feed-module"]') ??
-      document.querySelector('div[data-view-name="jobs-home-top-jymbii-jobs-feed-module"]') ??
-      document.querySelector('div[data-view-name="feed-full-update"]') ??
-      null;
-    if (jobsList) parserVersion = 3;
-  }
-
-  if (!jobsList) {
-    return {
-      jobs: [],
-      listFound: false,
-      elementsCount: 0,
-    };
-  }
-
-  const parseElementV1 = (el: Element): ParsedJob | null => {
-    const externalUrl = el.querySelector('.base-card__full-link')?.getAttribute('href');
-    if (!externalUrl) return null;
-
-    const externalId = externalUrl.split('?')[0].split('/').pop();
-    if (!externalId) return null;
-
-    const title = el.querySelector('.base-search-card__title')?.textContent?.trim();
-    if (!title) return null;
-
-    const companyName = el.querySelector('.base-search-card__subtitle')?.querySelector('a')?.textContent?.trim();
-    if (!companyName) return null;
-
-    const companyLogo =
-      el.querySelector('.search-entity-media')?.querySelector('img')?.getAttribute('data-delayed-url') || undefined;
-    const rawLocation = el.querySelector('.job-search-card__location')?.textContent?.trim();
-
-    const location = rawLocation
-      ?.replace(/\(remote\)/i, '')
-      .replace(/\(on\-site\)/i, '')
-      .replace(/\(hybrid\)/i, '');
-
-    const { posted_at_raw, is_repost } = extractPostingDate(el);
-
-    return {
-      siteId,
-      externalId,
-      externalUrl,
-      title,
-      companyName,
-      companyLogo,
-      location,
-      labels: [],
-      posted_at_raw,
-      is_repost,
-    };
-  };
-  const parseElementV2 = (el: Element): ParsedJob | null => {
-    const jobCard = el.querySelector('div[data-job-id]'); // this is the new layout
-
-    const externalId =
-      el.getAttribute('data-occludable-job-id')?.trim() ?? jobCard?.getAttribute('data-job-id')?.trim();
-    if (!externalId) return null;
-
-    const externalUrlEl = el.querySelector('.job-card-list__title--link') ?? jobCard?.querySelector('a');
-    if (!externalUrlEl) return null;
-    const externalUrlPath = externalUrlEl.getAttribute('href')?.trim();
-    const prefix = 'https://www.linkedin.com';
-    let externalUrl = externalUrlPath?.startsWith(prefix)
-      ? externalUrlPath
-      : `https://www.linkedin.com${externalUrlPath}`;
-    if (externalUrl.includes('jobs/search-results/?currentJobId')) {
-      // this is a special case where the url contains the job id in the query params
-      const urlParams = new URLSearchParams(externalUrl.split('?')[1]);
-      externalUrl = `${prefix}/jobs/view/${urlParams.get('currentJobId')}`;
-    }
-    const title = (
-      externalUrlEl.querySelector(':scope > strong') ??
-      externalUrlEl.querySelector(':scope > span > strong') ??
-      externalUrlEl.querySelector('.job-card-job-posting-card-wrapper__title > span > strong')
-    )?.textContent?.trim();
-    if (!title) return null;
-
-    const companyName = (
-      el.querySelector('.artdeco-entity-lockup__subtitle > span') ??
-      el.querySelector('.artdeco-entity-lockup__subtitle')
-    )?.textContent?.trim();
-    if (!companyName) return null;
-
-    const companyLogo =
-      el.querySelector('.ivm-view-attr__img-wrapper')?.querySelector('img')?.getAttribute('src') || undefined;
-    const rawLocation = el.querySelector('.artdeco-entity-lockup__caption')?.textContent?.trim();
-
-    const location = rawLocation
-      ?.replace(/\(remote\)/i, '')
-      .replace(/\(on\-site\)/i, '')
-      .replace(/\(hybrid\)/i, '');
-
-    const jobType = rawLocation?.toLowerCase().includes('remote')
-      ? 'remote'
-      : rawLocation?.toLowerCase().includes('hybrid')
-        ? 'hybrid'
-        : 'onsite';
-
-    const benefitTags: string[] =
-      el
-        .querySelector('.artdeco-entity-lockup__metadata')
-        ?.textContent.trim()
-        .split('·')
-        .map((p) => p.trim()) ?? [];
-
-    // bottom tags
-    let footerTagEls = el.querySelectorAll('.job-card-list__footer-wrapper.job-card-container__footer-wrapper > li');
-    if (!footerTagEls.length) {
-      footerTagEls = el.querySelectorAll('.job-card-job-posting-card-wrapper__footer-items > li');
-    }
-    const footerTags = Array.from(footerTagEls)
-      .map((el) => {
-        // Remove children with class 'visually-hidden'
-        const element = el as Element;
-        element
-          .querySelectorAll('.visually-hidden')
-          .forEach((hiddenEl) => hiddenEl.parentElement?.removeChild(hiddenEl));
-
-        return el.textContent?.trim().toLowerCase();
-      })
-      .filter((p) => !p.includes('viewed'));
-    const tags = [...benefitTags, ...footerTags];
-
-    const { posted_at_raw, is_repost } = extractPostingDate(el);
-
-    return {
-      siteId,
-      externalId,
-      externalUrl,
-      title,
-      companyName,
-      companyLogo,
-      location,
-      labels: [],
-      jobType,
-      tags,
-      posted_at_raw,
-      is_repost,
-    };
-  };
-  const parseElementV3 = (el: Element): ParsedJob | null => {
-    const externalUrlEl = el.querySelector(':scope > a');
-    if (!externalUrlEl) return null;
-    const externalUrlRaw = externalUrlEl.getAttribute('href');
-    // extract the currentJobId param if present
-    if (!externalUrlRaw) return null;
-
-    const externalId = new URL(externalUrlRaw).searchParams.get('currentJobId');
-    if (!externalId) return null;
-
-    const externalUrl = `https://www.linkedin.com/jobs/view/${externalId}`;
-
-    const detailsEl = externalUrlEl.querySelector(':scope > div > div > div > div:first-child') as Element;
-    const details = Array.from(detailsEl.querySelectorAll('p'))
-      .map((p) => p.textContent?.trim() || '')
-      .filter((p) => p.length > 1)
-      // extract first line only
-      .map((text) => text.split('\n')[0].trim());
-
-    const title = details[0];
-    if (!title) return null;
-
-    const companyName = details[1];
-    if (!companyName) return null;
-
-    const location = details[2]
-      ?.replace(/\(remote\)/i, '')
-      .replace(/\(on\-site\)/i, '')
-      .replace(/\(hybrid\)/i, '')
-      .trim();
-    const jobType = details[2]?.toLowerCase().includes('remote')
-      ? 'remote'
-      : details[2]?.toLowerCase().includes('hybrid')
-        ? 'hybrid'
-        : 'onsite';
-
-    const tags = details.slice(3);
-
-    const { posted_at_raw, is_repost } = extractPostingDate(el);
-
-    return {
-      siteId,
-      externalId,
-      externalUrl,
-      title,
-      companyName,
-      location,
-      jobType,
-      labels: [],
-      tags,
-      posted_at_raw,
-      is_repost,
-    };
-  };
-
-  let jobs: Array<ParsedJob | null> = [];
-  let elementsCount = 0;
-  if (parserVersion === 1) {
-    const jobElements = Array.from(jobsList.querySelectorAll('li')) as Element[];
-    elementsCount = jobElements.length;
-    jobs = jobElements.map((el): ParsedJob | null => parseElementV1(el));
-  } else if (parserVersion === 2) {
-    const jobElements = Array.from(jobsList.querySelectorAll('li')) as Element[];
-    elementsCount = jobElements.length;
-    jobs = jobElements.map((el): ParsedJob | null => parseElementV2(el));
-  } else {
-    const jobElements = Array.from(jobsList.querySelectorAll('div[data-view-name="job-card"]')) as Element[];
-    elementsCount = jobElements.length;
-    jobs = jobElements.map((el): ParsedJob | null => parseElementV3(el));
-  }
-
-  const validJobs = jobs
-    .filter((job): job is ParsedJob => !!job)
-    .map((job) => {
-      // sanitize tags
-      job.tags = job.tags?.map((tag) => tag.trim().replaceAll(/\n/g, '')).filter((tag) => !!tag);
-
-      // try to parse the salary from the tags
-      if (!job.salary && job.tags) {
-        job.salary = job.tags.find(
-          (tag) =>
-            tag.toLowerCase().includes('/yr') ||
-            tag.toLowerCase().includes('/year') ||
-            tag.toLowerCase().includes('/yearly') ||
-            tag.toLowerCase().includes('/hr') ||
-            tag.toLowerCase().includes('/hour') ||
-            tag.toLowerCase().includes('/hourly'),
-        );
-
-        // remove the salary from the tags
-        if (job.salary) {
-          job.tags = job.tags.filter((tag) => tag !== job.salary);
-        }
-      }
-
-      return job;
-    });
-
-  return {
-    jobs: validJobs,
-    listFound: jobsList !== null,
-    elementsCount,
-  };
 }
 
 /**
@@ -811,11 +471,7 @@ export function parseGlassDoorJobs({ siteId, html }: { siteId: number; html: str
     const title = el.querySelector(`#job-title-${externalId}`)?.textContent?.trim() || '';
     if (!title) return null;
 
-    const companyNameRaw = el.querySelector('.jobCard .EmployerProfile_profileContainer__63w3R')?.textContent?.trim();
-    if (!companyNameRaw) return null;
-    
-    // Remove rating pattern (e.g., "4.5", "3.8", "3.2") from the end of company name
-    const companyName = companyNameRaw.replace(/\d+\.\d+$/, '').trim();
+    const companyName = el.querySelector('.jobCard .EmployerProfile_profileContainer__63w3R')?.textContent?.trim();
     if (!companyName) return null;
 
     const companyLogo = el
@@ -842,6 +498,7 @@ export function parseGlassDoorJobs({ siteId, html }: { siteId: number; html: str
       location,
       salary,
       labels: [],
+      tags: [],
     };
   });
 
@@ -955,85 +612,7 @@ export function parseIndeedJobs({ siteId, html }: { siteId: number; html: string
       location,
       salary,
       labels: [],
-    };
-  });
-
-  const validJobs = jobs.filter((job): job is ParsedJob => !!job);
-  return {
-    jobs: validJobs,
-    listFound: true,
-    elementsCount: jobElements.length,
-  };
-}
-
-/**
- * Method used to parse a dice job page.
- */
-export function parseDiceJobs({ siteId, html }: { siteId: number; html: string }): JobSiteParseResult {
-  const document = new DOMParser().parseFromString(html, 'text/html');
-  if (!document) throw new Error('Could not parse html');
-
-  // check if the list is empty first
-  const noResultsNode =
-    document.querySelector('.no-jobs-message') ?? document.querySelector("div[data-testid='job-search-no-results']");
-  if (noResultsNode) {
-    return {
-      jobs: [],
-      listFound: true,
-      elementsCount: 0,
-    };
-  }
-
-  const jobsList = document.querySelector('[role="list"], [aria-label="Job search results"]');
-  if (!jobsList) {
-    return {
-      jobs: [],
-      listFound: false,
-      elementsCount: 0,
-    };
-  }
-
-  const jobElements = Array.from(jobsList.querySelectorAll('div[data-testid="job-card"]')) as Element[];
-
-  const jobs = jobElements.map((el): ParsedJob | null => {
-    const externalId = el?.getAttribute('data-id')?.trim();
-    if (!externalId) return null;
-
-    const externalUrl = `https://www.dice.com/job-detail/${externalId}`.trim();
-
-    const title = el.querySelector('.content > div')?.textContent?.trim();
-    if (!title) return null;
-
-    const companyName = el.querySelector('.header > span > a:nth-child(2)')?.textContent?.trim();
-    if (!companyName) return null;
-
-    const companyLogo = el.querySelector('.header > span > a')?.querySelector('img')?.getAttribute('src') || undefined;
-
-    const location = el.querySelector('.content > span > div > div')?.textContent.trim();
-
-    const tags: string[] = [];
-    const postedAt = el
-      .querySelector('.content > span > div > div:nth-child(2) > div:nth-child(2)')
-      ?.textContent.trim();
-    if (postedAt) {
-      tags.push(postedAt);
-    }
-
-    const otherTags = Array.from(el.querySelectorAll('.content > div.box'))
-      .map((el) => el.textContent?.trim() || '')
-      .filter((t) => !!t);
-    tags.push(...otherTags);
-
-    return {
-      siteId,
-      externalId,
-      externalUrl,
-      title,
-      companyName,
-      companyLogo,
-      location,
-      labels: [],
-      tags,
+      tags: [],
     };
   });
 
@@ -1060,9 +639,10 @@ export function parseFlexjobsJobs({ siteId, html }: { siteId: number; html: stri
       elementsCount: 0,
     };
 
-  const jobElements = Array.from(jobsList.querySelectorAll('div.sc-14nyru2-3.ijOZYM > div')) as Element[];
+  const jobElements = Array.from(jobsList.querySelectorAll(':scope > div')) as Element[];
 
   const jobs = jobElements.map((el): ParsedJob | null => {
+    el = el.querySelector(':scope > div') as Element;
     const externalId = el?.getAttribute('id')?.trim();
     if (!externalId) return null;
 
@@ -1098,6 +678,7 @@ export function parseFlexjobsJobs({ siteId, html }: { siteId: number; html: stri
       jobType,
       description,
       labels: [],
+      tags: [],
     };
   });
 
@@ -1172,6 +753,7 @@ export function parseBestjobsJobs({ siteId, html }: { siteId: number; html: stri
       location,
       salary,
       labels: [],
+      tags: [],
     };
   });
 
@@ -1245,6 +827,7 @@ export function parseEchojobsJobs({ siteId, html }: { siteId: number; html: stri
       location,
       salary,
       labels: [],
+      tags: [],
     };
   });
 
@@ -1312,84 +895,7 @@ export function parseRemotiveJobs({ siteId, html }: { siteId: number; html: stri
       jobType: 'remote',
       location,
       labels: [],
-    };
-  });
-
-  const validJobs = jobs.filter((job): job is ParsedJob => !!job);
-  return {
-    jobs: validJobs,
-    listFound: true,
-    elementsCount: jobElements.length,
-  };
-}
-
-/**
- * Method used to parse a remoteio job page.
- */
-export function parseRemoteioJobs({ siteId, html }: { siteId: number; html: string }): JobSiteParseResult {
-  const document = new DOMParser().parseFromString(html, 'text/html');
-  if (!document) throw new Error('Could not parse html');
-
-  // check if the list is empty first
-  const noResultsNode = document.querySelector('.shadow-singlePost');
-  if (noResultsNode && noResultsNode.textContent.trim().toLowerCase().startsWith('no results found')) {
-    return {
-      jobs: [],
-      listFound: true,
-      elementsCount: 0,
-    };
-  }
-
-  const jobsList = document.querySelector('main');
-  if (!jobsList)
-    return {
-      jobs: [],
-      listFound: false,
-      elementsCount: 0,
-    };
-
-  const jobElements = Array.from(jobsList.querySelectorAll('.shadow-singlePost')) as Element[];
-
-  const jobs = jobElements.map((el): ParsedJob | null => {
-    const jobInfo = el.querySelector('div:nth-child(2) > a');
-    if (!jobInfo) return null;
-
-    const externalUrl = `https://www.remote.io${jobInfo.getAttribute('href')}`?.trim();
-    if (!externalUrl) return null;
-
-    const externalId = externalUrl.split('?')[0].split('/').pop();
-    if (!externalId) return null;
-
-    const title = jobInfo.textContent?.trim();
-    if (!title) return null;
-
-    const company = el.querySelector('div:first-child img');
-    if (company === null) return null;
-
-    const companyName = company.getAttribute('alt')?.trim();
-    if (!companyName) return null;
-
-    const companyLogo = company.getAttribute('src')?.trim();
-
-    const location = el.querySelector('div:nth-child(2) > div')?.textContent?.trim();
-
-    let tags: string[] | undefined;
-    const tagsList = Array.from(el.querySelectorAll('div:nth-child(4) > span')) as Element[];
-    if (tagsList.length > 0) {
-      tags = tagsList.map((tag) => tag.querySelector('a')?.textContent.trim()).filter((t): t is string => !!t);
-    }
-
-    return {
-      siteId,
-      externalId,
-      externalUrl,
-      title,
-      companyName,
-      companyLogo,
-      jobType: 'remote',
-      location,
-      tags,
-      labels: [],
+      tags: [],
     };
   });
 
@@ -1461,6 +967,7 @@ export function parseBuiltinJobs({ siteId, html }: { siteId: number; html: strin
       // jobType,
       location,
       labels: [],
+      tags: [],
     };
   });
 
@@ -1682,6 +1189,7 @@ async function parseZipRecruiterJobs({ siteId, html }: { siteId: number; html: s
         companyName,
         location,
         labels: [],
+        tags: [],
       };
     });
   };
@@ -1721,6 +1229,7 @@ async function parseZipRecruiterJobs({ siteId, html }: { siteId: number; html: s
           location,
           salary,
           labels: [],
+          tags: [],
         };
       }),
     );
@@ -1790,6 +1299,7 @@ export function parseUSAJobsJobs({ siteId, html }: { siteId: number; html: strin
       salary,
       jobType,
       labels: [],
+      tags: [],
     };
   });
 
@@ -1848,6 +1358,7 @@ export function parseTalentJobs({ siteId, html }: { siteId: number; html: string
       location,
       jobType,
       labels: [],
+      tags: [],
     };
   });
 

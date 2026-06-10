@@ -1,17 +1,16 @@
-import { Job, JobType, throwError } from '@first2apply/core';
+import { Job, JobType } from '@first2apply/core';
 import { DbSchema, User } from '@first2apply/core';
 import { SupabaseClient } from '@supabase/supabasefork';
 import { DOMParser, Element } from 'https://deno.land/x/deno_dom@v0.1.43/deno-dom-wasm.ts';
-import { zodResponseFormat } from 'npm:openai/helpers/zod';
 import turndown from 'npm:turndown';
 import { z } from 'npm:zod';
 
-import { buildAIProviderFromUserConfig, logAiUsage } from './aiProvider.ts';
+import { buildAIProviderForTask, logAiUsage } from './aiProvider.ts';
+import { truncateHtmlForLlm } from './aiHtmlLimits.ts';
 import { denoHashString } from './deno.ts';
 import { JobDescriptionUpdates } from './jobDescriptionParser.ts';
-import { JobSiteParseResult, ParsedJob } from './jobListParser.ts';
+import { JobSiteParseResult, ParsedJob } from './parsers/parserTypes.ts';
 import { ILogger } from './logger.ts';
-import { buildOpenAiClient } from './openAI.ts';
 
 /**
  * Method used to parse jobs from custom pages.
@@ -36,9 +35,10 @@ export async function parseCustomJobs({
   const { logger, supabaseAdminClient } = context;
 
   // Try to use user's configured AI provider
-  const userProvider = await buildAIProviderFromUserConfig({
+  const userProvider = await buildAIProviderForTask({
     supabaseAdminClient,
     userId: user.id,
+    task: 'job_list',
     logger,
   });
 
@@ -60,7 +60,11 @@ export async function parseCustomJobs({
     const nodesToRemove = ['head', 'script', 'style', 'nav', 'header', 'footer', 'aside', 'iframe'];
     stripNodes(document.documentElement, nodesToRemove);
     stripAttributes(document.documentElement, /^(class|style|aria-.*|role)$/);
-    const htmlContent = document.documentElement?.outerHTML ?? '';
+    const rawHtml = document.documentElement?.outerHTML ?? '';
+    const { content: htmlContent, truncated } = truncateHtmlForLlm(rawHtml);
+    if (truncated) {
+      logger.warn(`Job list HTML truncated from ${rawHtml.length} chars for LLM context limit`);
+    }
 
     return `Extract the jobs listing from the HTML page below. Return the result as a JSON object matching the provided schema. If no jobs are found, return an empty array for the jobs field.
 Here are some rules for the required output:
@@ -91,77 +95,44 @@ ${htmlContent}
 """`;
   };
 
-  let response: any;
-  let parseResult: any;
-
-  if (userProvider) {
-    // Use user's configured provider
-    provider = userProvider.provider;
-    llmConfig = userProvider.config;
-
-    const aiResponse = await provider.createChatCompletion({
-      messages: [
-        {
-          role: 'system',
-          content: SYSTEM_PROMPT,
-        },
-        {
-          role: 'user',
-          content: generateUserPrompt(),
-        },
-      ],
-      maxCompletionTokens: 50_000,
-      responseFormat: { type: 'json_object' },
-    });
-
-    response = {
-      usage: aiResponse.usage,
-      content: aiResponse.content,
-    };
-    parseResult = PARSE_JOBS_PAGE_SCHEMA.parse(JSON.parse(response.content));
-  } else {
-    // Fall back to default OpenAI client
-    const { llmConfig: defaultConfig, openAi } = buildOpenAiClient({
-      modelName: 'o3-mini',
-    });
-    llmConfig = defaultConfig;
-
-    const openAiResponse = await openAi.chat.completions.create({
-      model: llmConfig.model,
-      messages: [
-        {
-          role: 'system',
-          content: SYSTEM_PROMPT,
-        },
-        {
-          role: 'user',
-          content: generateUserPrompt(),
-        },
-      ],
-      max_completion_tokens: 50_000,
-      response_format: zodResponseFormat(PARSE_JOBS_PAGE_SCHEMA, 'ParseJobsPageResponse'),
-    });
-
-    const choice = openAiResponse.choices[0];
-    if (choice.finish_reason !== 'stop') {
-      throw new Error(`AI response did not finish: ${choice.finish_reason}`);
-    }
-
-    response = {
-      usage: openAiResponse.usage,
-      content: choice.message.content ?? throwError('missing content'),
-    };
-    parseResult = PARSE_JOBS_PAGE_SCHEMA.parse(JSON.parse(response.content));
+  // User must provide their own API key - no fallback to Azure
+  if (!userProvider) {
+    throw new Error(
+      'No AI provider configured. Please configure your AI API key in Settings to use custom job site parsing.',
+    );
   }
+
+  // Use user's configured provider
+  provider = userProvider.provider;
+  llmConfig = userProvider.config;
+
+  const aiResponse = await provider.createChatCompletion({
+    messages: [
+      {
+        role: 'system',
+        content: SYSTEM_PROMPT,
+      },
+      {
+        role: 'user',
+        content: generateUserPrompt(),
+      },
+    ],
+    maxCompletionTokens: 12_000,
+    responseFormat: { type: 'json_object' },
+  });
+
+  const response = {
+    usage: aiResponse.usage,
+    content: aiResponse.content,
+  };
+  const parseResult = PARSE_JOBS_PAGE_SCHEMA.parse(JSON.parse(response.content));
 
   await logAiUsage({
     logger,
     supabaseAdminClient,
     forUserId: user.id,
     llmConfig,
-    response: {
-      usage: response.usage,
-    },
+    response,
   });
 
   const listFound = !parseResult.errorMessage && parseResult.jobs.length > 0;
@@ -182,15 +153,17 @@ ${htmlContent}
         jobType: job.jobType || undefined,
         location: job.location || undefined,
         salary: job.salary || undefined,
-        tags: job.tags || undefined,
+        tags: job.tags ?? [],
         // associate with the site
         siteId,
         labels: [],
       }),
     ),
   ).then((jobs) => {
-    // filter out invalid jobs
-    return jobs.filter((job) => !!job.externalId && !!job.externalUrl);
+    // filter out invalid jobs (schema normalizes http -> https; require absolute https URL)
+    return jobs.filter(
+      (job) => !!job.externalId && !!job.externalUrl && /^https:\/\//i.test(job.externalUrl.trim()),
+    );
   });
 
   return {
@@ -227,8 +200,25 @@ const JOB_TYPE_SCHEMA = z.preprocess(
   z.enum(JOB_TYPE_VALUES).optional().nullable(),
 );
 
+/** Upgrade http:// to https:// so valid HTTP listings are kept (matches downstream HTTPS expectation). */
+function normalizeHttpToHttpsJobUrl(raw: string): string {
+  const trimmed = raw.trim();
+  if (/^http:\/\//i.test(trimmed)) {
+    return `https://${trimmed.replace(/^http:\/\//i, '')}`;
+  }
+  return trimmed;
+}
+
+const EXTERNAL_JOB_URL_SCHEMA = z.preprocess(
+  (value) => (typeof value === 'string' ? normalizeHttpToHttpsJobUrl(value) : value),
+  z
+    .string()
+    .url({ message: 'externalUrl must be a valid absolute URL' })
+    .refine((u) => /^https:\/\//i.test(u), { message: 'externalUrl must use https' }),
+);
+
 const JOB_SCHEMA = z.object({
-  externalUrl: z.string(),
+  externalUrl: EXTERNAL_JOB_URL_SCHEMA,
 
   title: z.string().min(3).max(200),
   companyName: z.string().min(2).max(100),
@@ -262,8 +252,8 @@ Here are some common examples of externalUrls from different popular job sites:
 - google.com: https://www.google.com/about/careers/applications/jobs/results/132525933222339270-software-engineer-iii-aiml
 
 If the user is trying to scrape a page that is just a single job description, return an empty jobs array and an appropriate errorMessage.
-Here are some unsupported website:
-- hiringcafe.com. - their html pages don't allow scraping.
+
+IMPORTANT: if the page is a job results page, but there are no jobs matching the filters, don't return an error. Return an empty jobs array and no errorMessage.
 
 Here are some other site specific notes:
 - hnhiring.com 
@@ -297,7 +287,7 @@ export async function parseCustomJobDescription({
     .from('advanced_matching')
     .select('*')
     .eq('user_id', user.id)
-    .single();
+    .maybeSingle();
   if (getAdvancedMatchingRecordError) {
     context.logger.error(
       `Failed to load advanced matching config for user ${user.id}: ${getAdvancedMatchingRecordError.message}`,
@@ -313,7 +303,11 @@ export async function parseCustomJobDescription({
     const nodesToRemove = ['head', 'script', 'style', 'nav', 'header', 'footer', 'aside', 'img', 'form'];
     stripNodes(document.documentElement, nodesToRemove);
     stripAttributes(document.documentElement, /^(class|style|aria-.*|role)$/);
-    const htmlContent = turndownService.turndown(document.documentElement?.outerHTML ?? '');
+    const rawMarkdown = turndownService.turndown(document.documentElement?.outerHTML ?? '');
+    const { content: htmlContent, truncated } = truncateHtmlForLlm(rawMarkdown);
+    if (truncated) {
+      context.logger.warn(`JD parse HTML truncated from ${rawMarkdown.length} chars for LLM context limit`);
+    }
     const withAdvancedMatchingPreferences = `Here are my job search preferences: ${advancedMatchingRecord?.chatgpt_prompt ?? 'nothing specific for the moment'}.`;
 
     const userPrompt = `Extract the job description from the HTML page below. Return the result as a JSON object matching the provided schema.
@@ -332,85 +326,51 @@ ${withAdvancedMatchingPreferences}
   const { userPrompt, htmlContent } = generateUserPrompt();
 
   // Try to use user's configured AI provider
-  const userProvider = await buildAIProviderFromUserConfig({
+  const userProvider = await buildAIProviderForTask({
     supabaseAdminClient,
     userId: user.id,
+    task: 'jd_parse',
     logger,
   });
 
-  let provider: any;
-  let llmConfig: any;
-  let response: any;
-  let parseResult: any;
-
-  if (userProvider) {
-    // Use user's configured provider
-    provider = userProvider.provider;
-    llmConfig = userProvider.config;
-
-    const aiResponse = await provider.createChatCompletion({
-      messages: [
-        {
-          role: 'system',
-          content: JOB_DESCRIPTION_SYSTEM_PROMPT,
-        },
-        {
-          role: 'user',
-          content: userPrompt,
-        },
-      ],
-      maxCompletionTokens: 10_000,
-      responseFormat: { type: 'json_object' },
-    });
-
-    response = {
-      usage: aiResponse.usage,
-      content: aiResponse.content,
-    };
-    parseResult = PARSE_JOB_DESCRIPTION_SCHEMA.parse(JSON.parse(response.content));
-  } else {
-    // Fall back to default OpenAI client
-    const { llmConfig: defaultConfig, openAi } = buildOpenAiClient({
-      modelName: 'gpt-4o-mini',
-    });
-    llmConfig = defaultConfig;
-
-    const openAiResponse = await openAi.chat.completions.create({
-      model: llmConfig.model,
-      messages: [
-        {
-          role: 'system',
-          content: JOB_DESCRIPTION_SYSTEM_PROMPT,
-        },
-        {
-          role: 'user',
-          content: userPrompt,
-        },
-      ],
-      max_completion_tokens: 10_000,
-      response_format: zodResponseFormat(PARSE_JOB_DESCRIPTION_SCHEMA, 'ParseJobDescriptionResponse'),
-    });
-
-    const choice = openAiResponse.choices[0];
-    if (choice.finish_reason !== 'stop') {
-      throw new Error(`AI response did not finish: ${choice.finish_reason}`);
-    }
-
-    response = {
-      usage: openAiResponse.usage,
-      content: choice.message.content ?? throwError('missing content'),
-    };
-    parseResult = PARSE_JOB_DESCRIPTION_SCHEMA.parse(JSON.parse(response.content));
+  // User must provide their own API key - no fallback to Azure
+  if (!userProvider) {
+    throw new Error(
+      'No AI provider configured. Please configure your AI API key in Settings to use custom job description parsing.',
+    );
   }
+
+  // Use user's configured provider
+  const provider = userProvider.provider;
+  const llmConfig = userProvider.config;
+
+  const aiResponse = await provider.createChatCompletion({
+    messages: [
+      {
+        role: 'system',
+        content: JOB_DESCRIPTION_SYSTEM_PROMPT,
+      },
+      {
+        role: 'user',
+        content: userPrompt,
+      },
+    ],
+    maxCompletionTokens: 10_000,
+    responseFormat: { type: 'json_object' },
+  });
+
+  const response = {
+    usage: aiResponse.usage,
+    content: aiResponse.content,
+  };
+  const parseResult = PARSE_JOB_DESCRIPTION_SCHEMA.parse(JSON.parse(response.content));
 
   await logAiUsage({
     logger,
     supabaseAdminClient,
     forUserId: user.id,
     llmConfig,
-    response: {
-      usage: response.usage,
-    },
+    response,
   });
 
   let updates: JobDescriptionUpdates = {};

@@ -22,7 +22,7 @@ port = 54322
 shadow_port = 54320
 # The database major version to use. This has to be the same as your remote database's. Run `SHOW
 # server_version;` on the remote database to check.
-major_version = 15
+major_version = 17
 
 [db.pooler]
 enabled = false
@@ -71,7 +71,7 @@ enabled = true
 # in emails.
 site_url = "http://app.dev.first2apply.com:4000/"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["http://app.dev.first2apply.com:4000/","first2apply://**"]
+additional_redirect_urls = ["http://app.dev.first2apply.com:4000/","first2apply://**","first2fetch://**"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # If disabled, the refresh token will never expire.
@@ -89,6 +89,7 @@ enable_signup = true
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
+# Hosted projects: configure Resend SMTP under Dashboard → Authentication → SMTP.
 enable_confirmations = false
 
 # Uncomment to customize email template
@@ -165,4 +166,16 @@ deno_version = 2
 verify_jwt = false
 
 [functions.handle-profile-change-webhook]
+verify_jwt = false
+
+[functions.create-link]
+verify_jwt = false
+
+[functions.scan-urls]
+verify_jwt = false
+
+[functions.scan-job-description]
+verify_jwt = false
+
+[functions.post-scan-hook]
 verify_jwt = false

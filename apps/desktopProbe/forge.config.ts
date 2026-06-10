@@ -12,8 +12,10 @@ import path from 'path';
 import { mainConfig } from './webpack.main.config';
 import { rendererConfig } from './webpack.renderer.config';
 
-// load env vars
-loadEnvVars({ path: path.join(__dirname, '..', 'desktopProbe', '.env') });
+// load env vars for Forge / webpack (must match `.env` next to this file)
+loadEnvVars({ path: path.join(__dirname, '.env') });
+
+const windowsCertificatePath = process.env.WINDOWS_APPX_CERT_PATH;
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -60,9 +62,13 @@ const config: ForgeConfig = {
       publisherDisplayName: 'BeastX Industries',
       assets: './packagers/appx/icons',
       manifest: './packagers/appx/AppXManifest.xml',
-      // Use development certificate
-      devCert: path.join(__dirname, 'packagers', 'appx', 'devcert.pfx'),
-      certPass: 'first2apply',
+      // Signing material must stay outside the repository.
+      ...(windowsCertificatePath
+        ? {
+            devCert: path.resolve(windowsCertificatePath),
+            certPass: process.env.WINDOWS_APPX_CERT_PASSWORD,
+          }
+        : {}),
     }),
     // new MakerRpm({}),
     new MakerDeb({
@@ -99,7 +105,8 @@ const config: ForgeConfig = {
   plugins: [
     new AutoUnpackNativesPlugin({}),
     new WebpackPlugin({
-      devContentSecurityPolicy: `default-src * self blob: data: gap:; style-src * self 'unsafe-inline' blob: data: gap:; script-src * 'self' 'unsafe-eval' 'unsafe-inline' blob: data: gap:; object-src * 'self' blob: data: gap:; img-src * self 'unsafe-inline' blob: data: gap:; connect-src self * 'unsafe-inline' blob: data: gap:; frame-src * self blob: data: gap:;`,
+      devContentSecurityPolicy:
+        "default-src 'self'; script-src 'self' http://localhost:*; style-src 'self' 'unsafe-inline' http://localhost:*; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' http://localhost:* ws://localhost:* https: wss:; frame-src 'self' https:; object-src 'none'; base-uri 'self';",
       mainConfig,
       renderer: {
         config: rendererConfig,

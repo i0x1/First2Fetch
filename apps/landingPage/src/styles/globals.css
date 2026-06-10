@@ -5,78 +5,59 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
-
+    --foreground: 211 52% 20%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-
+    --card-foreground: 211 52% 20%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-
-    --primary: 90, 20%, 50%;
-    --primary-foreground: 90 20% 10%;
-
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-
-    --destructive: 0 84.2% 60.2%;
+    --popover-foreground: 211 52% 20%;
+    --primary: 91 17% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 211 52% 20%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 211 52% 20%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
-
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 90, 20%, 70%;
-
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 91 17% 50%;
     --radius: 0.5rem;
   }
 
-  .dark {
-    --background: 0 0% 7%;
-    --foreground: 0 0% 98%;
-
-    --card: 0 0% 10%;
-    --card-foreground: 0 0% 98%;
-
-    --popover: 0 0% 15%;
-    --popover-foreground: 0 0% 98%;
-
-    --primary: 90, 20%, 50%;
-    --primary-foreground: 90, 20%, 98%;
-
-    --secondary: 240 3.7% 30%;
-    --secondary-foreground: 0 0% 98%;
-
-    --muted: 0 0% 20%;
-    --muted-foreground: 240 5% 80%;
-
-    --accent: 12 6.5% 25%;
-    --accent-foreground: 0 0% 98%;
-
-    --destructive: 0 62.8% 50%;
-    --destructive-foreground: 0 85.7% 97.3%;
-
-    --border: 240 3.7% 20%;
-    --input: 240 3.7% 20%;
-    --ring: 90, 20%, 40%;
-  }
-}
-
-@layer base {
   * {
     @apply border-border;
   }
 
+  html {
+    scroll-behavior: smooth;
+  }
+
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    @apply bg-background text-foreground;
+    font-family:
+      Inter,
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      'Segoe UI',
+      sans-serif;
+    @apply bg-background text-foreground antialiased;
+  }
+
+  a,
+  button {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#81966b] focus-visible:ring-offset-2;
   }
 
   ::selection {
-    @apply bg-[#809966]/30 dark:bg-[#809966]/50 text-foreground;
+    @apply bg-[#dfe9d5] text-[#17324d];
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
   }
 }

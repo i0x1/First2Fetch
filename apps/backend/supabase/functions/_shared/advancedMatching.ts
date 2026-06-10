@@ -1,11 +1,10 @@
 import { AdvancedMatchingConfig, DbSchema, Job, JobStatus, throwError } from '@first2apply/core';
 import { SupabaseClient } from '@supabase/supabasefork';
-import { zodResponseFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 
-import { buildAIProviderFromUserConfig, logAiUsage } from './aiProvider.ts';
+import { buildAIProviderForTask, logAiUsage } from './aiProvider.ts';
+import { truncateJobDescriptionForFilter } from './aiHtmlLimits.ts';
 import { ILogger } from './logger.ts';
-import { buildOpenAiClient } from './openAI.ts';
 import { checkUserSubscription } from './subscription.ts';
 
 /**
@@ -23,14 +22,14 @@ export async function applyAdvancedMatchingFilters({
   supabaseAdminClient: SupabaseClient<DbSchema, 'public'>;
   job: Job;
 }): Promise<{ newStatus: JobStatus; excludeReason?: string }> {
-  logger.info(`applying advanced matching filters to job ${job.id} ...`);
+  logger.debug('advanced matching started', { jobId: job.id });
   // check if the user has advanced matching enabled
   const { hasAdvancedMatching } = await checkUserSubscription({
     supabaseAdminClient,
     userId: job.user_id,
   });
   if (!hasAdvancedMatching) {
-    logger.info('user does not have advanced matching enabled');
+    logger.debug('advanced matching skipped', { jobId: job.id, reason: 'subscription_disabled' });
     return { newStatus: 'new' };
   }
 
@@ -44,17 +43,17 @@ export async function applyAdvancedMatchingFilters({
   }
   const advancedMatching: AdvancedMatchingConfig = advancedMatchingArr?.[0];
   if (!advancedMatching) {
-    logger.info(`advanced matching config not found for user ${job.user_id}`);
+    logger.debug('advanced matching skipped', { jobId: job.id, reason: 'missing_config' });
     return { newStatus: 'new' };
   }
 
   if (isFavoriteCompany({ companyName: job.companyName, advancedMatching })) {
-    logger.info(`job marked as favorite due to company name: ${job.companyName}`);
+    logger.debug('advanced matching favorite company', { jobId: job.id, companyName: job.companyName });
   }
 
   // exclude jobs from specific companies if it fully matches the entire company name
   if (isExcludedCompany({ companyName: job.companyName, advancedMatching })) {
-    logger.info(`job excluded due to company name: ${job.companyName}`);
+    logger.info('job excluded by company blacklist', { jobId: job.id, companyName: job.companyName });
     return {
       newStatus: 'excluded_by_advanced_matching',
       excludeReason: `${job.companyName} is blacklisted.`,
@@ -63,7 +62,7 @@ export async function applyAdvancedMatchingFilters({
 
   // prompt AI to determine if the job should be excluded
   if (job.description && advancedMatching.chatgpt_prompt) {
-    logger.info('prompting AI to determine if the job should be excluded ...');
+    logger.debug('advanced matching ai check started', { jobId: job.id });
 
     const { exclusionDecision } = await promptAI({
       prompt: advancedMatching.chatgpt_prompt,
@@ -73,7 +72,7 @@ export async function applyAdvancedMatchingFilters({
     });
 
     if (exclusionDecision.excluded) {
-      logger.info(`job excluded by AI: ${exclusionDecision.reason}`);
+      logger.info('job excluded by AI filter', { jobId: job.id, reason: exclusionDecision.reason });
       return {
         newStatus: 'excluded_by_advanced_matching',
         excludeReason: exclusionDecision.reason ?? undefined,
@@ -81,7 +80,7 @@ export async function applyAdvancedMatchingFilters({
     }
   }
 
-  logger.info('job passed all advanced matching filters');
+  logger.debug('advanced matching passed', { jobId: job.id });
   return { newStatus: 'new' };
 }
 
@@ -129,79 +128,46 @@ async function promptAI({
   supabaseAdminClient: SupabaseClient<DbSchema, 'public'>;
 }) {
   // Try to use user's configured AI provider
-  const userProvider = await buildAIProviderFromUserConfig({
+  const userProvider = await buildAIProviderForTask({
     supabaseAdminClient,
     userId: job.user_id,
+    task: 'jd_filter',
     logger,
   });
 
-  let provider: any;
-  let llmConfig: any;
-  let response: any;
-
-  if (userProvider) {
-    // Use user's configured provider
-    provider = userProvider.provider;
-    llmConfig = userProvider.config;
-
-    const aiResponse = await provider.createChatCompletion({
-      messages: [
-        {
-          role: 'system',
-          content: SYSTEM_PROMPT,
-        },
-        {
-          role: 'user',
-          content: generateUserPrompt({
-            prompt,
-            job,
-          }),
-        },
-      ],
-      maxCompletionTokens: 3000,
-      responseFormat: { type: 'json_object' },
-    });
-
-    response = {
-      usage: aiResponse.usage,
-      content: aiResponse.content,
-    };
-  } else {
-    // Fall back to default OpenAI client
-    const { llmConfig: defaultConfig, openAi } = buildOpenAiClient({
-      modelName: 'o3-mini',
-    });
-    llmConfig = defaultConfig;
-
-    const openAiResponse = await openAi.chat.completions.create({
-      model: llmConfig.model,
-      messages: [
-        {
-          role: 'system',
-          content: SYSTEM_PROMPT,
-        },
-        {
-          role: 'user',
-          content: generateUserPrompt({
-            prompt,
-            job,
-          }),
-        },
-      ],
-      max_tokens: 3000,
-      response_format: zodResponseFormat(JobExclusionFormat, 'JobExclusion'),
-    });
-
-    const choice = openAiResponse.choices[0];
-    if (choice.finish_reason !== 'stop') {
-      throw new Error(`AI response did not finish: ${choice.finish_reason}`);
-    }
-
-    response = {
-      usage: openAiResponse.usage,
-      content: choice.message.content ?? throwError('missing content'),
-    };
+  // User must provide their own API key - no fallback to Azure
+  if (!userProvider) {
+    throw new Error(
+      'No AI provider configured. Please configure your AI API key in Settings to use advanced job matching.',
+    );
   }
+
+  // Use user's configured provider
+  const provider = userProvider.provider;
+  const llmConfig = userProvider.config;
+
+  const aiResponse = await provider.createChatCompletion({
+    messages: [
+      {
+        role: 'system',
+        content: SYSTEM_PROMPT,
+      },
+      {
+        role: 'user',
+        content: generateUserPrompt({
+          prompt,
+          job,
+        }),
+      },
+    ],
+    maxCompletionTokens: 300,
+    responseFormat: { type: 'json_object' },
+  });
+
+  const response = {
+    usage: aiResponse.usage,
+    content: aiResponse.content,
+  };
 
   // Parse the response
   const exclusionDecision = JobExclusionFormat.parse(JSON.parse(response.content));
@@ -212,9 +178,7 @@ async function promptAI({
     supabaseAdminClient,
     forUserId: job.user_id,
     llmConfig,
-    response: {
-      usage: response.usage,
-    },
+    response,
   });
 
   return {
@@ -226,46 +190,40 @@ async function promptAI({
  * Generate the user prompt for the AI API.
  */
 function generateUserPrompt({ prompt, job }: { prompt: string; job: Job }) {
-  // - Exclude jobs with the title "Senior" or "Lead".
-  // - I'm from the UK, so only want jobs that allow working remotely from the UK.
-  // - Do not include jobs that require working with Python or Java.
-  // - Do not want to work with Style Components.
-  // - Salary should be at least $80,000 per year.
-  // - I'm from the UK, so only want jobs that allow working remotely from the UK.
-  // - Exclude jobs with the title "Senior" or "Lead".
+  const description = job.description ?? '';
+  const { content: trimmedDescription, truncated } = truncateJobDescriptionForFilter(description);
+  const truncationNote = truncated
+    ? '\n(Note: job description was truncated for length; use the visible portion.)'
+    : '';
+
   return `Here are my requirements for job filtering:
 ${prompt}
 
 Job Title: ${job.title}
+Company: ${job.companyName}
 Location: ${job.location ?? 'Not specified'}
 Tags: ${job?.tags?.join(', ') ?? 'None'}
 Job Description:
-${job.description}
+${trimmedDescription}${truncationNote}
 
-Based on my requirements, should this job be excluded from my feed?`;
+Should this job be excluded from my feed? Return JSON only.`;
 }
 
-const SYSTEM_PROMPT = `You are an assistant which helps users with their job search. You will have to analyze a job and decide if it should be discarded based on the user's requirements.
-Following are the rules for filtering jobs: 
-- if the user wants to avoid certain technologies or skills, the job should only be excluded if it explicitly mentions any of them.
-- if the user is requesting a minimum salary, it should be fine if the job just says: "Up to x amount" or "Depending on experience". Also the currency can be ignored.
-- if the job does not mention a salary range, ignore salary requirements by the user (this rule can be overridden by the user if they want to exclude jobs without a salary range).
-- only consider a job description unsuitable based on remoteness if the user explicitly restricts their interest to certain locations (e.g., "fully remote jobs in the UK") and the description specifies otherwise (e.g., "remote only in Belgium")
-- treat the absence of specific details (such as PTO days or remote work specifics) neutrally unless the user specifies that such details are a deciding factor.
-- job level/title: only disqualify based on job level if the description clearly conflicts with the user's specified job level.
-- contract type: do not disqualify if contract type is unspecified, unless explicitly required by the user.
-- location/relocation: treat location neutrally unless the user specifies no willingness to relocate or a specific geographic preference.
-- benefits/company culture: absence of benefits or cultural descriptors should not disqualify a job unless specifically stated by the user as a requirement.
-- technological tools: only jobs mandating undesired technologies should be disqualified, absence of mention should be neutral.
-- working hours: absence of detailed working hours should not disqualify a job unless specific hours are a user requirement.
-- for experience, interpret any specified maximum or minimum years of experience in relation to what is stated in the job description. If the job specifies an experience range, the job should be considered a match if the user's requirement fits within this range or if the user's requirement aligns with the maximum experience mentioned. Absence of experience details in the job description should not disqualify the job unless the user explicitly requires experience details to be mentioned.
+const SYSTEM_PROMPT = `You decide whether a job should be removed from a user's feed.
 
-Really important, if there are any ambiguities between the user's requirements and the job, never exclude it.
+The user's requirements are the source of truth. They may change over time, so do not add extra requirements of your own.
 
-Reply with a JSON object containing the following fields:
+Use these as default interpretation rules only when the user's requirements do not say otherwise:
+- Avoided skills, technologies, seniority, citizenship, clearance, sponsorship, contract type, or employment type should be judged from the job title, tags, and description.
+- Experience, salary, location, remote work, benefits, company culture, and working hours should be judged from the details the job actually provides.
+- Missing details are neutral by default, but if the user says missing or unclear information should exclude a job, follow the user's rule.
+- If a job has a range such as salary or years of experience, compare the user's requirement against that range.
+- If the job clearly conflicts with the user's requirements, exclude it. If it clearly fits, keep it.
+
+Reply with JSON only:
 - excluded: boolean (true if the job should be excluded, false otherwise)
 - reason: string (the reason why the job should be excluded; leave this field empty if the job should not be excluded)
-- keep the reason as short as possible, maximum 20 words.
+- keep the reason as short as possible, maximum 20 words
 `;
 
 const JobExclusionFormat = z.object({

@@ -39,7 +39,7 @@ export function CreateLink() {
 
   const { handleError } = useError();
   const { createLink } = useLinks();
-  const { sites } = useSites();
+  const { sites, isLoading } = useSites();
   const { toast } = useToast();
 
   // sort sites by name
@@ -93,16 +93,18 @@ export function CreateLink() {
     }
   };
 
-  const onSaveSearch = async ({ title, url }: { title: string; url: string }) => {
+  const onSaveSearch = async ({ title, url, force }: { title: string; url: string; force?: boolean }) => {
     if (!jobBoardModalResponse) {
       handleError({ error: new Error('No job search data'), title: 'Error saving job search' });
       return;
     }
 
     const createdLink = await createLink({
-      url, // use the URL provided by the user (potentially modified)
-      title, // use the title provided by the user
+      url,
+      title,
       html: jobBoardModalResponse.html,
+      webPageRuntimeData: jobBoardModalResponse.webPageRuntimeData,
+      force,
     });
     toast({
       title: 'Link created',
@@ -146,7 +148,14 @@ export function CreateLink() {
           <div className="bg-muted/30 p-6 border-t border-border/40">
             <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">Supported Job Boards</h3>
             <div className="flex flex-wrap gap-2">
-                {sortedSites.map((site) => (
+                {isLoading ? (
+                  <p className="text-sm text-muted-foreground">Loading job boards...</p>
+                ) : sortedSites.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No job boards available. Make sure you&apos;re signed in and your app is connected to the correct Supabase project.
+                  </p>
+                ) : (
+                sortedSites.map((site) => (
                 <Badge
                     key={site.id}
                     variant="outline"
@@ -157,7 +166,8 @@ export function CreateLink() {
                 >
                     {site.name}
                 </Badge>
-                ))}
+                ))
+                )}
             </div>
           </div>
         </DialogContent>
@@ -196,10 +206,11 @@ const JobSearchSubmitDialog = ({
   title: string;
   url: string;
   isOpen: boolean;
-  onSaveJobSearch: (data: { title: string; url: string }) => Promise<Link>;
+  onSaveJobSearch: (data: { title: string; url: string; force?: boolean }) => Promise<Link>;
   onCancel: () => void;
 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [forceSave, setForceSave] = useState(false);
   const [currentUrl, setCurrentUrl] = useState(url);
   const [validationResult, setValidationResult] = useState<ReturnType<typeof validateJobSearchUrl> | null>(null);
   const { handleError } = useError();
@@ -236,10 +247,16 @@ const JobSearchSubmitDialog = ({
     setCurrentUrl(url);
   }, [title, url, form]);
 
+  useEffect(() => {
+    if (isOpen) {
+      setForceSave(false);
+    }
+  }, [isOpen]);
+
   const onSubmit = async (data: { title: string; url: string }) => {
     setIsSubmitting(true);
     try {
-      await onSaveJobSearch({ title: data.title, url: currentUrl });
+      await onSaveJobSearch({ title: data.title, url: currentUrl, force: forceSave });
       toast({
         title: 'Job search created',
         description: `Job search ${data.title} created successfully`,
@@ -410,9 +427,19 @@ const JobSearchSubmitDialog = ({
                 </Tabs>
             </div>
 
-            <div className="flex flex-row items-center justify-between p-6 border-t bg-muted/20 shrink-0">
-              {/* Cancel button */}
-              <Button variant="outline" onClick={onCancel} disabled={isSubmitting}>
+            <div className="flex flex-col gap-3 p-6 border-t bg-muted/20 shrink-0">
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={forceSave}
+                  onChange={(e) => setForceSave(e.target.checked)}
+                  disabled={isSubmitting}
+                  className="h-4 w-4 rounded border"
+                />
+                Save anyway if no jobs were detected (use when the page layout changed)
+              </label>
+              <div className="flex flex-row items-center justify-between">
+              <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
                 Cancel
               </Button>
               {/* Submit button */}
@@ -434,6 +461,7 @@ const JobSearchSubmitDialog = ({
                   'Save Search'
                 )}
               </Button>
+              </div>
             </div>
           </form>
         </Form>

@@ -104,7 +104,7 @@ async function upsertKeezItems({
 }) {
   // check if we have items in keez for the invoices
   console.log('checking if keez has all required items ...');
-  let keezItems = await keez.listItems();
+  const keezItems = await keez.listItems();
 
   const stripeItems: Stripe.InvoiceLineItem[] = [];
   for (const invoice of stripeInvoices) {

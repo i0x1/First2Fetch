@@ -1,78 +1,23 @@
-import { getExceptionMessage } from '@first2apply/core';
-import { EmailParams, MailerSend, Recipient, Sender } from 'npm:mailersend';
+import { throwError } from '@first2apply/core';
 
-import { EmailTemplate } from '../emails/emailTemplates.ts';
+import { First2ApplyBackendEnv } from '../env.ts';
 import { ILogger } from '../logger.ts';
+import { EmailTemplate } from './emailTemplates.ts';
+import { ResendMailer } from './resendMailer.ts';
 
 /**
- * Interface for mailer services.
+ * Interface for transactional mailer services.
  */
 export interface IMailer {
-  /**
-   * Send an email.
-   */
   sendEmail(_: { logger: ILogger; from?: string; to: string; template: EmailTemplate }): Promise<void>;
 }
 
 /**
- * Mailersend-based implementation of the IMailer interface.
+ * Build the app mailer from edge function secrets (Resend).
  */
-export class MailersendMailer implements IMailer {
-  private _client: MailerSend;
+export function createAppMailer(env: First2ApplyBackendEnv): IMailer {
+  const apiKey = env.resendApiKey ?? throwError('RESEND_API_KEY is missing');
+  const fromEmail = env.resendFromEmail ?? throwError('RESEND_FROM_EMAIL is missing');
 
-  /**
-   * Class constructor.
-   */
-  constructor(
-    private _apiKey: string,
-    private _defaultFromAddress: string,
-    private _defaultFromName: string,
-  ) {
-    this._client = new MailerSend({
-      apiKey: this._apiKey,
-    });
-  }
-
-  /**
-   * Send an email using a Mailersend template.
-   */
-  async sendEmail({
-    logger,
-    from,
-    to,
-    template,
-  }: {
-    logger: ILogger;
-    from?: string;
-    to: string;
-    template: EmailTemplate;
-  }): Promise<void> {
-    try {
-      logger.info(`Sending ${template.type} email to ${to} ...`);
-      const sentFrom = new Sender(from ?? this._defaultFromAddress, this._defaultFromName);
-      const recipients = [new Recipient(to, 'Recipient')];
-
-      const personalization = [
-        {
-          email: to,
-          data: template.payload,
-        },
-      ];
-
-      // Create email parameters, using the template ID (templateAlias) and the payload for variables
-      const emailParams = new EmailParams()
-        .setFrom(sentFrom)
-        .setTo(recipients)
-        .setReplyTo(sentFrom)
-        .setTemplateId(template.templateId) // Use the template ID (templateAlias)
-        .setPersonalization(personalization);
-
-      // Send the email via MailerSend
-      await this._client.email.send(emailParams);
-
-      logger.info(`Email sent successfully to ${to}`);
-    } catch (error) {
-      throw new Error(`Error sending email: ${getExceptionMessage(error)}`);
-    }
-  }
+  return new ResendMailer(apiKey, fromEmail, env.resendFromName ?? 'First 2 Apply');
 }

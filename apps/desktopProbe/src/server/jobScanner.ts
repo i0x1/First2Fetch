@@ -12,7 +12,7 @@ import path from 'path';
  */
 function getNextCronTime(cronExpression: string): Date | null {
   const now = new Date();
-  const [minute, hour, dayOfMonth, _month, dayOfWeek] = cronExpression.split(' ');
+  const [minute, hour, dayOfMonth, , dayOfWeek] = cronExpression.split(' ');
 
   try {
     // Handle minute-based intervals (e.g., */30 * * * *)
@@ -113,6 +113,7 @@ function getNextCronTime(cronExpression: string): Date | null {
 }
 
 import { AVAILABLE_CRON_RULES, JobScannerSettings, ScannerJobStatus, ScannerStatus } from '../lib/types';
+import { installLinkedInDecorator } from './browserHelpers';
 import { chunk, promiseAllSequence, waitRandomBetween } from './helpers';
 import { HtmlDownloader } from './htmlDownloader';
 import { ILogger } from './logger';
@@ -194,13 +195,19 @@ export class JobScanner {
         ...this._settings,
         ...JSON.parse(fs.readFileSync(settingsPath, 'utf-8')),
       };
-      this._logger.info(`loadied settings from disk: ${JSON.stringify(settingsToApply)}`);
+      this._logger.info('scanner settings loaded', {
+        cronRule: settingsToApply.cronRule,
+        linkedinScanIntervalMinutes: settingsToApply.linkedinScanIntervalMinutes,
+        isPaused: settingsToApply.isPaused,
+      });
     } else {
-      this._logger.info(`no settings found on disk, using defaults`);
+      this._logger.info('scanner settings missing; using defaults');
       settingsToApply = DEFAULT_SETTINGS;
     }
 
     this._applySettings(settingsToApply);
+
+    installLinkedInDecorator(this._normalHtmlDownloader.getSession());
   }
 
   private _logToUi(message: string) {
@@ -289,10 +296,10 @@ export class JobScanner {
       const sites = await this._supabaseApi.listSites();
       const linkedinSiteIds = sites.filter(site => site.provider === 'linkedin').map(site => site.id);
       linksToScan = allLinks.filter(link => linkedinSiteIds.includes(link.site_id));
-      this._logger.info(`found ${linksToScan.length} LinkedIn links to scan`);
+      this._logger.info('scan links selected', { mode: 'linkedin', linksCount: linksToScan.length });
       this._logToUi(`Found ${linksToScan.length} LinkedIn links to scan`);
     } else {
-      this._logger.info(`found ${allLinks.length} links`);
+      this._logger.info('scan links selected', { mode: 'all', linksCount: allLinks.length });
       this._logToUi(`Found ${allLinks.length} links to scan`);
     }
 
@@ -312,7 +319,7 @@ export class JobScanner {
    */
   async scanLinks({ links, sendNotification = true }: { links: Link[]; sendNotification?: boolean }) {
     try {
-      this._logger.info('scanning links ...');
+      this._logger.info('scan started', { linksCount: links.length });
       this._logToUi('Starting to scan links...');
       this._analytics.trackEvent('scan_links_start', {
         links_count: links.length,
@@ -323,20 +330,22 @@ export class JobScanner {
       await Promise.all(
         links.map(async (link) => {
           this._logToUi(`Scanning link: ${link.title} (${link.url})`);
+          this._logger.debug('scan link started', { linkId: link.id, title: link.title });
           const newJobs = await this._normalHtmlDownloader
             .loadUrl({
               url: link.url,
               scrollTimes: 5,
-              callback: async ({ html, maxRetries, retryCount }) => {
+              callback: async ({ html, webPageRuntimeData, maxRetries, retryCount }) => {
                 if (!this._isRunning) return []; // stop if the scanner is closed
 
                 const { newJobs, parseFailed } = await this._supabaseApi.scanHtmls([
-                  { linkId: link.id, content: html, maxRetries, retryCount },
+                  { linkId: link.id, content: html, webPageRuntimeData, maxRetries, retryCount },
                 ]);
 
                 if (parseFailed) {
-                  this._logger.debug(`failed to parse html for link ${link.title}`, {
+                  this._logger.warn('link parse failed', {
                     linkId: link.id,
+                    title: link.title,
                   });
                   this._logToUi(`Failed to parse HTML for link: ${link.title}`);
 
@@ -357,8 +366,10 @@ export class JobScanner {
             .catch(async (error): Promise<Job[]> => {
               if (this._isRunning) {
                 const errorMessage = getExceptionMessage(error);
-                this._logger.error(`failed to scan link: ${errorMessage}`, {
+                this._logger.error('link scan failed', {
                   linkId: link.id,
+                  title: link.title,
+                  error: errorMessage,
                 });
                 this._logToUi(`Error scanning link ${link.title}: ${errorMessage}`);
 
@@ -383,7 +394,7 @@ export class JobScanner {
           return newJobs;
         }),
       );
-      this._logger.info(`downloaded html for ${links.length} links`);
+      this._logger.info('link html download complete', { linksCount: links.length });
       this._logToUi(`Finished downloading HTML for ${links.length} links`);
 
       // scan job descriptions for all pending jobs
@@ -392,25 +403,23 @@ export class JobScanner {
         status: 'processing',
         limit: 300,
       });
-      this._logger.info(`found ${jobs.length} jobs that need processing`);
+      this._logger.info('job description queue ready', { jobsCount: jobs.length });
       if (jobs.length > 0) {
         this._logToUi(`Found ${jobs.length} jobs that need detailed processing`);
       }
       const scannedJobs = await this.scanJobs(jobs);
       const newJobs = scannedJobs.filter((job) => job.status === 'new');
 
-      // run post scan hook
-      // TEMPORARILY COMMENTED OUT - Email feature disabled
-      // const newJobIds = newJobs.map((job) => job.id);
-      // await this._supabaseApi
-      //   .runPostScanHook({
-      //     newJobIds: sendNotification ? newJobIds : [], // hacky way to supress email alerts
-      //     areEmailAlertsEnabled: this._settings.areEmailAlertsEnabled,
-      //   })
-      //   .catch((error) => {
-      //     this._logger.error(`failed to run post scan hook: ${getExceptionMessage(error)}`);
-      //     this._logToUi(`Failed to run post-scan hook: ${getExceptionMessage(error)}`);
-      //   });
+      const newJobIds = newJobs.map((job) => job.id);
+      await this._supabaseApi
+        .runPostScanHook({
+          newJobIds: sendNotification ? newJobIds : [],
+          areEmailAlertsEnabled: this._settings.areEmailAlertsEnabled,
+        })
+        .catch((error) => {
+          this._logger.error(`failed to run post scan hook: ${getExceptionMessage(error)}`);
+          this._logToUi(`Failed to run post-scan hook: ${getExceptionMessage(error)}`);
+        });
 
       // fire a notification if there are new jobs
       if (!this._isRunning) return;
@@ -418,7 +427,12 @@ export class JobScanner {
 
       const end = new Date().getTime();
       const took = (end - start) / 1000;
-      this._logger.info(`scan complete in ${took.toFixed(0)} seconds`);
+      this._logger.info('scan completed', {
+        linksCount: links.length,
+        processedJobsCount: scannedJobs.length,
+        newJobsCount: newJobs.length,
+        durationSeconds: Math.round(took),
+      });
       this._logToUi(`Scan session complete in ${took.toFixed(0)} seconds`);
       this._analytics.trackEvent('scan_links_complete', {
         links_count: links.length,
@@ -436,7 +450,7 @@ export class JobScanner {
    * Scan a list of new jobs to extract the description.
    */
   async scanJobs(jobs: Job[]): Promise<Job[]> {
-    this._logger.info(`scanning ${jobs.length} jobs descriptions...`);
+    this._logger.info('job description scan started', { jobsCount: jobs.length });
     this._logToUi(`Processing ${jobs.length} job descriptions...`);
 
     // figure out which jobs can be scanned in incognito mode
@@ -472,8 +486,9 @@ export class JobScanner {
                 url: job.externalUrl,
                 scrollTimes: 1,
                 callback: async ({ html, maxRetries, retryCount }) => {
-                  this._logger.info(`downloaded html for ${job.title}`, {
+                  this._logger.debug('job html downloaded', {
                     jobId: job.id,
+                    title: job.title,
                   });
                   
                   // Update status to parsing
@@ -494,8 +509,9 @@ export class JobScanner {
                   });
 
                   if (parseFailed) {
-                    this._logger.debug(`failed to parse job description: ${job.title}`, {
+                    this._logger.warn('job description parse failed', {
                       jobId: job.id,
+                      title: job.title,
                     });
                     this._logToUi(`Failed to parse job description for: ${job.title}`);
 
@@ -512,8 +528,10 @@ export class JobScanner {
               });
             } catch (error) {
               if (this._isRunning)
-                this._logger.error(`failed to scan job description: ${getExceptionMessage(error)}`, {
+                this._logger.error('job description scan failed', {
                   jobId: job.id,
+                  title: job.title,
+                  error: getExceptionMessage(error),
                 });
               this._logToUi(`Error processing job ${job.title}: ${getExceptionMessage(error)}`);
 
@@ -545,7 +563,7 @@ export class JobScanner {
     const allScannedJobs = [...scannedIncognitoJobs, ...scannedNormalJobs];
     const updatedJobs = jobs.map((job) => allScannedJobs.find((j) => j.id === job.id) ?? throwError('job not found')); // preserve the order
 
-    this._logger.info('finished scanning job descriptions');
+    this._logger.info('job description scan completed', { jobsCount: updatedJobs.length });
     this._logToUi('Finished processing all job descriptions in this batch');
 
     return updatedJobs;

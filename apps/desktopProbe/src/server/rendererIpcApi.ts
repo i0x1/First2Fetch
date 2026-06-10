@@ -1,5 +1,4 @@
-import { getExceptionMessage } from '@first2apply/core';
-import { Job } from '@first2apply/core';
+import { Job, WebPageRuntimeData, getExceptionMessage } from '@first2apply/core';
 import { dialog, ipcMain, shell } from 'electron';
 import fs from 'fs';
 import { json2csv } from 'json-2-csv';
@@ -8,9 +7,12 @@ import os from 'os';
 import { IAnalyticsClient } from '../lib/analytics';
 import { F2aAutoUpdater } from './autoUpdater';
 import { JobScanner } from './jobScanner';
+import { ILogger } from './logger';
 import { OverlayBrowserView } from './overlayBrowserView';
 import { getStripeConfig } from './stripeConfig';
 import { F2aSupabaseApi } from './supabaseApi';
+
+let ipcLogger: ILogger | undefined;
 
 /**
  * Helper methods used to centralize error handling.
@@ -20,7 +22,7 @@ async function _apiCall<T>(method: () => Promise<T>) {
     const data = await method();
     return { data };
   } catch (error) {
-    console.error(getExceptionMessage(error));
+    ipcLogger?.error('ipc action failed', { error: getExceptionMessage(error) });
     return { error: getExceptionMessage(error, true) };
   }
 }
@@ -37,6 +39,7 @@ export function initRendererIpcApi({
   nodeEnv,
   analytics,
   onForceQuit,
+  logger,
 }: {
   supabaseApi: F2aSupabaseApi;
   jobScanner: JobScanner;
@@ -45,7 +48,10 @@ export function initRendererIpcApi({
   nodeEnv: string;
   analytics: IAnalyticsClient;
   onForceQuit: () => Promise<void>;
+  logger: ILogger;
 }) {
+  ipcLogger = logger;
+
   ipcMain.handle('get-os-type', (_) =>
     _apiCall(async () => {
       return os.platform();
@@ -80,23 +86,42 @@ export function initRendererIpcApi({
 
   ipcMain.handle('get-user', async (_) => _apiCall(() => supabaseApi.getUser()));
 
-  ipcMain.handle('create-link', async (_, { title, url, html }) =>
-    _apiCall(async () => {
-      const { link, newJobs } = await supabaseApi.createLink({
+  ipcMain.handle(
+    'create-link',
+    async (
+      _,
+      {
         title,
         url,
         html,
-      });
+        webPageRuntimeData,
+        force,
+      }: {
+        title: string;
+        url: string;
+        html: string;
+        webPageRuntimeData: WebPageRuntimeData;
+        force?: boolean;
+      },
+    ) =>
+      _apiCall(async () => {
+        const { link, newJobs } = await supabaseApi.createLink({
+          title,
+          url,
+          html,
+          webPageRuntimeData,
+          force,
+        });
 
-      // intentionally not awaited to not have the user wait until JDs are in
-      jobScanner.scanJobs(newJobs).catch((error) => {
-        console.error(getExceptionMessage(error));
-      });
+        // intentionally not awaited to not have the user wait until JDs are in
+        jobScanner.scanJobs(newJobs).catch((error) => {
+          logger.error('background job description scan failed', { error: getExceptionMessage(error) });
+        });
 
-      analytics.trackEvent('link_created', { link_id: link.id, user_id: link.user_id, site_id: link.site_id });
+        analytics.trackEvent('link_created', { link_id: link.id, user_id: link.user_id, site_id: link.site_id });
 
-      return { link };
-    }),
+        return { link };
+      }),
   );
 
   ipcMain.handle('update-link', async (_, { linkId, title, url }) =>
@@ -109,6 +134,8 @@ export function initRendererIpcApi({
 
   ipcMain.handle('list-links', async (_) => _apiCall(() => supabaseApi.listLinks()));
 
+  ipcMain.handle('get-link-job-counts', async (_) => _apiCall(() => supabaseApi.getLinkJobCounts()));
+
   ipcMain.handle('delete-link', async (_, { linkId }) =>
     _apiCall(async () => {
       const res = await supabaseApi.deleteLink(linkId);
@@ -117,12 +144,35 @@ export function initRendererIpcApi({
     }),
   );
 
-  ipcMain.handle('get-job-dates-summary', async (_, { status, search, siteIds, linkIds, labels, hideReposted, timezone }) =>
-    _apiCall(() => supabaseApi.getJobDatesSummary({ status, search, siteIds, linkIds, labels, hideReposted, timezone })),
+  ipcMain.handle(
+    'get-job-dates-summary',
+    async (_, { status, search, siteIds, linkIds, labels, hideReposted, timezone }) =>
+      _apiCall(() =>
+        supabaseApi.getJobDatesSummary({ status, search, siteIds, linkIds, labels, hideReposted, timezone }),
+      ),
   );
 
-  ipcMain.handle('list-jobs', async (_, { status, search, siteIds, linkIds, labels, limit, after, dateFilter, hideReposted, timezone }) =>
-    _apiCall(() => supabaseApi.listJobs({ status, search, siteIds, linkIds, labels, limit, after, dateFilter, hideReposted, timezone })),
+  ipcMain.handle('get-job-counts', async (_, { search, siteIds, linkIds, labels, hideReposted }) =>
+    _apiCall(() => supabaseApi.getJobCounts({ search, siteIds, linkIds, labels, hideReposted })),
+  );
+
+  ipcMain.handle(
+    'list-jobs',
+    async (_, { status, search, siteIds, linkIds, labels, limit, after, dateFilter, hideReposted, timezone }) =>
+      _apiCall(() =>
+        supabaseApi.listJobs({
+          status,
+          search,
+          siteIds,
+          linkIds,
+          labels,
+          limit,
+          after,
+          dateFilter,
+          hideReposted,
+          timezone,
+        }),
+      ),
   );
 
   ipcMain.handle('update-job-status', async (_, { jobId, status }) =>
@@ -286,9 +336,7 @@ export function initRendererIpcApi({
     }),
   );
 
-  ipcMain.handle('get-advanced-matching-config', async (_) =>
-    _apiCall(() => supabaseApi.getAdvancedMatchingConfig()),
-  );
+  ipcMain.handle('get-advanced-matching-config', async (_) => _apiCall(() => supabaseApi.getAdvancedMatchingConfig()));
 
   ipcMain.handle('update-advanced-matching-config', async (_, { config }) =>
     _apiCall(async () => {

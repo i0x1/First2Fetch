@@ -1,6 +1,8 @@
+import { WebPageRuntimeData, getExceptionMessage } from '@first2apply/core';
 import { BrowserWindow } from 'electron';
 import { backOff } from 'exponential-backoff';
 
+import { consumeRuntimeData, getLinkedinReactContextBuilder } from './browserHelpers';
 import { sleep, waitRandomBetween } from './helpers';
 import { ILogger } from './logger';
 import { WorkerQueue } from './workerQueue';
@@ -16,6 +18,21 @@ const CHROME_USER_AGENTS = [
 function getRandomUserAgent(): string {
   const isMac = process.platform === 'darwin';
   return isMac ? CHROME_USER_AGENTS[0] : CHROME_USER_AGENTS[1];
+}
+
+function getUrlSummary(url: string) {
+  try {
+    const parsed = new URL(url);
+    return {
+      host: parsed.hostname,
+      path: parsed.pathname,
+    };
+  } catch {
+    return {
+      host: 'unknown',
+      path: '',
+    };
+  }
 }
 
 /**
@@ -53,6 +70,11 @@ export class HtmlDownloader {
     this._isRunning = true;
   }
 
+  getSession() {
+    if (!this._pool) throw new Error('Pool not initialized');
+    return this._pool.getSession();
+  }
+
   /**
    * Load the HTML of a given URL with concurrency support.
    *
@@ -67,7 +89,12 @@ export class HtmlDownloader {
   }: {
     url: string;
     scrollTimes?: number;
-    callback: (_: { html: string; maxRetries: number; retryCount: number }) => Promise<T>;
+    callback: (_: {
+      html: string;
+      webPageRuntimeData: WebPageRuntimeData;
+      maxRetries: number;
+      retryCount: number;
+    }) => Promise<T>;
   }): Promise<T> {
     if (!this._pool) throw new Error('Pool not initialized');
 
@@ -78,8 +105,16 @@ export class HtmlDownloader {
       let retryCount = 0;
       return backOff(
         async () => {
+          if (window.webContents.getURL().includes('linkedin.com')) {
+            await window.webContents.executeJavaScript(getLinkedinReactContextBuilder()).catch((error) => {
+              this._logger.error(`Failed to inject LinkedIn React context fallback: ${getExceptionMessage(error)}`);
+            });
+          }
+
           const html: string = await window.webContents.executeJavaScript('document.documentElement.innerHTML');
-          return callback({ html, maxRetries, retryCount: retryCount++ });
+          const finalUrl = window.webContents.getURL();
+          const webPageRuntimeData = consumeRuntimeData(finalUrl);
+          return callback({ html, webPageRuntimeData, maxRetries, retryCount: retryCount++ });
         },
         {
           jitter: 'full',
@@ -109,7 +144,7 @@ export class HtmlDownloader {
   private async _loadUrl(window: BrowserWindow, url: string, scrollTimes: number) {
     if (!this._isRunning) return '<html></html>';
 
-    this._logger.info(`loading url: ${url} ...`);
+    this._logger.debug('page load started', getUrlSummary(url));
     await backOff(
       async () => {
         let statusCode: number | undefined;
@@ -121,7 +156,7 @@ export class HtmlDownloader {
         // handle rate limits
         const title = await window.webContents.executeJavaScript('document.title');
         if (statusCode === 429 || title?.toLowerCase().startsWith('just a moment')) {
-          this._logger.debug(`429 status code detected: ${url}`);
+          this._logger.warn('page load rate limited', { ...getUrlSummary(url), statusCode });
           await waitRandomBetween(30_000, 60_000);
           throw new Error('rate limit exceeded');
         }
@@ -165,13 +200,13 @@ export class HtmlDownloader {
               })();
             `,
           );
-          
+
           await sleep(2_000 + Math.floor(Math.random() * 2000));
 
           // check if page was redirected to a login page
           const finalUrl = window.webContents.getURL();
           if (KNOWN_AUTHWALLS.some((authwall) => finalUrl?.includes(authwall))) {
-            this._logger.debug(`authwall detected: ${finalUrl}`);
+            this._logger.warn('page load authwall detected', getUrlSummary(finalUrl));
             throw new Error('authwall');
           }
         }
@@ -187,7 +222,7 @@ export class HtmlDownloader {
       },
     );
 
-    this._logger.info(`finished loading url: ${url}`);
+    this._logger.debug('page load completed', getUrlSummary(url));
   }
 }
 
@@ -219,8 +254,9 @@ class BrowserWindowPool {
       });
 
       // Set Chrome User-Agent instead of Electron default (safe anti-detection measure)
-      window.webContents.setUserAgent(getRandomUserAgent());
-      logger.debug(`Browser window ${i} using User-Agent: ${getRandomUserAgent()}`);
+      const userAgent = getRandomUserAgent();
+      window.webContents.setUserAgent(userAgent);
+      logger.debug('browser worker ready', { workerId: i, incognitoMode });
 
       // Suppress DevTools protocol warnings
       window.webContents.on('console-message', (event, level, message) => {
@@ -289,6 +325,12 @@ class BrowserWindowPool {
         worker.isAvailable = true;
       });
     });
+  }
+
+  getSession() {
+    const first = this._pool[0];
+    if (!first) throw new Error('No browser windows in pool');
+    return first.window.webContents.session;
   }
 
   /**

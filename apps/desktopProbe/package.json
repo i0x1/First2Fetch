@@ -2,20 +2,23 @@
   "name": "first2fetch-desktop",
   "productName": "First 2 Fetch",
   "version": "2.3.0",
-  "description": "First 2 Apply - Job Alert App | Instant Notifications for New Job Listings",
+  "description": "Open-source desktop app for monitoring, filtering, and organizing job listings.",
   "main": ".webpack/main",
   "scripts": {
-    "start": "electron-forge start",
+    "start": "NODE_OPTIONS=--dns-result-order=ipv4first electron-forge start",
     "publish": "electron-forge publish",
-    "lint": "eslint --ext .ts,.tsx .",
+    "lint": "eslint --ext .ts,.tsx src e2e",
     "build": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "prettier": "prettier --check \"src/**/*.{ts,tsx}\"",
     "package": "electron-forge package",
     "make": "electron-forge make --arch x64",
     "release": "npx release-it --ci"
   },
-  "keywords": [],
-  "author": "BeastX Industries",
+  "keywords": ["electron", "job-search", "job-alerts", "supabase"],
+  "author": "First 2 Fetch contributors",
   "license": "MIT",
   "release-it": {
     "git": {
@@ -48,12 +51,19 @@
     "@electron-forge/publisher-s3": "^7.10.2",
     "@electron-forge/shared-types": "^7.10.2",
     "@electron/fuses": "^1.8.0",
-    "electron": "39.0.0"
+    "@playwright/test": "^1.49.1",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "electron": "39.0.0",
+    "jsdom": "^25.0.1",
+    "serve": "^14.2.4",
+    "vitest": "^3.0.5"
   },
   "dependencies": {
     "@first2apply/core": "workspace:*",
     "@first2apply/ui": "workspace:*",
     "cron-parser": "^5.4.0",
+    "dotenv": "^16.4.5",
     "rehype-raw": "^7.0.0"
   }
 }

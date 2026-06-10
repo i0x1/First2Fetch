@@ -4,27 +4,29 @@ import { BrowserWindow, BrowserWindowHandle } from '@/components/browserWindow';
 import { CreateLink } from '@/components/createLink';
 import { LinksList } from '@/components/linksList';
 import { LinksListSkeleton } from '@/components/skeletons/linksListSkeleton';
-import { useAppState } from '@/hooks/appState';
 import { useError } from '@/hooks/error';
 import { useLinks } from '@/hooks/links';
-import { scanLink } from '@/lib/electronMainSdk';
+import { getLinkJobCounts, scanLink } from '@/lib/electronMainSdk';
 import { throwError } from '@first2apply/core';
 import { toast } from '@first2apply/ui';
 
 import { DefaultLayout } from './defaultLayout';
+import { CompactPageHeader } from '@/components/compact/compactLayout';
 
 export function LinksPage() {
   const { handleError } = useError();
   const { isLoading, links, removeLink, updateLink, reloadLinks } = useLinks();
-  const { isScanning } = useAppState();
   const browserWindowRef = useRef<BrowserWindowHandle>(null);
   const [currentDebugLinkId, setCurrentDebugLinkId] = useState<number | null>(null);
+  const [jobCountsByLinkId, setJobCountsByLinkId] = useState<Record<number, number>>({});
 
   // refresh links on component mount
   useEffect(() => {
     const asyncLoad = async () => {
       try {
         await reloadLinks();
+        const counts = await getLinkJobCounts();
+        setJobCountsByLinkId(counts);
       } catch (error) {
         handleError({ error });
       }
@@ -87,26 +89,7 @@ export function LinksPage() {
 
   return (
     <DefaultLayout className="p-6 md:p-10">
-      <div className="flex items-center justify-between mb-8">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Job Searches</h1>
-          <p className="text-sm text-muted-foreground">
-             {isScanning ? (
-               <span className="flex items-center gap-2 text-primary">
-                 <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-                </span>
-                 Scanning for new jobs...
-               </span>
-             ) : (
-               'Manage and monitor your job feeds.'
-             )}
-          </p>
-        </div>
-
-        {links.length > 0 && <CreateLink />}
-      </div>
+      <CompactPageHeader title="Searches" action={links.length > 0 ? <CreateLink /> : undefined} />
 
       {links.length === 0 && (
         <div className="flex h-[calc(100vh-200px)] flex-col items-center justify-center text-center">
@@ -125,6 +108,7 @@ export function LinksPage() {
       {links.length > 0 && (
         <LinksList
           links={links}
+          jobCountsByLinkId={jobCountsByLinkId}
           onDeleteLink={handleDeleteLink}
           onDebugLink={handleDebugLink}
           onUpdateLink={handleUpdateLink}

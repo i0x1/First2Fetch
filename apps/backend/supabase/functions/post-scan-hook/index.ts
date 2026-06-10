@@ -8,7 +8,7 @@ import { getExceptionMessage, throwError } from '@first2apply/core';
 import { CORS_HEADERS } from '../_shared/cors.ts';
 import { EdgeFunctionAuthorizedContext, getEdgeFunctionContext } from '../_shared/edgeFunctions.ts';
 import { EmailTemplateType } from '../_shared/emails/emailTemplates.ts';
-import { IMailer, MailersendMailer } from '../_shared/emails/mailer.ts';
+import { createAppMailer, IMailer } from '../_shared/emails/mailer.ts';
 import { createLoggerWithMeta } from '../_shared/logger.ts';
 
 Deno.serve(async (req) => {
@@ -33,11 +33,7 @@ Deno.serve(async (req) => {
       areEmailAlertsEnabled: boolean;
     } = await req.json();
 
-    const mailer = new MailersendMailer(
-      env.mailerSendApiKey ?? throwError('Mailersend API key is missing'),
-      'contact@first2apply.com',
-      'First 2 Apply',
-    );
+    const mailer = createAppMailer(env);
 
     logger.info(`running post scan hook ${JSON.stringify(body)}  ...`);
 
@@ -114,7 +110,6 @@ async function checkBrokenLinks({ context, mailer }: { context: EdgeFunctionAuth
     to: user.email,
     template: {
       type: EmailTemplateType.searchParsingFailure,
-      templateId: '3z0vklorkzpl7qrx',
       payload: {
         links: affectedLinks,
       },
@@ -164,6 +159,15 @@ async function sendNewJobLinksEmail({
     return;
   }
 
+  // load sites so emails can show the source provider/site name for each job
+  const { data: sitesData, error: sitesError } = await supabaseClient.from('sites').select('*');
+  if (sitesError) {
+    logger.error(`failed to load sites: ${getExceptionMessage(sitesError)}`);
+    return;
+  }
+  const jobSites: JobSite[] = sitesData ?? [];
+  const siteMap = new Map(jobSites.map((site) => [site.id, site]));
+
   // send the email
   logger.info(`sending email to ${user.email} for ${newJobs.length} new jobs ...`);
   await mailer.sendEmail({
@@ -171,10 +175,10 @@ async function sendNewJobLinksEmail({
     to: user.email,
     template: {
       type: EmailTemplateType.newJobAlert,
-      templateId: 'pr9084z32r8lw63d',
       payload: {
         new_jobs_count: newJobs.length,
         new_jobs: newJobs.map((job) => ({
+          providerName: siteMap.get(job.siteId)?.name ?? siteMap.get(job.siteId)?.provider ?? 'unknown',
           title: job.title,
           url: job.externalUrl,
           description: job.description?.slice(0, 200) ?? '',

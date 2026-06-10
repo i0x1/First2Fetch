@@ -9,9 +9,18 @@ import remarkGfm from 'remark-gfm';
 /**
  * Job details component.
  */
-export function JobDetails({ job, isScrapingDescription }: { job: Job; isScrapingDescription: boolean }) {
+export function JobDetails({
+  job,
+  isScrapingDescription,
+  compact = false,
+}: {
+  job: Job;
+  isScrapingDescription: boolean;
+  compact?: boolean;
+}) {
   const { sites } = useSites();
   const site = sites.find((site) => site.id === job.siteId);
+  const bodyClass = compact ? 'job-description-md px-0 py-3 text-[13px] leading-relaxed' : 'job-description-md pl-[25px] pr-2';
 
   return isScrapingDescription ? (
     // Description is being fetched
@@ -33,12 +42,12 @@ export function JobDetails({ job, isScrapingDescription }: { job: Job; isScrapin
     </div>
   ) : job.description ? (
     // Description has been fetched
-    <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} className="job-description-md pl-[25px] pr-2">
+    <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} className={bodyClass}>
       {job.description}
     </Markdown>
   ) : (
     // Description failed to fetch
-    <div className="mt-20 text-center">
+    <div className={compact ? 'py-4 text-center text-[12px] text-muted-foreground' : 'mt-20 text-center'}>
       <p className="">Looks like we have failed to fetch the job description and for that we are sorry {':('}</p>
       <p>
         You can read it directly on{' '}
@@ -48,6 +57,8 @@ export function JobDetails({ job, isScrapingDescription }: { job: Job; isScrapin
         though.
       </p>
 
+      {!compact && (
+      <>
       {/* Light mode svg */}
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -367,6 +378,8 @@ export function JobDetails({ job, isScrapingDescription }: { job: Job; isScrapin
           </clipPath>
         </defs>
       </svg>
+      </>
+      )}
     </div>
   );
 }

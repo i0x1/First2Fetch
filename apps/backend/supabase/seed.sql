@@ -23,7 +23,8 @@ VALUES
   (14, 'Robert Half', ARRAY['https://www.roberthalf.com'], '2024-03-10 15:59:51.175727+00'::timestamptz, NULL, 'https://vnawaforiamopaudfefi.supabase.co/storage/v1/object/public/first2apply-public/robert-half.png', ARRAY['/', '/us/en/'], 'robertHalf', false, false),
   (15, 'ZipRecruiter', ARRAY['https://www.ziprecruiter.com'], '2024-10-08 19:18:46.060992+00'::timestamptz, NULL, 'https://vnawaforiamopaudfefi.supabase.co/storage/v1/object/public/first2apply-public/ziprecruiter.png?t=2024-10-08T19%3A49%3A14.430Z', ARRAY['/'], 'zipRecruiter', true, false),
   (16, 'USA Jobs', ARRAY['https://www.usajobs.gov'], '2024-10-08 20:05:31.819605+00'::timestamptz, NULL, 'https://vnawaforiamopaudfefi.supabase.co/storage/v1/object/public/first2apply-public/usajobs.png', ARRAY['/'], 'usaJobs', false, false),
-  (17, 'Custom Job Board (Beta)', ARRAY['https://google.com/'], '2025-08-29 10:21:22.12473+00'::timestamptz, NULL, 'https://vnawaforiamopaudfefi.supabase.co/storage/v1/object/public/first2apply-public/custom.png', ARRAY['/'], 'custom', false, false)
+  (17, 'Custom Job Board (Beta)', ARRAY['https://google.com/'], '2025-08-29 10:21:22.12473+00'::timestamptz, NULL, 'https://vnawaforiamopaudfefi.supabase.co/storage/v1/object/public/first2apply-public/custom.png', ARRAY['/'], 'custom', false, false),
+  (18, 'Hiring Cafe', ARRAY['https://hiring.cafe'], '2026-05-10 09:00:00.000000+00'::timestamptz, NULL, 'https://vnawaforiamopaudfefi.supabase.co/storage/v1/object/public/first2apply-public/hiringcafe.svg', ARRAY[]::text[], 'hiringCafe', false, false)
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name,
   urls = EXCLUDED.urls,

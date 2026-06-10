@@ -1,18 +1,17 @@
 import {
+  BackpackIcon,
   ChatBubbleIcon,
   Crosshair2Icon,
   ExitIcon,
   GearIcon,
-  HomeIcon,
   MagnifyingGlassIcon,
   MoonIcon,
   QuestionMarkCircledIcon,
   SunIcon,
 } from '@radix-ui/react-icons';
-import { Activity, RefreshCw } from 'lucide-react';
+import { Activity, LoaderCircle } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
-import { Icons } from '@/components/icons';
 import { useAppState } from '@/hooks/appState';
 import { useError } from '@/hooks/error';
 import { forceQuitApp } from '@/lib/electronMainSdk';
@@ -21,7 +20,6 @@ import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
 
 export function Navbar() {
-  // Hook to get the current location
   const location = useLocation();
   const { theme, setTheme } = useTheme();
   const { isScanning, newUpdate } = useAppState();
@@ -38,135 +36,96 @@ export function Navbar() {
   };
 
   const navItems = [
-    { name: 'Jobs', path: '/', icon: <HomeIcon className="h-5 w-5" /> },
-    {
-      name: 'Searches',
-      path: '/links',
-      icon: <MagnifyingGlassIcon className="h-5 w-5" />,
-    },
-    {
-      name: 'AI Filters',
-      path: '/filters',
-      icon: <Crosshair2Icon className="h-5 w-5" />,
-    },
-    {
-      name: 'Status',
-      path: '/status',
-      icon: <Activity className="h-5 w-5" />,
-    },
-    {
-      name: 'Feedback',
-      path: '/feedback',
-      icon: <ChatBubbleIcon className="h-5 w-5" />,
-    },
-    {
-      name: 'Settings',
-      path: '/settings',
-
-      icon: (
-        <div className="relative">
-          <GearIcon className="h-5 w-5" />
-          {hasUpdate && <div className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-destructive"></div>}
-        </div>
-      ),
-    },
-    {
-      name: 'Help',
-      path: '/help',
-      icon: <QuestionMarkCircledIcon className="h-5 w-5" />,
-    },
+    { name: 'Jobs', path: '/', icon: <BackpackIcon className="h-4 w-4" /> },
+    { name: 'Searches', path: '/links', icon: <MagnifyingGlassIcon className="h-4 w-4" /> },
+    { name: 'Smart Filters', path: '/filters', icon: <Crosshair2Icon className="h-4 w-4" /> },
+    { name: 'Status', path: '/status', icon: <Activity className="h-4 w-4" /> },
+    { name: 'Settings', path: '/settings', icon: <GearIcon className="h-4 w-4" />, badge: hasUpdate },
+    { name: 'Help', path: '/help', icon: <QuestionMarkCircledIcon className="h-4 w-4" /> },
+    { name: 'Feedback', path: '/feedback', icon: <ChatBubbleIcon className="h-4 w-4" /> },
   ];
 
   const Logo = () =>
-    isScanning ? <RefreshCw className="h-6 w-6 animate-spin" /> : <Icons.logo className="h-6 w-6"></Icons.logo>;
+    isScanning ? (
+      <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-white">
+        <LoaderCircle className="h-4 w-4 animate-spin" />
+      </span>
+    ) : (
+      <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-[11px] font-extrabold text-white">
+        F2
+      </span>
+    );
 
   return (
-    <nav className="fixed z-50 flex h-screen w-16 flex-col items-center justify-between border-r bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 py-4 2xl:w-64 2xl:items-stretch transition-all duration-300">
-      <div className="flex flex-col gap-6 w-full px-2">
-        <TooltipProvider delayDuration={500}>
+    <nav className="fixed z-50 flex h-screen w-14 flex-col items-center justify-between border-r border-[#152a45] bg-sidebar px-1.5 py-2.5 text-sidebar-foreground">
+      <div className="flex w-full flex-col gap-3">
+        <TooltipProvider delayDuration={400}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Link to={isScanning ? '/status' : '/'} className="flex items-center justify-center 2xl:justify-start gap-3 px-2 py-2">
+              <Link to={isScanning ? '/status' : '/'} className="flex items-center justify-center pb-2">
                 <Logo />
-                <span className="hidden font-semibold tracking-tight 2xl:inline-block">{isScanning ? 'Scanning ...' : 'First 2 Apply'}</span>
               </Link>
             </TooltipTrigger>
-
-            <TooltipContent side="right" className="text-sm 2xl:hidden">
-              {isScanning ? 'Scanning for new jobs ...' : 'First 2 Apply'}
-            </TooltipContent>
+            <TooltipContent side="right">{isScanning ? 'Scanning...' : 'First2Fetch'}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
 
-        <div className="flex flex-col gap-1 w-full">
-        {navItems.map((item) => (
-          <TooltipProvider delayDuration={500} key={item.name}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Link
-                  key={item.name}
-                  to={item.path}
-                  className={cn(
-                    "flex items-center gap-3 rounded-md px-3 py-2 transition-colors duration-200 justify-center 2xl:justify-start",
-                    location.pathname === item.path 
-                      ? 'bg-accent text-accent-foreground shadow-sm' 
-                      : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'
-                  )}
-                >
-                  {item.icon}
-                  <span className="hidden text-sm font-medium 2xl:inline-block">{item.name}</span>
-                </Link>
-              </TooltipTrigger>
-
-              <TooltipContent side="right" className="text-sm 2xl:hidden">
-                {item.name}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ))}
+        <div className="flex w-full flex-col gap-0.5">
+          {navItems.map((item) => {
+            const active = location.pathname === item.path;
+            return (
+              <TooltipProvider delayDuration={400} key={item.name}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Link
+                      to={item.path}
+                      className={cn(
+                        'relative flex h-9 items-center justify-center rounded-md transition-colors',
+                        active
+                          ? 'bg-primary/20 text-white shadow-[inset_3px_0_0_0_hsl(var(--primary))]'
+                          : 'text-sidebar-muted hover:bg-white/10 hover:text-sidebar-foreground',
+                      )}
+                    >
+                      {item.icon}
+                      {item.badge ? (
+                        <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-destructive" />
+                      ) : null}
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">{item.name}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            );
+          })}
         </div>
       </div>
 
-      <div className="flex flex-col gap-2 w-full px-2">
-        {/* theme toggle */}
-        <TooltipProvider delayDuration={500}>
+      <div className="flex w-full flex-col gap-1">
+        <TooltipProvider delayDuration={400}>
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors duration-200 justify-center 2xl:justify-start"
+                className="flex h-8 w-full items-center justify-center rounded-md border border-white/15 bg-white/[0.06] text-sidebar-muted hover:bg-white/10 hover:text-sidebar-foreground"
               >
-                <div className="h-5 w-5">
-                  {theme === 'dark' ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
-                </div>
-                <span className="hidden text-sm font-medium 2xl:inline-block">{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
+                {theme === 'dark' ? <SunIcon className="h-4 w-4" /> : <MoonIcon className="h-4 w-4" />}
               </button>
             </TooltipTrigger>
-
-            <TooltipContent side="right" className="text-sm 2xl:hidden">
-              {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
-            </TooltipContent>
+            <TooltipContent side="right">{theme === 'dark' ? 'Light mode' : 'Night mode'}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
 
-        {/* force quit button */}
-        <TooltipProvider delayDuration={500}>
+        <TooltipProvider delayDuration={400}>
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 onClick={onForceQuit}
-                className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-destructive hover:bg-destructive/10 transition-colors duration-200 justify-center 2xl:justify-start"
+                className="flex h-8 w-full items-center justify-center rounded-md border border-white/15 bg-white/[0.06] text-destructive hover:bg-destructive/10"
               >
-                 <div className="h-5 w-5">
-                  <ExitIcon className="h-5 w-5" />
-                </div>
-                <span className="hidden text-sm font-medium 2xl:inline-block">Quit App</span>
+                <ExitIcon className="h-4 w-4" />
               </button>
             </TooltipTrigger>
-
-            <TooltipContent side="right" className="text-sm 2xl:hidden">
-              Quit App
-            </TooltipContent>
+            <TooltipContent side="right">Quit</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </div>

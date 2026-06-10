@@ -2,7 +2,7 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
         <loc>https://i0x1.github.io/First2Fetch/</loc>
-        <changefreq>daily</changefreq>
+        <changefreq>weekly</changefreq>
         <priority>1.0</priority>
     </url>
     <url>
@@ -12,5 +12,13 @@
     <url>
         <loc>https://i0x1.github.io/First2Fetch/changelog</loc>
         <priority>0.8</priority>
+    </url>
+    <url>
+        <loc>https://i0x1.github.io/First2Fetch/privacy-policy</loc>
+        <priority>0.3</priority>
+    </url>
+    <url>
+        <loc>https://i0x1.github.io/First2Fetch/terms-of-service</loc>
+        <priority>0.3</priority>
     </url>
 </urlset>

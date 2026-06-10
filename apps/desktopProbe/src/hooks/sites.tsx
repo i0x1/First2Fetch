@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 
 import { listSites } from '@/lib/electronMainSdk';
-import { JobSite } from '@first2apply/core';
+import { getStoredProviderIconPath } from '@/lib/providerIcons';
+import type { JobSite } from '@first2apply/core';
 
 import { useError } from './error';
 import { useSession } from './session';
@@ -35,15 +36,21 @@ export const SitesProvider = ({ children }: React.PropsWithChildren<{}>) => {
   const [isLoading, setIsLoading] = useState(true);
   const [sites, setSites] = useState<JobSite[]>([]);
 
-  // Load the job sites list on mount
+  // Load the job sites list on mount (only when logged in - RLS requires authenticated user)
   useEffect(() => {
     const asyncLoad = async () => {
       try {
-        if (!isLoggedIn) return;
+        if (!isLoggedIn) {
+          setSites([]);
+          setIsLoading(false);
+          return;
+        }
         setSites(await listSites());
-        setIsLoading(false);
       } catch (error) {
         handleError({ error });
+        setSites([]);
+      } finally {
+        setIsLoading(false);
       }
     };
 
@@ -63,7 +70,9 @@ export const SitesProvider = ({ children }: React.PropsWithChildren<{}>) => {
     }
   };
 
-  const siteLogos = Object.fromEntries(sites.map((site) => [site.id, sanitizeLogoUrl(site.logo_url)]));
+  const siteLogos = Object.fromEntries(
+    sites.map((site) => [site.id, getStoredProviderIconPath(site) ?? sanitizeLogoUrl(site.logo_url)]),
+  );
   const siteMap = Object.fromEntries(sites.map((site) => [site.id, site]));
 
   return (

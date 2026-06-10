@@ -2,8 +2,8 @@ import { Item } from '@radix-ui/react-radio-group';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 
+import { CompactPageHeader, CompactPanel } from '@/components/compact/compactLayout';
 import { Review } from '@first2apply/core';
-import { Card, CardContent, CardHeader } from '@first2apply/ui';
 import { RadioGroup } from '@first2apply/ui';
 import { Button } from '@first2apply/ui';
 import { Form, FormControl, FormField, FormItem, FormLabel } from '@first2apply/ui';
@@ -134,28 +134,26 @@ export function FeedbackPage() {
 
   if (isLoading) {
     return (
-      <DefaultLayout className="space-y-3 p-6 md:p-10">
+      <DefaultLayout className="space-y-2">
         <Skeleton className="mb-4 h-4 w-full" />
       </DefaultLayout>
     );
   }
 
   return (
-    <DefaultLayout className="space-y-3 p-6 md:p-10">
-      <h1 className="pb-3 text-2xl font-medium tracking-wide">Feedback</h1>
+    <DefaultLayout className="space-y-3">
+      <CompactPageHeader title="Feedback" />
 
-      <Card className="rounded-lg">
-        <CardHeader>
-          <h2 className="text-xl font-medium">Help us make First 2 Apply better</h2>
-          <p className="text-balance text-sm text-muted-foreground">
-            Let us know what works, what doesn't or any ideas you might have that would make the app better suited to
-            your job hunting needs.
+      <CompactPanel title="Help us improve">
+        <div className="space-y-3 p-2">
+          <p className="text-xs text-muted-foreground">
+            Let us know what works, what doesn&apos;t, or any ideas you have to make the app better for your job search.
           </p>
           {userOS === 'win32' && (
-            <p className="my-2 text-balance text-sm text-muted-foreground">
-              If you're enjoying First 2 Apply, please consider leaving a review on the{' '}
+            <p className="text-xs text-muted-foreground">
+              Enjoying First 2 Apply? Please leave a review on the{' '}
               <a
-                className="hover:text-primary-dark text-primary underline hover:cursor-pointer hover:no-underline"
+                className="text-primary underline hover:cursor-pointer hover:no-underline"
                 onClick={(e) => {
                   e.preventDefault();
                   openWindowsStore();
@@ -166,11 +164,9 @@ export function FeedbackPage() {
               .
             </p>
           )}
-        </CardHeader>
 
-        <CardContent className="py-6">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField
                 control={form.control}
                 name="rating"
@@ -180,7 +176,7 @@ export function FeedbackPage() {
                       <RadioGroup
                         value={String(rating)}
                         onValueChange={(value) => setValue('rating', Number(value))}
-                        className="flex items-center"
+                        className="flex items-center gap-1"
                       >
                         {Array.from({ length: 5 }, (_, index) => {
                           const value = index + 1;
@@ -225,13 +221,13 @@ export function FeedbackPage() {
                       Description <i>(Optional)</i>
                     </FormLabel>
                     <FormControl>
-                      <Textarea id="description" className="mb-4 resize-none" rows={6} {...field} />
+                      <Textarea id="description" className="resize-none text-sm" rows={5} {...field} />
                     </FormControl>
                   </FormItem>
                 )}
               />
 
-              <Button type="submit" disabled={!form.formState.isValid || isSubmitting} size="lg" className="text-base">
+              <Button type="submit" disabled={!form.formState.isValid || isSubmitting} size="sm">
                 {isSubmitting ? (
                   <>
                     <Icons.spinner2 className="h-4 w-4 animate-spin" />
@@ -245,8 +241,8 @@ export function FeedbackPage() {
               </Button>
             </form>
           </Form>
-        </CardContent>
-      </Card>
+        </div>
+      </CompactPanel>
     </DefaultLayout>
   );
 }

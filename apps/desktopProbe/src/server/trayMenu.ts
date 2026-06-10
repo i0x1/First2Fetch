@@ -14,10 +14,12 @@ export class TrayMenu {
     logger,
     onQuit,
     onNavigate,
+    onShow,
   }: {
     logger: ILogger;
     onQuit: () => void;
     onNavigate: (_: { path: string }) => void;
+    onShow: () => void;
   }) {
     this._logger = logger;
     const iconName =
@@ -65,12 +67,14 @@ export class TrayMenu {
     ]);
 
     this._tray.setContextMenu(contextMenu);
-    this._tray.setToolTip('First2Apply');
-    if (process.platform === 'win32') {
-      this._tray.on('click', () => {
+    this._tray.setToolTip('First 2 Fetch');
+    this._tray.on('click', () => {
+      if (process.platform === 'win32') {
         this._tray.popUpContextMenu();
-      });
-    }
+        return;
+      }
+      onShow();
+    });
     this._logger.info('Tray menu initialized');
   }
 

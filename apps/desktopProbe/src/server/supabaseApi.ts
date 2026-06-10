@@ -1,13 +1,21 @@
-import { DbSchema, Job, JobLabel, JobStatus, Link } from '@first2apply/core';
+import { DbSchema, Job, JobLabel, JobStatus, Link, WebPageRuntimeData } from '@first2apply/core';
 import { FunctionsHttpError, PostgrestError, SupabaseClient, User } from '@supabase/supabase-js';
 import { backOff } from 'exponential-backoff';
 import * as luxon from 'luxon';
+
+import { normalizeCompanyList } from '../lib/companyListUtils';
+
+import { ILogger } from './logger';
 
 /**
  * Class used to interact with our Supabase API.
  */
 export class F2aSupabaseApi {
-  constructor(private _supabase: SupabaseClient<DbSchema>) {}
+  constructor(
+    private _supabase: SupabaseClient<DbSchema>,
+    private _supabasePublishableKey: string | undefined,
+    private _logger?: ILogger,
+  ) {}
 
   /**
    * Create a new user account using an email and password.
@@ -60,20 +68,29 @@ export class F2aSupabaseApi {
   /**
    * Create a new link.
    */
-  async createLink({ title, url, html }: { title: string; url: string; html: string }) {
-    // for debugging, use a test.html file
-    // const htmlFixture = fs.readFileSync(path.join(__dirname, '../../../test.html'), 'utf-8');
-    // html = htmlFixture;
-
-    const { link, newJobs } = await this._supabaseApiCall(() =>
-      this._supabase.functions.invoke<{ link: Link; newJobs: Job[] }>('create-link', {
-        body: {
-          title,
-          url,
-          html,
-        },
-      }),
-    );
+  async createLink({
+    title,
+    url,
+    html,
+    webPageRuntimeData,
+    force,
+  }: {
+    title: string;
+    url: string;
+    html: string;
+    webPageRuntimeData: WebPageRuntimeData;
+    force?: boolean;
+  }) {
+    const { link, newJobs } = await this._invokeEdgeFunction<
+      { title: string; url: string; html: string; webPageRuntimeData: WebPageRuntimeData; force?: boolean },
+      { link: Link; newJobs: Job[] }
+    >('create-link', {
+      title,
+      url,
+      html,
+      webPageRuntimeData,
+      force,
+    });
 
     return { link, newJobs };
   }
@@ -98,6 +115,22 @@ export class F2aSupabaseApi {
     );
   }
 
+  async getLinkJobCounts(): Promise<Record<number, number>> {
+    const rows = await this._supabaseApiCall<
+      Array<{
+        link_id: number;
+        job_count: number;
+      }>,
+      PostgrestError
+    >(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (this._supabase.rpc as any)('count_jobs_by_link');
+      return { data, error };
+    });
+
+    return Object.fromEntries(rows.map((row) => [row.link_id, Number(row.job_count)]));
+  }
+
   /**
    * Delete a link.
    */
@@ -108,27 +141,24 @@ export class F2aSupabaseApi {
   /**
    * Scan a list of htmls for new jobs.
    */
-  scanHtmls(
+  async scanHtmls(
     htmls: {
       linkId: number;
       content: string;
+      webPageRuntimeData: WebPageRuntimeData;
       maxRetries: number;
       retryCount: number;
     }[],
   ) {
-    return this._supabaseApiCall(() =>
-      this._supabase.functions.invoke<{ newJobs: Job[]; parseFailed: boolean }>('scan-urls', {
-        body: {
-          htmls,
-        },
-      }),
-    );
+    return this._invokeEdgeFunction<{ htmls: typeof htmls }, { newJobs: Job[]; parseFailed: boolean }>('scan-urls', {
+      htmls,
+    });
   }
 
   /**
    * Scan HTML for a job description.
    */
-  scanJobDescription({
+  async scanJobDescription({
     jobId,
     html,
     maxRetries,
@@ -139,29 +169,27 @@ export class F2aSupabaseApi {
     maxRetries: number;
     retryCount: number;
   }) {
-    return this._supabaseApiCall(() =>
-      this._supabase.functions.invoke<{ job: Job; parseFailed: boolean }>('scan-job-description', {
-        body: {
-          jobId,
-          html,
-          maxRetries,
-          retryCount,
-        },
-      }),
-    );
+    return this._invokeEdgeFunction<
+      { jobId: number; html: string; maxRetries: number; retryCount: number },
+      { job: Job; parseFailed: boolean }
+    >('scan-job-description', {
+      jobId,
+      html,
+      maxRetries,
+      retryCount,
+    });
   }
 
   /**
    * Run the post scan hook edge function.
    */
-  runPostScanHook({ newJobIds, areEmailAlertsEnabled }: { newJobIds: number[]; areEmailAlertsEnabled: boolean }) {
-    return this._supabaseApiCall(() =>
-      this._supabase.functions.invoke('post-scan-hook', {
-        body: {
-          newJobIds,
-          areEmailAlertsEnabled,
-        },
-      }),
+  async runPostScanHook({ newJobIds, areEmailAlertsEnabled }: { newJobIds: number[]; areEmailAlertsEnabled: boolean }) {
+    return this._invokeEdgeFunction<{ newJobIds: number[]; areEmailAlertsEnabled: boolean }, unknown>(
+      'post-scan-hook',
+      {
+        newJobIds,
+        areEmailAlertsEnabled,
+      },
     );
   }
 
@@ -214,6 +242,51 @@ export class F2aSupabaseApi {
 
       return { data, error };
     });
+  }
+
+  async getJobCounts({
+    search,
+    siteIds,
+    linkIds,
+    labels,
+    hideReposted,
+  }: {
+    search?: string;
+    siteIds?: number[];
+    linkIds?: number[];
+    labels?: string[];
+    hideReposted?: boolean;
+  }) {
+    const jobs_search = search || undefined;
+    const jobs_site_ids = siteIds?.length > 0 ? siteIds : undefined;
+    const jobs_link_ids = linkIds?.length > 0 ? linkIds : undefined;
+    const jobs_labels = labels?.length > 0 ? labels : undefined;
+
+    const counters = await this._supabaseApiCall<
+      Array<{
+        status: JobStatus;
+        job_count: number;
+      }>,
+      PostgrestError
+    >(async () => {
+      const res = await this._supabase.rpc('count_jobs', {
+        jobs_search,
+        jobs_site_ids,
+        jobs_link_ids,
+        jobs_labels,
+        hide_reposted: hideReposted ?? false,
+      });
+
+      return res;
+    });
+
+    const countersMap = new Map(counters.map((c) => [c.status, c.job_count]));
+    return {
+      new: countersMap.get('new') ?? 0,
+      archived: countersMap.get('archived') ?? 0,
+      applied: countersMap.get('applied') ?? 0,
+      filtered: countersMap.get('excluded_by_advanced_matching') ?? 0,
+    };
   }
 
   /**
@@ -369,6 +442,149 @@ export class F2aSupabaseApi {
   }
 
   /**
+   * Get authorization headers for edge function calls.
+   * In Electron, we need to explicitly pass the auth header to edge functions.
+   *
+   * When verify_jwt is enabled on edge functions, Supabase gateway expects:
+   * - Authorization: Bearer <user_jwt_token>
+   * - apikey: <anon_key> (the public API key)
+   */
+  private async _getAuthHeaders(): Promise<Record<string, string>> {
+    const {
+      data: { session },
+      error: sessionError,
+    } = await this._supabase.auth.getSession();
+
+    if (sessionError) {
+      this._logger?.warn('supabase session lookup failed', { error: sessionError.message });
+      throw new Error(`Failed to get session: ${sessionError.message}`);
+    }
+
+    if (!session?.access_token) {
+      this._logger?.warn('supabase edge call missing active session');
+      throw new Error('No active session found. Please sign in again.');
+    }
+
+    this._validateSessionProject(session.access_token);
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${session.access_token}`,
+    };
+
+    const publishableKey = this._supabasePublishableKey?.trim();
+    if (publishableKey) {
+      headers.apikey = publishableKey;
+    }
+
+    return headers;
+  }
+
+  private async _invokeEdgeFunction<TBody extends object, TResponse>(
+    functionName: string,
+    body: TBody,
+  ): Promise<TResponse> {
+    const invoke = async (headers: Record<string, string>) =>
+      this._supabaseApiCall(() =>
+        this._supabase.functions.invoke<TResponse>(functionName, {
+          body,
+          headers,
+        }),
+      );
+
+    const initialHeaders = await this._getAuthHeaders();
+    try {
+      return await invoke(initialHeaders);
+    } catch (error) {
+      if (!this._isUnauthorizedFunctionError(error)) {
+        throw error;
+      }
+
+      this._logger?.warn('supabase edge call unauthorized; refreshing session once', { functionName });
+      await this._refreshSessionForEdgeFunctionCall();
+      const refreshedHeaders = await this._getAuthHeaders();
+      return await invoke(refreshedHeaders);
+    }
+  }
+
+  private async _refreshSessionForEdgeFunctionCall() {
+    const {
+      data: { session },
+      error: getSessionError,
+    } = await this._supabase.auth.getSession();
+
+    if (getSessionError) {
+      throw new Error(`Failed to refresh session: ${getSessionError.message}`);
+    }
+
+    if (!session?.refresh_token) {
+      throw new Error('Session is invalid or expired. Please sign out and sign in again.');
+    }
+
+    const { error: refreshError } = await this._supabase.auth.refreshSession({
+      refresh_token: session.refresh_token,
+    });
+    if (refreshError) {
+      throw new Error(`Session refresh failed: ${refreshError.message}. Please sign in again.`);
+    }
+  }
+
+  private _isUnauthorizedFunctionError(error: unknown): boolean {
+    return error instanceof FunctionsHttpError && error.context?.status === 401;
+  }
+
+  private _validateSessionProject(accessToken: string) {
+    const payload = this._decodeJwtPayload(accessToken);
+    const tokenProjectRef = typeof payload?.ref === 'string' ? payload.ref : undefined;
+    const currentProjectRef = this._extractProjectRefFromUrl();
+
+    if (!tokenProjectRef || !currentProjectRef) {
+      return;
+    }
+
+    if (tokenProjectRef !== currentProjectRef) {
+      throw new Error(
+        `Session token project mismatch (token ref: ${tokenProjectRef}, app ref: ${currentProjectRef}). ` +
+          `Please sign out and sign in again.`,
+      );
+    }
+  }
+
+  private _extractProjectRefFromUrl(): string | undefined {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const url = (this._supabase as any)?.supabaseUrl;
+    if (!url || typeof url !== 'string') {
+      return undefined;
+    }
+
+    try {
+      const parsed = new URL(url);
+      return parsed.hostname.split('.')[0];
+    } catch {
+      return undefined;
+    }
+  }
+
+  private _decodeJwtPayload(token: string): Record<string, unknown> | null {
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      return null;
+    }
+
+    const payload = parts[1];
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+
+    try {
+      return JSON.parse(Buffer.from(padded, 'base64').toString('utf-8')) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+
+  private _isExpectedMissingSession(error: unknown): boolean {
+    return error instanceof Error && error.message === 'Auth session missing!';
+  }
+
+  /**
    * Wrapper around a Supabase method that handles errors.
    */
   private async _supabaseApiCall<T, E extends Error | PostgrestError | FunctionsHttpError>(
@@ -378,12 +594,10 @@ export class F2aSupabaseApi {
       async () => {
         const result = await method();
         if (result.error) {
-          // Log more details about the error for debugging
-          console.error('[supabaseApiCall] Edge function error:', {
-            errorType: result.error.constructor.name,
-            errorMessage: result.error.message,
-            error: result.error,
-          });
+          if (!this._isExpectedMissingSession(result.error)) {
+            const errorInfo = await this._formatErrorForLogging(result.error);
+            this._logger?.error('supabase call failed', errorInfo);
+          }
           throw result.error;
         }
 
@@ -393,27 +607,79 @@ export class F2aSupabaseApi {
         numOfAttempts: 5,
         jitter: 'full',
         startingDelay: 300,
+        retry: (error) => this._isRetriableError(error),
       },
     );
 
     // edge functions don't throw errors, instead they return an errorMessage field in the data object
     // work around for this issue https://github.com/supabase/functions-js/issues/45
-    if (
-      !!data &&
-      typeof data === 'object' &&
-      'errorMessage' in data &&
-      typeof data.errorMessage === 'string'
-    ) {
-      console.error('[supabaseApiCall] Edge function returned errorMessage in response body:', data.errorMessage);
+    if (!!data && typeof data === 'object' && 'errorMessage' in data && typeof data.errorMessage === 'string') {
+      this._logger?.error('supabase edge function returned error', { error: data.errorMessage });
       throw new Error(data.errorMessage);
     }
 
     if (error) {
-      console.error('[supabaseApiCall] Unexpected error after backoff:', error);
+      this._logger?.error('supabase unexpected error after retries', this._formatGenericError(error));
       throw error;
     }
 
     return data;
+  }
+
+  private _isRetriableError(error: unknown): boolean {
+    if (this._isExpectedMissingSession(error)) {
+      return false;
+    }
+    if (error instanceof FunctionsHttpError) {
+      const status = error.context?.status ?? 0;
+      if (status === 408 || status === 429) {
+        return true;
+      }
+      if (status >= 400 && status < 500) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private async _formatErrorForLogging(error: unknown) {
+    if (!(error instanceof FunctionsHttpError)) {
+      return this._formatGenericError(error);
+    }
+
+    let responseBody: string | null = null;
+    try {
+      if (error.context && !error.context.bodyUsed) {
+        responseBody = await error.context.clone().text();
+      }
+    } catch {
+      responseBody = null;
+    }
+
+    return {
+      errorType: error.constructor.name,
+      errorMessage: error.message,
+      status: error.context?.status,
+      statusText: error.context?.statusText,
+      requestUrl: error.context?.url,
+      responseBody,
+    };
+  }
+
+  private _formatGenericError(error: unknown) {
+    if (error instanceof Error) {
+      return {
+        errorType: error.constructor.name,
+        errorMessage: error.message,
+        stack: error.stack?.split('\n').slice(0, 5).join('\n'),
+      };
+    }
+
+    return {
+      errorType: 'UnknownError',
+      errorMessage: String(error),
+    };
   }
 
   /**
@@ -540,8 +806,12 @@ export class F2aSupabaseApi {
    * Get the advanced matching configuration for the current user.
    */
   async getAdvancedMatchingConfig() {
+    return this._getOrCreateAdvancedMatchingConfig();
+  }
+
+  private async _fetchAdvancedMatchingConfig() {
     const [config] = await this._supabaseApiCall(
-      async () => await this._supabase.from('advanced_matching').select('*'),
+      async () => await this._supabase.from('advanced_matching').select('*').limit(1),
     );
 
     return config;
@@ -551,6 +821,19 @@ export class F2aSupabaseApi {
    * Update the advanced matching configuration for the current user.
    * Uses RPC function to encrypt API keys securely.
    */
+  private _aiFieldsFromConfig(config: Record<string, unknown>) {
+    return {
+      ai_provider: (config.ai_provider as string | null) ?? null,
+      ai_model: (config.ai_model as string | null) ?? null,
+      ai_jd_filter_provider: (config.ai_jd_filter_provider as string | null) ?? null,
+      ai_jd_filter_model: (config.ai_jd_filter_model as string | null) ?? null,
+      ai_job_list_provider: (config.ai_job_list_provider as string | null) ?? null,
+      ai_job_list_model: (config.ai_job_list_model as string | null) ?? null,
+      ai_jd_parse_provider: (config.ai_jd_parse_provider as string | null) ?? null,
+      ai_jd_parse_model: (config.ai_jd_parse_model as string | null) ?? null,
+    };
+  }
+
   async updateAdvancedMatchingConfig(config: {
     chatgpt_prompt: string;
     blacklisted_companies: string[];
@@ -559,18 +842,42 @@ export class F2aSupabaseApi {
     ai_provider?: string | null;
     ai_model?: string | null;
     ai_api_key_encrypted?: string | null;
+    ai_jd_filter_provider?: string | null;
+    ai_jd_filter_model?: string | null;
+    ai_job_list_provider?: string | null;
+    ai_job_list_model?: string | null;
+    ai_jd_parse_provider?: string | null;
+    ai_jd_parse_model?: string | null;
+    ai_api_keys?: Record<string, string> | null;
   }) {
+    const normalizedConfig = {
+      ...config,
+      blacklisted_companies: normalizeCompanyList(config.blacklisted_companies),
+      favorite_companies: normalizeCompanyList(config.favorite_companies),
+      watched_companies: normalizeCompanyList(config.watched_companies ?? []),
+    };
+
     // Use RPC function to handle encryption
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: updatedConfig, error } = await (this._supabase.rpc as any)('update_advanced_matching_with_ai_config', {
-      p_chatgpt_prompt: config.chatgpt_prompt,
-      p_blacklisted_companies: config.blacklisted_companies,
-      p_favorite_companies: config.favorite_companies,
-      p_watched_companies: config.watched_companies || null,
-      p_ai_provider: config.ai_provider || null,
-      p_ai_model: config.ai_model || null,
-      p_ai_api_key: config.ai_api_key_encrypted || null, // This will be encrypted in the function
-    });
+    const { data: updatedConfig, error } = await (this._supabase.rpc as any)(
+      'update_advanced_matching_with_ai_config',
+      {
+        p_chatgpt_prompt: normalizedConfig.chatgpt_prompt,
+        p_blacklisted_companies: normalizedConfig.blacklisted_companies,
+        p_favorite_companies: normalizedConfig.favorite_companies,
+        p_watched_companies: normalizedConfig.watched_companies,
+        p_ai_provider: normalizedConfig.ai_provider || null,
+        p_ai_model: normalizedConfig.ai_model || null,
+        p_ai_api_key: normalizedConfig.ai_api_key_encrypted || null,
+        p_ai_jd_filter_provider: normalizedConfig.ai_jd_filter_provider || null,
+        p_ai_jd_filter_model: normalizedConfig.ai_jd_filter_model || null,
+        p_ai_job_list_provider: normalizedConfig.ai_job_list_provider || null,
+        p_ai_job_list_model: normalizedConfig.ai_job_list_model || null,
+        p_ai_jd_parse_provider: normalizedConfig.ai_jd_parse_provider || null,
+        p_ai_jd_parse_model: normalizedConfig.ai_jd_parse_model || null,
+        p_ai_api_keys: normalizedConfig.ai_api_keys || null,
+      },
+    );
 
     if (error) {
       throw error;
@@ -584,24 +891,11 @@ export class F2aSupabaseApi {
   }
 
   private _ensureUniqueCompanies(companies: string[]): string[] {
-    const seen = new Set<string>();
-    const normalized: string[] = [];
-    for (const company of companies) {
-      const trimmed = this._normalizeCompanyName(company);
-      if (!trimmed) {
-        continue;
-      }
-      const key = trimmed.toLowerCase();
-      if (!seen.has(key)) {
-        seen.add(key);
-        normalized.push(trimmed);
-      }
-    }
-    return normalized;
+    return normalizeCompanyList(companies);
   }
 
   private async _getOrCreateAdvancedMatchingConfig() {
-    const config = await this.getAdvancedMatchingConfig();
+    const config = await this._fetchAdvancedMatchingConfig();
     if (config) {
       return config;
     }
@@ -625,12 +919,8 @@ export class F2aSupabaseApi {
     }
 
     const normalizedLower = normalizedName.toLowerCase();
-    const isInFavorites = config.favorite_companies.some(
-      (c: string) => c.toLowerCase() === normalizedLower
-    );
-    const isInWatched = (config.watched_companies || []).some(
-      (c: string) => c.toLowerCase() === normalizedLower
-    );
+    const isInFavorites = config.favorite_companies.some((c: string) => c.toLowerCase() === normalizedLower);
+    const isInWatched = (config.watched_companies || []).some((c: string) => c.toLowerCase() === normalizedLower);
 
     let updatedFavorites = [...config.favorite_companies];
     let updatedWatched = [...(config.watched_companies || [])];
@@ -640,9 +930,7 @@ export class F2aSupabaseApi {
       return config;
     } else if (isInWatched) {
       // Move from watched to favorites
-      updatedWatched = updatedWatched.filter(
-        (c: string) => c.toLowerCase() !== normalizedLower
-      );
+      updatedWatched = updatedWatched.filter((c: string) => c.toLowerCase() !== normalizedLower);
       updatedFavorites = this._ensureUniqueCompanies([...updatedFavorites, normalizedName]);
     } else {
       // Not in either, add to watched
@@ -654,8 +942,7 @@ export class F2aSupabaseApi {
       blacklisted_companies: config.blacklisted_companies,
       favorite_companies: updatedFavorites,
       watched_companies: updatedWatched,
-      ai_provider: config.ai_provider,
-      ai_model: config.ai_model,
+      ...this._aiFieldsFromConfig(config),
     });
   }
 
@@ -663,7 +950,7 @@ export class F2aSupabaseApi {
     const config = await this._getOrCreateAdvancedMatchingConfig();
     const normalizedName = this._normalizeCompanyName(companyName);
     const normalizedLower = normalizedName.toLowerCase();
-    
+
     const updatedFavorites = config.favorite_companies.filter(
       (company: string) => company.toLowerCase() !== normalizedLower,
     );
@@ -673,8 +960,7 @@ export class F2aSupabaseApi {
       blacklisted_companies: config.blacklisted_companies,
       favorite_companies: updatedFavorites,
       watched_companies: config.watched_companies || [],
-      ai_provider: config.ai_provider,
-      ai_model: config.ai_model,
+      ...this._aiFieldsFromConfig(config),
     });
   }
 
@@ -699,8 +985,7 @@ export class F2aSupabaseApi {
       blacklisted_companies: updatedBlacklist,
       favorite_companies: updatedFavorites,
       watched_companies: updatedWatched,
-      ai_provider: config.ai_provider,
-      ai_model: config.ai_model,
+      ...this._aiFieldsFromConfig(config),
     });
   }
 
@@ -716,8 +1001,7 @@ export class F2aSupabaseApi {
       blacklisted_companies: updatedBlacklist,
       favorite_companies: config.favorite_companies,
       watched_companies: config.watched_companies || [],
-      ai_provider: config.ai_provider,
-      ai_model: config.ai_model,
+      ...this._aiFieldsFromConfig(config),
     });
   }
 
@@ -730,10 +1014,8 @@ export class F2aSupabaseApi {
 
     const normalizedLower = normalizedName.toLowerCase();
     // If company is already in favorites, move it to favorites (promote it)
-    const isInFavorites = config.favorite_companies.some(
-      (c: string) => c.toLowerCase() === normalizedLower
-    );
-    
+    const isInFavorites = config.favorite_companies.some((c: string) => c.toLowerCase() === normalizedLower);
+
     if (isInFavorites) {
       // Already in favorites, do nothing
       return config;
@@ -741,9 +1023,7 @@ export class F2aSupabaseApi {
 
     // Remove from watched if exists, then add to watched
     const updatedWatched = this._ensureUniqueCompanies([
-      ...(config.watched_companies || []).filter(
-        (c: string) => c.toLowerCase() !== normalizedLower
-      ),
+      ...(config.watched_companies || []).filter((c: string) => c.toLowerCase() !== normalizedLower),
       normalizedName,
     ]);
 
@@ -752,8 +1032,7 @@ export class F2aSupabaseApi {
       blacklisted_companies: config.blacklisted_companies,
       favorite_companies: config.favorite_companies,
       watched_companies: updatedWatched,
-      ai_provider: config.ai_provider,
-      ai_model: config.ai_model,
+      ...this._aiFieldsFromConfig(config),
     });
   }
 
@@ -769,8 +1048,7 @@ export class F2aSupabaseApi {
       blacklisted_companies: config.blacklisted_companies,
       favorite_companies: config.favorite_companies,
       watched_companies: updatedWatched,
-      ai_provider: config.ai_provider,
-      ai_model: config.ai_model,
+      ...this._aiFieldsFromConfig(config),
     });
   }
 
@@ -814,8 +1092,15 @@ export class F2aSupabaseApi {
         chatgpt_prompt: config.chatgpt_prompt,
         blacklisted_companies: config.blacklisted_companies,
         favorite_companies: config.favorite_companies,
+        watched_companies: config.watched_companies ?? [],
         ai_provider: config.ai_provider ?? null,
         ai_model: config.ai_model ?? null,
+        ai_jd_filter_provider: config.ai_jd_filter_provider ?? null,
+        ai_jd_filter_model: config.ai_jd_filter_model ?? null,
+        ai_job_list_provider: config.ai_job_list_provider ?? null,
+        ai_job_list_model: config.ai_job_list_model ?? null,
+        ai_jd_parse_provider: config.ai_jd_parse_provider ?? null,
+        ai_jd_parse_model: config.ai_jd_parse_model ?? null,
       },
       saved_searches: savedSearches,
     };
@@ -827,8 +1112,15 @@ export class F2aSupabaseApi {
       chatgpt_prompt?: string;
       blacklisted_companies?: string[];
       favorite_companies?: string[];
+      watched_companies?: string[];
       ai_provider?: string | null;
       ai_model?: string | null;
+      ai_jd_filter_provider?: string | null;
+      ai_jd_filter_model?: string | null;
+      ai_job_list_provider?: string | null;
+      ai_job_list_model?: string | null;
+      ai_jd_parse_provider?: string | null;
+      ai_jd_parse_model?: string | null;
     };
     saved_searches?: Array<{
       title?: string;
@@ -846,27 +1138,35 @@ export class F2aSupabaseApi {
     }
 
     // Get current config to preserve AI settings if not provided in import
-    const currentConfig = await this.getAdvancedMatchingConfig();
+    const currentConfig = await this._getOrCreateAdvancedMatchingConfig();
 
     const advancedMatching = settings.advanced_matching ?? {};
 
     // Only update AI provider/model if explicitly provided in import (not undefined)
     // This preserves existing AI settings when importing old backup files that don't have them
-    const aiProvider = advancedMatching.ai_provider !== undefined 
-      ? advancedMatching.ai_provider 
-      : currentConfig?.ai_provider ?? null;
-    const aiModel = advancedMatching.ai_model !== undefined 
-      ? advancedMatching.ai_model 
-      : currentConfig?.ai_model ?? null;
+    const pickAi = (field: string) => {
+      const imported = (advancedMatching as Record<string, unknown>)[field];
+      if (imported !== undefined) {
+        return imported as string | null;
+      }
+      return (currentConfig as Record<string, unknown> | undefined)?.[field] as string | null ?? null;
+    };
 
     const updatedConfig = await this.updateAdvancedMatchingConfig({
       chatgpt_prompt: advancedMatching.chatgpt_prompt ?? '',
       blacklisted_companies: this._ensureUniqueCompanies(advancedMatching.blacklisted_companies ?? []),
       favorite_companies: this._ensureUniqueCompanies(advancedMatching.favorite_companies ?? []),
-      ai_provider: aiProvider,
-      ai_model: aiModel,
-      // Explicitly don't pass ai_api_key_encrypted to preserve existing API key
-      // The database function will preserve it via coalesce
+      watched_companies: this._ensureUniqueCompanies(
+        advancedMatching.watched_companies ?? currentConfig?.watched_companies ?? [],
+      ),
+      ai_provider: pickAi('ai_provider'),
+      ai_model: pickAi('ai_model'),
+      ai_jd_filter_provider: pickAi('ai_jd_filter_provider'),
+      ai_jd_filter_model: pickAi('ai_jd_filter_model'),
+      ai_job_list_provider: pickAi('ai_job_list_provider'),
+      ai_job_list_model: pickAi('ai_job_list_model'),
+      ai_jd_parse_provider: pickAi('ai_jd_parse_provider'),
+      ai_jd_parse_model: pickAi('ai_jd_parse_model'),
     });
 
     const savedSearches = settings.saved_searches ?? [];

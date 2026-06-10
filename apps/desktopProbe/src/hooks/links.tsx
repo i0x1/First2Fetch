@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 
 import { createLink, deleteLink, listLinks, updateLink } from '@/lib/electronMainSdk';
-import { Link } from '@first2apply/core';
+import { Link, WebPageRuntimeData } from '@first2apply/core';
 
 import { useError } from './error';
 import { useSession } from './session';
@@ -13,6 +13,8 @@ type LinksContextType = {
   createLink: (
     newLink: Pick<Link, 'title' | 'url'> & {
       html: string;
+      webPageRuntimeData: WebPageRuntimeData;
+      force?: boolean;
     },
   ) => Promise<Link>;
   updateLink: (linkId: number, data: { title: string; url: string }) => Promise<void>;
@@ -75,6 +77,8 @@ export const LinksProvider = ({ children }: React.PropsWithChildren<{}>) => {
   const onCreateLink = async (
     newLink: Pick<Link, 'title' | 'url'> & {
       html: string;
+      webPageRuntimeData: WebPageRuntimeData;
+      force?: boolean;
     },
   ) => {
     const createdLink = await createLink(newLink);

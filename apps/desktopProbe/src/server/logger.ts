@@ -1,7 +1,13 @@
 import { ENV } from '../env';
 
-import { LogLevel, formatConsoleLog, resolveLogLevel, shouldLog } from '@first2apply/core';
-import { Logger as MezmoLogger, createLogger } from '@logdna/logger';
+import {
+  LogLevel,
+  RemoteLogTransport,
+  createAxiomTransportFromEnv,
+  formatConsoleLog,
+  resolveLogLevel,
+  shouldLog,
+} from '@first2apply/core';
 import { app } from 'electron';
 
 export interface ILogger {
@@ -13,18 +19,25 @@ export interface ILogger {
   flush(): void;
 }
 
-/**
- * Custom logger class that wraps the Mezmo logger.
- */
 class Logger implements ILogger {
   private _consoleMeta: Record<string, string>;
 
   constructor(
-    private _logger: MezmoLogger | null,
+    private _remote: RemoteLogTransport | null,
     private _consoleLevel: LogLevel,
     meta?: Record<string, string>,
   ) {
     this._consoleMeta = { ...(meta ?? {}) };
+  }
+
+  private writeToRemote(level: LogLevel, message: string, data?: Record<string, unknown>) {
+    this._remote?.enqueue({
+      level,
+      message,
+      timestamp: new Date().toISOString(),
+      meta: Object.keys(this._consoleMeta).length ? this._consoleMeta : undefined,
+      data,
+    });
   }
 
   private writeToConsole(level: LogLevel, message: string, data?: Record<string, unknown>) {
@@ -50,74 +63,56 @@ class Logger implements ILogger {
 
   debug(message: string, data?: Record<string, unknown>) {
     this.writeToConsole('debug', message, data);
-    if (this._logger) {
-      this._logger.debug(message, {
-        meta: data,
-      });
-    }
+    this.writeToRemote('debug', message, data);
   }
 
   info(message: string, data?: Record<string, unknown>) {
     this.writeToConsole('info', message, data);
-    if (this._logger) {
-      this._logger.info(message, {
-        meta: data,
-      });
-    }
+    this.writeToRemote('info', message, data);
   }
 
   warn(message: string, data?: Record<string, unknown>) {
     this.writeToConsole('warn', message, data);
-    const warnFn = (this._logger as MezmoLogger & { warn?: typeof this._logger.info })?.warn;
-    if (warnFn) {
-      warnFn(message, {
-        meta: data,
-      });
-    }
+    this.writeToRemote('warn', message, data);
   }
 
   error(message: string, data?: Record<string, unknown>) {
     this.writeToConsole('error', message, data);
-    if (this._logger) {
-      this._logger.error(message, {
-        meta: data,
-      });
-    }
+    this.writeToRemote('error', message, data);
   }
 
   addMeta(key: string, value: string) {
     this._consoleMeta[key] = value;
-    if (this._logger) {
-      this._logger.addMetaProperty(key, value);
-    }
   }
 
   flush() {
-    if (this._logger) {
-      this._logger.flush();
-    }
+    void this._remote?.flush();
   }
 }
 
-// Create logger only if Mezmo API key is provided, otherwise use console-only logger
-let mezmoLogger: MezmoLogger | null = null;
-const consoleLogLevel = resolveLogLevel(
-  ENV.logLevel ?? (ENV.nodeEnv === 'development' ? 'debug' : 'info'),
-  'info',
-);
+const consoleLogLevel = resolveLogLevel(ENV.logLevel ?? (ENV.nodeEnv === 'development' ? 'debug' : 'info'), 'info');
 
-if (ENV.mezmoApiKey) {
-  mezmoLogger = createLogger(ENV.mezmoApiKey, {
-    level: ENV.nodeEnv === 'development' ? 'debug' : 'info',
-    app: ENV.appBundleId,
-    env: ENV.nodeEnv,
-    hostname: process.platform,
-    meta: {
-      version: app.getVersion(),
-      arch: process.arch,
-    },
-    indexMeta: true,
+const axiomEnv = {
+  AXIOM_TOKEN: ENV.axiomToken,
+  AXIOM_DATASET: ENV.axiomDataset,
+  AXIOM_URL: ENV.axiomUrl,
+  REMOTE_LOG_LEVEL: ENV.remoteLogLevel,
+};
+
+const remoteTransport = createAxiomTransportFromEnv(axiomEnv, {
+  source: 'desktop',
+  minLevel: 'info',
+});
+
+export const logger = new Logger(remoteTransport, consoleLogLevel, {
+  version: app.getVersion(),
+  arch: process.arch,
+  platform: process.platform,
+  app: ENV.appBundleId ?? 'first2fetch-desktop',
+});
+
+if (remoteTransport) {
+  process.on('beforeExit', () => {
+    void remoteTransport.close();
   });
 }
-
-export const logger = new Logger(mezmoLogger, consoleLogLevel);

@@ -15,13 +15,9 @@ export function CronSchedule({
   className?: string;
 }) {
   return (
-    <div className={cn("flex flex-row items-center justify-between gap-6", className)}>
-      <div className="space-y-1">
-        <h2 className="text-base font-medium">Search Frequency</h2>
-        <p className="text-sm text-muted-foreground">How often do you want to receive job notifications?</p>
-      </div>
+    <div className={cn('flex flex-row items-center justify-end gap-2', className)}>
       <Select value={cronRule} onValueChange={onCronRuleChange}>
-        <SelectTrigger className="w-[180px]">
+        <SelectTrigger className="h-6 w-[132px] text-[10px]">
           <SelectValue placeholder="Never" />
         </SelectTrigger>
         <SelectContent>

@@ -364,7 +364,7 @@ begin
 
   -- Encrypt API key if provided
   if p_ai_api_key is not null and p_ai_api_key != '' then
-    v_encrypted_key := encrypt_api_key(p_ai_api_key, v_user_id);
+    v_encrypted_key := public.encrypt_api_key(p_ai_api_key, v_user_id);
   end if;
 
   -- Upsert the configuration

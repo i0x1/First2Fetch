@@ -2,6 +2,8 @@
 const nextConfig = {
   reactStrictMode: true,
   output: 'export',
+  basePath: '/First2Fetch',
+  assetPrefix: '/First2Fetch/',
   images: {
     unoptimized: true,
   },

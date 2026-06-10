@@ -52,7 +52,7 @@ const router = createMemoryRouter(
       <Route path="/reset-password" element={<ResetPasswordPage />} />
     </>,
   ),
-  { 
+  {
     initialEntries: ['/'],
   },
 );
@@ -86,7 +86,7 @@ function App() {
             <SettingsProvider>
               <SitesProvider>
                 <LinksProvider>
-                  <RouterProvider router={router}></RouterProvider>
+                  <RouterProvider router={router} future={{ v7_startTransition: true }}></RouterProvider>
                 </LinksProvider>
               </SitesProvider>
             </SettingsProvider>

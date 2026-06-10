@@ -14,27 +14,20 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@first2apply/ui';
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  toast,
 } from '@first2apply/ui';
-import { Tabs, TabsList, TabsTrigger } from '@first2apply/ui';
-import { toast } from '@first2apply/ui';
 
 import { JobTabsContent } from './jobTabsContent';
 
 export type JobListing = {
   isLoading: boolean;
   hasMore: boolean;
-  jobs: Array<
-    Job & {
-      isLoadingJD?: boolean;
-    }
-  >;
+  jobs: Array<Job & { isLoadingJD?: boolean }>;
   new: number;
   applied: number;
   archived: number;
@@ -42,22 +35,30 @@ export type JobListing = {
   nextPageToken?: string;
 };
 
-/**
- * Job tabs component.
- */
+function parseIds(value: string | null): number[] {
+  if (!value) return [];
+  return value
+    .split(',')
+    .map((part) => Number(part.trim()))
+    .filter((id) => Number.isFinite(id));
+}
+
+function parseLabels(value: string | null): string[] {
+  if (!value) return [];
+  return value.split(',').map((part) => part.trim()).filter(Boolean);
+}
+
 export function JobTabs() {
   const { handleError } = useError();
-
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Parse the query parameters to determine the active tab
   const searchParams = new URLSearchParams(location.search);
   const status = (searchParams.get('status') || 'new') as JobStatus;
   const search = searchParams.get('search') || '';
-  const siteIds = searchParams.get('site_ids') ? searchParams.get('site_ids').split(',').map(Number) : [];
-  const linkIds = searchParams.get('link_ids') ? searchParams.get('link_ids').split(',').map(Number) : [];
-  const labels = searchParams.get('labels') ? searchParams.get('labels').split(',') : [];
+  const siteIds = parseIds(searchParams.get('site_ids'));
+  const linkIds = parseIds(searchParams.get('link_ids'));
+  const labels = parseLabels(searchParams.get('labels'));
   const hideReposted = searchParams.get('hide_reposted') === 'true';
 
   const [listing, setListing] = useState<JobListing>({
@@ -70,24 +71,19 @@ export function JobTabs() {
     filtered: 0,
   });
 
-  // Handle tab change
-  const onTabChange = (tabValue: string) => {
+  const navigateWithFilters = (nextStatus: JobStatus) => {
     navigate(
-      `?status=${tabValue}&search=${search}&site_ids=${siteIds?.join(',')}&link_ids=${linkIds?.join(',')}&labels=${labels?.join(',')}&hide_reposted=${hideReposted}&r=${Math.random()}`,
+      `?status=${nextStatus}&search=${encodeURIComponent(search)}&site_ids=${siteIds.join(',')}&link_ids=${linkIds.join(',')}&labels=${labels.join(',')}&hide_reposted=${hideReposted}&r=${Math.random()}`,
     );
   };
 
-  // Archive all jobs from the current tab
   const onArchiveAll = async (tab: JobStatus) => {
     try {
       await changeAllJobsStatus({ from: status, to: 'archived' });
-
-      // refresh the tab
-      onTabChange(tab);
-
+      navigateWithFilters(tab);
       toast({
         title: 'All jobs archived',
-        description: `All your ${status} jobs have been archived, you can find them in the archived tab.`,
+        description: `All your ${status} jobs have been archived.`,
         variant: 'success',
       });
     } catch (error) {
@@ -95,14 +91,10 @@ export function JobTabs() {
     }
   };
 
-  // Delete all jobs from the current tab
   const onDeleteAll = async (tab: JobStatus) => {
     try {
       await changeAllJobsStatus({ from: tab, to: 'deleted' });
-
-      // refresh the tab
-      onTabChange(tab);
-
+      navigateWithFilters(tab);
       toast({
         title: 'All jobs deleted',
         description: `All your ${status} jobs have been deleted.`,
@@ -113,7 +105,6 @@ export function JobTabs() {
     }
   };
 
-  // Download all jobs from the current tab to a CSV file
   const onCsvExport = async (tab: JobStatus) => {
     try {
       await exportJobsToCsv(tab);
@@ -128,127 +119,41 @@ export function JobTabs() {
   };
 
   return (
-    <Tabs value={status} onValueChange={(value) => onTabChange(value)}>
-      <TabsList className="h-fit w-full p-2">
-        <TabsTrigger
-          value="new"
-          className={`flex flex-1 items-center px-6 py-3.5 focus-visible:ring-0 focus-visible:ring-offset-0 ${
-            status === 'new' ? 'justify-between' : 'justify-center'
-          }`}
-        >
-          {status === 'new' ? (
-            <>
-              <span className="w-6" />
-              <span>New jobs {`(${listing.new})`}</span>
-              <TabActions
-                tab="new"
-                onTabChange={onTabChange}
-                onCsvExport={onCsvExport}
-                onArchiveAll={onArchiveAll}
-                onDeleteAll={onDeleteAll}
-              />
-            </>
-          ) : (
-            `New jobs ${`(${listing.new})`}`
-          )}
-        </TabsTrigger>
-        <TabsTrigger
-          value="applied"
-          className={`flex flex-1 items-center px-6 py-3.5 focus-visible:ring-0 focus-visible:ring-offset-0 ${
-            status === 'applied' ? 'justify-between' : 'justify-center'
-          }`}
-        >
-          {status === 'applied' ? (
-            <>
-              <span className="w-6" />
-              <span>Applied {`(${listing.applied})`}</span>
-              <TabActions
-                tab="applied"
-                onTabChange={onTabChange}
-                onCsvExport={onCsvExport}
-                onArchiveAll={onArchiveAll}
-                onDeleteAll={onDeleteAll}
-              />
-            </>
-          ) : (
-            `Applied ${`(${listing.applied})`}`
-          )}
-        </TabsTrigger>
-        <TabsTrigger
-          value="archived"
-          className={`flex flex-1 items-center px-6 py-3.5 focus-visible:ring-0 focus-visible:ring-offset-0 ${
-            status === 'archived' ? 'justify-between' : 'justify-center'
-          }`}
-        >
-          {status === 'archived' ? (
-            <>
-              <span className="w-6" />
-              <span>Archived {`(${listing.archived})`}</span>
-              <TabActions
-                tab="archived"
-                onTabChange={onTabChange}
-                onCsvExport={onCsvExport}
-                onArchiveAll={onArchiveAll}
-                onDeleteAll={onDeleteAll}
-              />
-            </>
-          ) : (
-            `Archived ${`(${listing.archived})`}`
-          )}
-        </TabsTrigger>
-        <TabsTrigger
-          value="excluded_by_advanced_matching"
-          className={`flex flex-1 items-center px-6 py-3.5 focus-visible:ring-0 focus-visible:ring-offset-0 ${
-            status === 'excluded_by_advanced_matching' ? 'justify-between' : 'justify-center'
-          }`}
-        >
-          {status === 'excluded_by_advanced_matching' ? (
-            <>
-              <span className="w-6" />
-              <span>Filtered out {`(${listing.filtered})`}</span>
-              <TabActions
-                tab="excluded_by_advanced_matching"
-                onTabChange={onTabChange}
-                onCsvExport={onCsvExport}
-                onArchiveAll={onArchiveAll}
-                onDeleteAll={onDeleteAll}
-              />
-            </>
-          ) : (
-            `Filtered out ${`(${listing.filtered})`}`
-          )}
-        </TabsTrigger>
-      </TabsList>
-
-      <JobTabsContent
-        status={status}
-        listing={listing}
-        setListing={setListing}
-        search={search}
-        siteIds={siteIds}
-        linkIds={linkIds}
-        labels={labels}
-        hideReposted={hideReposted}
-      />
-    </Tabs>
+    <JobTabsContent
+      status={status}
+      listing={listing}
+      setListing={setListing}
+      search={search}
+      siteIds={siteIds}
+      linkIds={linkIds}
+      labels={labels}
+      hideReposted={hideReposted}
+      onStatusChange={navigateWithFilters}
+      tabActions={
+        <TabActionsMenu
+          tab={status}
+          onRefresh={() => navigateWithFilters(status)}
+          onCsvExport={onCsvExport}
+          onArchiveAll={onArchiveAll}
+          onDeleteAll={onDeleteAll}
+        />
+      }
+    />
   );
 }
 
-/**
- * Tab actions component.
- */
-function TabActions({
+function TabActionsMenu({
   tab,
-  onTabChange,
+  onRefresh,
   onCsvExport,
   onArchiveAll,
   onDeleteAll,
 }: {
-  tab: string;
-  onTabChange: (tab: string) => void;
-  onCsvExport: (tab: string) => Promise<void>;
-  onArchiveAll: (tab: string) => Promise<void>;
-  onDeleteAll: (tab: string) => Promise<void>;
+  tab: JobStatus;
+  onRefresh: () => void;
+  onCsvExport: (tab: JobStatus) => Promise<void>;
+  onArchiveAll: (tab: JobStatus) => Promise<void>;
+  onDeleteAll: (tab: JobStatus) => Promise<void>;
 }) {
   const [isArchiveAllDialogOpen, setIsArchiveAllDialogOpen] = useState(false);
   const [isDeleteAllDialogOpen, setIsDeleteAllDialogOpen] = useState(false);
@@ -256,32 +161,27 @@ function TabActions({
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger
-          asChild
-          onClick={(evt) => {
-            evt.preventDefault();
-            evt.stopPropagation();
-          }}
-        >
-          <div className="h-6 w-6 flex items-center justify-center focus-visible:outline-none focus-visible:ring-0 cursor-pointer">
-            <DotsVerticalIcon className="h-5 w-auto text-muted-foreground transition-all duration-200 ease-in-out hover:h-6" />
-          </div>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground hover:text-foreground"
+            aria-label="Tab actions"
+          >
+            <DotsVerticalIcon className="h-4 w-4" />
+          </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent side="bottom" className="space-y-1">
-          <DropdownMenuItem className="cursor-pointer focus:bg-secondary/40" onClick={() => onTabChange(tab)}>
+        <DropdownMenuContent side="bottom" align="end" className="space-y-1">
+          <DropdownMenuItem className="cursor-pointer" onClick={onRefresh}>
             <UpdateIcon className="mb-0.5 mr-2 inline-block h-4 w-4" />
             Refresh
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem className="cursor-pointer focus:bg-secondary/40" onClick={() => onCsvExport(tab)}>
+          <DropdownMenuItem className="cursor-pointer" onClick={() => onCsvExport(tab)}>
             <DownloadIcon className="mb-0.5 mr-2 inline-block h-4 w-4" />
             CSV export
           </DropdownMenuItem>
           {tab !== 'archived' && (
-            <DropdownMenuItem
-              className="cursor-pointer focus:bg-secondary/40"
-              onClick={() => setIsArchiveAllDialogOpen(true)}
-            >
+            <DropdownMenuItem className="cursor-pointer" onClick={() => setIsArchiveAllDialogOpen(true)}>
               <ArchiveIcon className="mb-0.5 mr-2 inline-block h-4 w-4" />
               Archive all
             </DropdownMenuItem>
@@ -296,7 +196,6 @@ function TabActions({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* Archive all jobs confirm dialog */}
       <AlertDialog open={isArchiveAllDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -313,21 +212,17 @@ function TabActions({
                 onArchiveAll(tab);
               }}
             >
-              <ArchiveIcon className="mr-2 inline-block h-4 w-4" />
               Archive All
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Delete all jobs confirm dialog */}
       <AlertDialog open={isDeleteAllDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure you want to delete all {tab} jobs?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. You won't ever see these jobs again.
-            </AlertDialogDescription>
+            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setIsDeleteAllDialogOpen(false)}>Cancel</AlertDialogCancel>
@@ -338,7 +233,6 @@ function TabActions({
                 onDeleteAll(tab);
               }}
             >
-              <TrashIcon className="mr-2 inline-block h-5 w-5" />
               Delete All
             </AlertDialogAction>
           </AlertDialogFooter>

@@ -62,16 +62,16 @@ export class F2aAutoUpdater {
 
     // setup auto updater events
     autoUpdater.on('error', (error) => {
-      console.error('Error fetching updates', getExceptionMessage(error));
+      this._logger.warn('auto updater fetch failed', { error: getExceptionMessage(error) });
     });
     autoUpdater.on('checking-for-update', () => {
-      this._logger.info('Checking for updates ...');
+      this._logger.debug('auto updater check started');
     });
     autoUpdater.on('update-available', () => {
-      this._logger.info('Update available, downloading in background ...');
+      this._logger.info('auto updater update available');
     });
     autoUpdater.on('update-not-available', () => {
-      this._logger.info('No updates available');
+      this._logger.debug('auto updater no update available');
     });
 
     autoUpdater.on('update-downloaded', (event, releaseNotes, releaseName, releaseDate, updateURL) => {
@@ -186,7 +186,7 @@ export class F2aAutoUpdater {
         await this._checkForUpdatesManually();
       }
     } catch (error) {
-      this._logger.error(`Error checking for updates: ${getExceptionMessage(error)}`);
+      this._logger.warn('auto updater check failed', { error: getExceptionMessage(error) });
     }
   }
 
@@ -195,20 +195,20 @@ export class F2aAutoUpdater {
    */
   private async _checkForUpdatesManually() {
     // download the feed JSON and check for updates
-    this._logger.info('checking for updates manually ...');
+    this._logger.debug('manual update check started');
     const releasesJson: ReleaseJson = await fetch(this._feedUrl).then((response) => {
       if (response.ok) {
         return response.json();
       }
       throw new Error('Failed to fetch updates');
     });
-    this._logger.info('release json downloaded');
+    this._logger.debug('release json downloaded');
 
     // check if the current version is the latest
     const currentVersion = app.getVersion();
     const latestVersion = releasesJson.currentRelease;
     if (semver.gt(latestVersion, currentVersion)) {
-      this._logger.info(`new version available: ${latestVersion}`);
+      this._logger.info('new version available', { latestVersion });
 
       // find the release metadata the latest version
       const release = releasesJson.releases.find((release) => release.version === latestVersion);
@@ -222,7 +222,7 @@ export class F2aAutoUpdater {
         updateURL: release.updateTo.url,
       });
     } else {
-      this._logger.info('no updates available');
+      this._logger.debug('no updates available');
     }
   }
 

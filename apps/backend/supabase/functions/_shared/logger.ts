@@ -1,40 +1,39 @@
 import {
   LogLevel,
+  RemoteLogTransport,
+  createAxiomRemoteTransport,
   formatConsoleLog,
   resolveLogLevel,
+  resolveRemoteLoggingEnv,
   shouldLog,
-  throwError,
 } from '@first2apply/core';
-import { Logger as MezmoLogger, createLogger } from 'npm:@logdna/logger';
-
-type MezmoLoggerWithWarn = MezmoLogger & {
-  warn?: (message: string, options?: { meta?: Record<string, any> }) => void;
-};
 
 export interface ILogger {
-  debug(message: string, data?: Record<string, any>): void;
-  info(message: string, data?: Record<string, any>): void;
-  warn(message: string, data?: Record<string, any>): void;
-  error(message: string, data?: Record<string, any>): void;
+  debug(message: string, data?: Record<string, unknown>): void;
+  info(message: string, data?: Record<string, unknown>): void;
+  warn(message: string, data?: Record<string, unknown>): void;
+  error(message: string, data?: Record<string, unknown>): void;
   addMeta(key: string, value: string): void;
   flush(): void;
 }
 
-/**
- * Custom logger class that wraps the Mezmo logger.
- */
+function isTruthyEnv(value: string | undefined): boolean {
+  const v = (value ?? '').trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
 class Logger implements ILogger {
   private _consoleMeta: Record<string, string>;
 
   constructor(
-    private _logger: MezmoLogger,
+    private _remote: RemoteLogTransport | null,
     private _consoleLevel: LogLevel,
     meta: Record<string, string>,
   ) {
     this._consoleMeta = { ...meta };
   }
 
-  private writeToConsole(level: LogLevel, message: string, data?: Record<string, any>) {
+  private writeToConsole(level: LogLevel, message: string, data?: Record<string, unknown>) {
     if (!shouldLog(level, this._consoleLevel)) {
       return;
     }
@@ -55,45 +54,42 @@ class Logger implements ILogger {
     }
   }
 
-  debug(message: string, data?: Record<string, any>) {
+  private writeToRemote(level: LogLevel, message: string, data?: Record<string, unknown>) {
+    this._remote?.enqueue({
+      level,
+      message,
+      timestamp: new Date().toISOString(),
+      meta: Object.keys(this._consoleMeta).length ? this._consoleMeta : undefined,
+      data,
+    });
+  }
+
+  debug(message: string, data?: Record<string, unknown>) {
     this.writeToConsole('debug', message, data);
-    this._logger.debug &&
-      this._logger.debug(message, {
-        meta: data,
-      });
+    this.writeToRemote('debug', message, data);
   }
 
-  info(message: string, data?: Record<string, any>) {
+  info(message: string, data?: Record<string, unknown>) {
     this.writeToConsole('info', message, data);
-    this._logger.info &&
-      this._logger.info(message, {
-        meta: data,
-      });
+    this.writeToRemote('info', message, data);
   }
 
-  warn(message: string, data?: Record<string, any>) {
+  warn(message: string, data?: Record<string, unknown>) {
     this.writeToConsole('warn', message, data);
-    (this._logger as MezmoLoggerWithWarn).warn &&
-      (this._logger as MezmoLoggerWithWarn).warn(message, {
-        meta: data,
-      });
+    this.writeToRemote('warn', message, data);
   }
 
-  error(message: string, data?: Record<string, any>) {
+  error(message: string, data?: Record<string, unknown>) {
     this.writeToConsole('error', message, data);
-    this._logger.error &&
-      this._logger.error(message, {
-        meta: data,
-      });
+    this.writeToRemote('error', message, data);
   }
 
   addMeta(key: string, value: string) {
     this._consoleMeta[key] = value;
-    this._logger.addMetaProperty(key, value);
   }
 
   flush() {
-    this._logger.flush();
+    void this._remote?.flush();
   }
 }
 
@@ -103,14 +99,26 @@ export const createLoggerWithMeta = (meta: Record<string, string>) => {
     'info',
   );
 
-  const mezmoLogger = createLogger(Deno.env.get('MEZMO_API_KEY') ?? throwError(''), {
-    level: 'info',
-    app: 'first2apply',
-    env: 'all',
-    hostname: 'edge-functions',
-    meta,
-    indexMeta: true,
-  });
+  const axiomEnv = {
+    AXIOM_TOKEN: Deno.env.get('AXIOM_TOKEN') ?? undefined,
+    AXIOM_DATASET: Deno.env.get('AXIOM_DATASET') ?? undefined,
+    AXIOM_URL: Deno.env.get('AXIOM_URL') ?? undefined,
+    REMOTE_LOG_LEVEL: Deno.env.get('REMOTE_LOG_LEVEL') ?? undefined,
+  };
+  const resolvedAxiom = isTruthyEnv(Deno.env.get('AXIOM_ENABLE_EDGE')) ? resolveRemoteLoggingEnv(axiomEnv) : null;
 
-  return new Logger(mezmoLogger, consoleLevel, meta);
+  const remoteTransport = resolvedAxiom
+    ? createAxiomRemoteTransport({
+        token: resolvedAxiom.token,
+        dataset: resolvedAxiom.dataset,
+        baseUrl: resolvedAxiom.baseUrl,
+        minLevel: resolvedAxiom.minLevel,
+        source: 'edge-functions',
+        fetchImpl: fetch,
+        batchSize: 10,
+        flushIntervalMs: 0,
+      })
+    : null;
+
+  return new Logger(remoteTransport, consoleLevel, meta);
 };

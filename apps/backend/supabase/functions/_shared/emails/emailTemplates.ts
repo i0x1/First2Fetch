@@ -1,29 +1,24 @@
 /**
- * Base email template type
+ * Payload types for transactional emails sent via Resend.
  */
-export type EmailTemplateBase = {
-  type: EmailTemplateType;
-  templateId: string; // This will store the template ID
-};
-
 export enum EmailTemplateType {
   searchParsingFailure = 'searchParsingFailure',
   newJobAlert = 'newJobAlert',
 }
 
-export type SearchParsingFailureEmailTemplate = EmailTemplateBase & {
+export type SearchParsingFailureEmailTemplate = {
   type: EmailTemplateType.searchParsingFailure;
-  templateId: '3z0vklorkzpl7qrx';
   payload: {
     links: Array<{ title: string; site_name: string }>;
   };
 };
-export type NewJobAlertEmailTemplate = EmailTemplateBase & {
+
+export type NewJobAlertEmailTemplate = {
   type: EmailTemplateType.newJobAlert;
-  templateId: 'pr9084z32r8lw63d';
   payload: {
     new_jobs_count: number;
     new_jobs: Array<{
+      providerName: string;
       title: string;
       url: string;
       description?: string;

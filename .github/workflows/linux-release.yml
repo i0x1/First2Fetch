@@ -37,7 +37,8 @@ jobs:
           APP_BUNDLE_ID: ${{ secrets.APP_BUNDLE_ID }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          MEZMO_API_KEY: ${{ secrets.MEZMO_API_KEY }}
+          AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
+          AXIOM_DATASET: ${{ secrets.AXIOM_DATASET }}
           AMPLITUDE_API_KEY: ${{ secrets.AMPLITUDE_API_KEY }}
         run: |
           pnpm make

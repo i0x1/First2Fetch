@@ -9,6 +9,7 @@ import {
   Profile,
   Review,
   StripeConfig,
+  WebPageRuntimeData,
 } from '@first2apply/core';
 import { User } from '@supabase/supabase-js';
 
@@ -86,11 +87,25 @@ export async function getUser(): Promise<User | null> {
 /**
  * Function used to create a new link.
  */
-export async function createLink({ title, url, html }: { title: string; url: string; html: string }): Promise<Link> {
+export async function createLink({
+  title,
+  url,
+  html,
+  webPageRuntimeData,
+  force,
+}: {
+  title: string;
+  url: string;
+  html: string;
+  webPageRuntimeData: WebPageRuntimeData;
+  force?: boolean;
+}): Promise<Link> {
   const { link } = await _mainProcessApiCall<{ link: Link }>('create-link', {
     title,
     url,
     html,
+    webPageRuntimeData,
+    force,
   });
   return link;
 }
@@ -121,6 +136,10 @@ export async function updateLink({
 export async function listLinks(): Promise<Link[]> {
   const links = await _mainProcessApiCall<Link[]>('list-links', {});
   return links;
+}
+
+export async function getLinkJobCounts(): Promise<Record<number, number>> {
+  return _mainProcessApiCall<Record<number, number>>('get-link-job-counts', {});
 }
 
 /**
@@ -167,6 +186,33 @@ export async function getJobDatesSummary({
   });
 
   return result;
+}
+
+export async function getJobCounts({
+  search,
+  siteIds,
+  linkIds,
+  labels,
+  hideReposted,
+}: {
+  search?: string;
+  siteIds?: number[];
+  linkIds?: number[];
+  labels?: string[];
+  hideReposted?: boolean;
+}) {
+  return await _mainProcessApiCall<{
+    new: number;
+    applied: number;
+    archived: number;
+    filtered: number;
+  }>('get-job-counts', {
+    search,
+    siteIds,
+    linkIds,
+    labels,
+    hideReposted,
+  });
 }
 
 /**
@@ -425,8 +471,6 @@ export async function deleteNote(noteId: number): Promise<void> {
 export type AdvancedMatchingConfigWithAI = AdvancedMatchingConfig & {
   favorite_companies: string[];
   watched_companies: string[];
-  ai_provider?: string | null;
-  ai_model?: string | null;
   ai_api_key_encrypted?: string | null;
 };
 
@@ -448,6 +492,13 @@ type AdvancedMatchingUpdatePayload = {
   ai_provider?: string | null;
   ai_model?: string | null;
   ai_api_key_encrypted?: string | null;
+  ai_jd_filter_provider?: string | null;
+  ai_jd_filter_model?: string | null;
+  ai_job_list_provider?: string | null;
+  ai_job_list_model?: string | null;
+  ai_jd_parse_provider?: string | null;
+  ai_jd_parse_model?: string | null;
+  ai_api_keys?: Record<string, string> | null;
 };
 
 export async function updateAdvancedMatchingConfig(config: AdvancedMatchingUpdatePayload) {
@@ -487,8 +538,15 @@ export type UserSettingsExport = {
     chatgpt_prompt: string;
     blacklisted_companies: string[];
     favorite_companies: string[];
+    watched_companies: string[];
     ai_provider: string | null;
     ai_model: string | null;
+    ai_jd_filter_provider?: string | null;
+    ai_jd_filter_model?: string | null;
+    ai_job_list_provider?: string | null;
+    ai_job_list_model?: string | null;
+    ai_jd_parse_provider?: string | null;
+    ai_jd_parse_model?: string | null;
   };
   saved_searches: Array<{
     title: string;
@@ -504,8 +562,15 @@ export type UserSettingsImport = {
     chatgpt_prompt?: string;
     blacklisted_companies?: string[];
     favorite_companies?: string[];
+    watched_companies?: string[];
     ai_provider?: string | null;
     ai_model?: string | null;
+    ai_jd_filter_provider?: string | null;
+    ai_jd_filter_model?: string | null;
+    ai_job_list_provider?: string | null;
+    ai_job_list_model?: string | null;
+    ai_jd_parse_provider?: string | null;
+    ai_jd_parse_model?: string | null;
   };
   saved_searches?: Array<{
     title?: string;

@@ -16,6 +16,7 @@ export enum SiteProvider {
   zipRecruiter = 'zipRecruiter',
   usaJobs = 'usaJobs',
   talent = 'talent',
+  hiringCafe = 'hiringCafe',
 
   // generic provider for sites not in the list above
   custom = 'custom',
@@ -83,6 +84,7 @@ export type Job = {
   tags?: string[];
 
   description?: string;
+  description_hash?: string;
 
   status: JobStatus;
   labels: JobLabel[];
@@ -95,9 +97,18 @@ export type Job = {
   exclude_reason?: string;
 
   // LinkedIn posting date fields
-  posted_at_raw?: string;  // "8 hours ago", "Reposted 1 week ago"
-  is_repost?: boolean;     // Extracted from "Reposted" keyword
+  posted_at_raw?: string; // "8 hours ago", "Reposted 1 week ago"
+  is_repost?: boolean; // Extracted from "Reposted" keyword
 };
+
+export type LinkedinRuntimeData = {
+  type: SiteProvider.linkedin;
+  comoRehydration: string;
+};
+
+export type ProviderRuntimeData = LinkedinRuntimeData;
+
+export type WebPageRuntimeData = Partial<Record<SiteProvider, ProviderRuntimeData>>;
 
 export type Review = {
   id: number;
@@ -113,6 +124,7 @@ export type HtmlDump = {
   url: string;
   html: string;
   created_at: Date;
+  webpage_runtime_data?: WebPageRuntimeData;
 };
 export type Note = {
   id: number;
@@ -157,9 +169,17 @@ export type AdvancedMatchingConfig = {
   ai_api_cost: number;
   ai_api_input_tokens_used: number;
   ai_api_output_tokens_used: number;
-  ai_provider?: 'openai' | 'google_gemini' | null;
+  ai_provider?: string | null;
   ai_model?: string | null;
   ai_api_key_encrypted?: string | null;
+  ai_api_keys_encrypted?: Record<string, string> | null;
+  ai_jd_filter_provider?: string | null;
+  ai_jd_filter_model?: string | null;
+  ai_job_list_provider?: string | null;
+  ai_job_list_model?: string | null;
+  ai_jd_parse_provider?: string | null;
+  ai_jd_parse_model?: string | null;
+  ai_configured_providers?: string[] | null;
 };
 
 /**
@@ -214,7 +234,7 @@ export type DbSchema = {
       };
       html_dumps: {
         Row: HtmlDump;
-        Insert: Pick<HtmlDump, 'url' | 'html'>;
+        Insert: Pick<HtmlDump, 'url' | 'html'> & { webpage_runtime_data?: WebPageRuntimeData };
         Update: never;
         Relationships: [];
       };
@@ -237,10 +257,41 @@ export type DbSchema = {
         Row: AdvancedMatchingConfig;
         Insert: Pick<
           AdvancedMatchingConfig,
-          'blacklisted_companies' | 'favorite_companies' | 'chatgpt_prompt' | 'ai_provider' | 'ai_model' | 'ai_api_key_encrypted'
+          | 'blacklisted_companies'
+          | 'favorite_companies'
+          | 'watched_companies'
+          | 'chatgpt_prompt'
+          | 'ai_provider'
+          | 'ai_model'
+          | 'ai_api_key_encrypted'
+          | 'ai_api_keys_encrypted'
+          | 'ai_jd_filter_provider'
+          | 'ai_jd_filter_model'
+          | 'ai_job_list_provider'
+          | 'ai_job_list_model'
+          | 'ai_jd_parse_provider'
+          | 'ai_jd_parse_model'
+          | 'ai_configured_providers'
         >;
         Update: Partial<
-          Pick<AdvancedMatchingConfig, 'blacklisted_companies' | 'favorite_companies' | 'chatgpt_prompt' | 'ai_provider' | 'ai_model' | 'ai_api_key_encrypted'>
+          Pick<
+            AdvancedMatchingConfig,
+            | 'blacklisted_companies'
+            | 'favorite_companies'
+            | 'watched_companies'
+            | 'chatgpt_prompt'
+            | 'ai_provider'
+            | 'ai_model'
+            | 'ai_api_key_encrypted'
+            | 'ai_api_keys_encrypted'
+            | 'ai_jd_filter_provider'
+            | 'ai_jd_filter_model'
+            | 'ai_job_list_provider'
+            | 'ai_job_list_model'
+            | 'ai_jd_parse_provider'
+            | 'ai_jd_parse_model'
+            | 'ai_configured_providers'
+          >
         >;
         Relationships: [];
       };
@@ -289,6 +340,14 @@ export type DbSchema = {
         };
         Args: {};
         Returns: {};
+      };
+      count_jobs_by_link: {
+        Params: Record<string, never>;
+        Args: {};
+        Returns: Array<{
+          link_id: number;
+          job_count: number;
+        }>;
       };
     };
   };
