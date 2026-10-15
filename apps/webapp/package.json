@@ -7,7 +7,7 @@
     "dev": "next dev --port 3002",
     "typecheck": "tsc --noEmit",
     "build": "next build",
-    "start": "node .next/standalone/apps/webapp/server.js",
+    "start": "node scripts/start.mjs",
     "lint": "eslint",
     "prettier": "prettier --check \"src/**/*.{ts,tsx,css}\""
   },
@@ -17,7 +17,9 @@
     "@supabase/supabase-js": "^2.76.1",
     "next": "^15.5.19",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "react-markdown": "^9.1.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@next/swc-wasm-nodejs": "15.5.19",
