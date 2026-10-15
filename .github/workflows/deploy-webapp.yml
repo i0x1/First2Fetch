@@ -1,4 +1,4 @@
-name: Deploy web companion
+name: Validate web companion
 
 on:
   push:
@@ -18,36 +18,17 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Update the Oracle VPS
-        uses: appleboy/ssh-action@v1.2.2
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_SSH_PORT || 22 }}
-          envs: DEPLOY_BRANCH,GITHUB_SHA,VPS_APP_DIR
-        env:
-          DEPLOY_BRANCH: ${{ github.ref_name }}
-          GITHUB_SHA: ${{ github.sha }}
-          VPS_APP_DIR: ${{ secrets.VPS_APP_DIR || '/home/ubuntu/first2fetch-webapp' }}
-          script: |
-            set -eu
-            SOURCE_DIR="/home/ubuntu/first2fetch-source"
-            REPO_URL="https://github.com/${{ github.repository }}.git"
-            if [ ! -d "$SOURCE_DIR/.git" ]; then
-              git clone --branch "$DEPLOY_BRANCH" --depth 1 "$REPO_URL" "$SOURCE_DIR"
-            else
-              git -C "$SOURCE_DIR" fetch --depth 1 origin "$DEPLOY_BRANCH"
-              git -C "$SOURCE_DIR" checkout "$DEPLOY_BRANCH"
-              git -C "$SOURCE_DIR" pull --ff-only origin "$DEPLOY_BRANCH"
-            fi
-            docker build --platform linux/arm64 -f "$SOURCE_DIR/apps/webapp/Dockerfile" -t "first2fetch-webapp:$GITHUB_SHA" "$SOURCE_DIR"
-            docker tag "first2fetch-webapp:$GITHUB_SHA" first2fetch-webapp:deployed
-            cd "$VPS_APP_DIR"
-            sed -i "s/^WEBAPP_IMAGE=.*/WEBAPP_IMAGE=first2fetch-webapp:$GITHUB_SHA/" .env
-            docker compose up -d --remove-orphans web
-            curl --fail --silent --show-error --max-time 15 http://127.0.0.1:3002/login >/dev/null
-            docker image prune -f
+          version: 10.19.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm --filter @first2apply/core build
+      - run: pnpm --filter first2fetch-webapp build
