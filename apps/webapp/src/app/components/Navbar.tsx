@@ -4,17 +4,17 @@ import { signOut } from '@/app/actions';
 
 export function Navbar() {
   return (
-    <header className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', marginBottom: 20 }}>
-      <strong>First 2 Fetch</strong>
-      <nav style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-        <Link href="/jobs/new">New</Link>
-        <Link href="/jobs/applied">Applied</Link>
-        <Link href="/jobs/archived">Archived</Link>
-        <Link href="/team">Team</Link>
-        <form action={signOut}>
-          <button className="button" type="submit">Sign out</button>
-        </form>
+    <aside className="side-rail">
+      <div className="rail-brand" title="First 2 Fetch">F2</div>
+      <nav className="rail-nav" aria-label="Main navigation">
+        <Link className="rail-link active" href="/jobs/new" title="Jobs">▣<span>Jobs</span></Link>
+        <Link className="rail-link" href="/team" title="Team">◉<span>Team</span></Link>
       </nav>
-    </header>
+      <div className="rail-bottom">
+        <form action={signOut}>
+          <button className="rail-link" title="Sign out" type="submit">⇥<span>Sign out</span></button>
+        </form>
+      </div>
+    </aside>
   );
 }

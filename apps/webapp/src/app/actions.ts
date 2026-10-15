@@ -83,6 +83,29 @@ export async function listJobs(status: JobStatus, search = '') {
     .slice(0, 100);
 }
 
+export async function listJobCounts() {
+  const supabase = await createClient();
+  const statuses: JobStatus[] = ['new', 'applied', 'archived', 'excluded_by_advanced_matching'];
+  const results = await Promise.all(
+    statuses.map((status) => supabase.from('jobs').select('id', { count: 'exact', head: true }).eq('status', status)),
+  );
+  const failed = results.find((result) => result.error);
+  if (failed?.error) throw new Error(`Unable to load job counts: ${failed.error.message}`);
+  return {
+    new: results[0].count ?? 0,
+    applied: results[1].count ?? 0,
+    archived: results[2].count ?? 0,
+    filtered: results[3].count ?? 0,
+  };
+}
+
+export async function listJobSearches() {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from('links').select('id,title');
+  if (error) throw new Error(`Unable to load searches: ${error.message}`);
+  return data ?? [];
+}
+
 export async function getJob(jobId: number) {
   const supabase = await createClient();
   const { data, error } = await supabase.from('jobs').select('*').eq('id', jobId).maybeSingle();
@@ -96,6 +119,26 @@ export async function listJobEvents(jobId: number): Promise<WorkspaceJobEvent[]>
   const { data, error } = await supabase.from('workspace_job_events').select('*').eq('job_id', jobId).order('created_at', { ascending: false });
   if (error) throw new Error(`Unable to load job activity: ${error.message}`);
   return data ?? [];
+}
+
+export async function listJobNotes(jobId: number) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from('notes').select('*').eq('job_id', jobId).order('created_at', { ascending: false });
+  if (error) throw new Error(`Unable to load notes: ${error.message}`);
+  return data ?? [];
+}
+
+export async function createJobNote(formData: FormData) {
+  const jobId = Number(formData.get('jobId'));
+  const text = String(formData.get('text') ?? '').trim();
+  if (!Number.isInteger(jobId) || !text) throw new Error('A job and note text are required.');
+  const supabase = await createClient();
+  const { error } = await supabase.from('notes').insert({ job_id: jobId, text, files: [] });
+  if (error) throw new Error(`Unable to create note: ${error.message}`);
+  revalidatePath(`/jobs/${jobId}`);
+  revalidatePath('/jobs/new');
+  revalidatePath('/jobs/applied');
+  revalidatePath('/jobs/archived');
 }
 
 export async function updateJobReview(formData: FormData) {
