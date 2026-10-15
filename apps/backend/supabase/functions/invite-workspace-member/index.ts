@@ -3,6 +3,8 @@ import { getExceptionMessage } from '@first2apply/core';
 import { CORS_HEADERS } from '../_shared/cors.ts';
 import { getEdgeFunctionContext } from '../_shared/edgeFunctions.ts';
 import { createLoggerWithMeta } from '../_shared/logger.ts';
+import { createAppMailer } from '../_shared/emails/mailer.ts';
+import { EmailTemplateType } from '../_shared/emails/emailTemplates.ts';
 
 type InvitePayload = { email?: string };
 
@@ -23,13 +25,23 @@ Deno.serve(async (req) => {
 
     let memberUserId: string | null = null;
     let status: 'pending' | 'accepted' = 'pending';
+    let existingUserMagicLink: string | null = null;
+    const webAppUrl = Deno.env.get('WEBAPP_URL') || 'https://apply.pritk.com';
+    const redirectTo = `${webAppUrl}/auth/callback?next=/team`;
     const existingUser = await findUserByEmail(context.supabaseAdminClient, email);
     if (existingUser) {
       memberUserId = existingUser.id;
       status = 'accepted';
+      const { data, error } = await context.supabaseAdminClient.auth.admin.generateLink({
+        type: 'magiclink',
+        email,
+        options: { redirectTo },
+      });
+      if (error) throw error;
+      existingUserMagicLink = data.properties?.action_link ?? null;
     } else {
       const { data, error } = await context.supabaseAdminClient.auth.admin.inviteUserByEmail(email, {
-        redirectTo: `${Deno.env.get('WEBAPP_URL') ?? ''}/auth/callback?next=/team`,
+        redirectTo,
       });
       if (error) throw error;
       memberUserId = data.user?.id ?? null;
@@ -54,6 +66,22 @@ Deno.serve(async (req) => {
       : context.supabaseAdminClient.from('workspace_invitations').insert({ workspace_owner_id: context.user.id, email, member_user_id: memberUserId, status });
     const { error: invitationError } = await invitationQuery;
     if (invitationError) throw invitationError;
+
+    if (existingUserMagicLink) {
+      const mailer = createAppMailer(context.env);
+      await mailer.sendEmail({
+        logger,
+        to: email,
+        template: {
+          type: EmailTemplateType.workspaceInvitation,
+          payload: {
+            ownerEmail: context.user.email ?? 'Your workspace owner',
+            appUrl: webAppUrl,
+            magicLink: existingUserMagicLink,
+          },
+        },
+      });
+    }
 
     return json({ status });
   } catch (error) {

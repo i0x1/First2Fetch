@@ -4,6 +4,7 @@
 export enum EmailTemplateType {
   searchParsingFailure = 'searchParsingFailure',
   newJobAlert = 'newJobAlert',
+  workspaceInvitation = 'workspaceInvitation',
 }
 
 export type SearchParsingFailureEmailTemplate = {
@@ -28,4 +29,16 @@ export type NewJobAlertEmailTemplate = {
   };
 };
 
-export type EmailTemplate = SearchParsingFailureEmailTemplate | NewJobAlertEmailTemplate;
+export type WorkspaceInvitationEmailTemplate = {
+  type: EmailTemplateType.workspaceInvitation;
+  payload: {
+    ownerEmail: string;
+    appUrl: string;
+    magicLink: string;
+  };
+};
+
+export type EmailTemplate =
+  | SearchParsingFailureEmailTemplate
+  | NewJobAlertEmailTemplate
+  | WorkspaceInvitationEmailTemplate;

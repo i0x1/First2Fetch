@@ -22,7 +22,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
               <input className="field" name="email" type="email" placeholder="Helper account email" required />
               <button className="button primary" type="submit">Send invitation</button>
             </form>
-            <p className="muted">The helper receives a Supabase invitation email and creates or accepts the account there.</p>
+            <p className="muted">New helpers receive an invitation email. Existing accounts receive a one-time workspace access link.</p>
           </>
         ) : <p>Your account has access as a helper.</p>}
       </div>
