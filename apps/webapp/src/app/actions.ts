@@ -69,6 +69,9 @@ export async function listJobsPage(status: JobStatus, cursor?: string, search = 
     jobs_site_ids: null,
     jobs_link_ids: null,
     jobs_labels: null,
+    hide_reposted: false,
+    date_filter: null,
+    timezone_name: 'UTC',
   });
   if (error) throw new Error(`Unable to load jobs: ${error.message}`);
   const jobs = data ?? [];
