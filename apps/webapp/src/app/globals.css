@@ -70,7 +70,7 @@ input {
   padding: 10px 12px;
 }
 
-.job-board { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(360px, .9fr); gap: 12px; min-height: 680px; }
+.job-board { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(280px, 1fr); gap: 12px; min-height: 680px; }
 .job-board-list, .job-board-detail { min-width: 0; overflow: hidden; }
 .job-table-scroll { height: 680px; overflow: auto; }
 .job-table { width: 100%; border-collapse: collapse; font-size: 12px; }

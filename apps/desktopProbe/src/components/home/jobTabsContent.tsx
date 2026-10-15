@@ -85,7 +85,9 @@ export function JobTabsContent({
     if (stored === 'list-focus' || stored === 'split' || stored === 'detail-focus') {
       return stored;
     }
-    return 'split';
+    // Keep the job list as the primary workspace. The detail panel remains
+    // available, but it should not take most of the screen by default.
+    return 'list-focus';
   });
 
   // Two-phase loading: date summaries + per-date jobs
