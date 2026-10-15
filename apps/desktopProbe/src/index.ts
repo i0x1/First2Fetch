@@ -541,17 +541,29 @@ async function bootstrap() {
 
     // load the session from disk if it exists
     if (fs.existsSync(sessionPath)) {
-      const encryptedSession = fs.readFileSync(sessionPath, 'utf-8');
-      const plaintextSession = safeStorage.decryptString(Buffer.from(encryptedSession, 'base64'));
-      const session = JSON.parse(plaintextSession);
-      logger.info(`finished loading session from disk`);
-      const { error } = await supabase.auth.setSession(session);
-      if (error) throw error;
+      try {
+        const encryptedSession = fs.readFileSync(sessionPath, 'utf-8');
+        const plaintextSession = safeStorage.decryptString(Buffer.from(encryptedSession, 'base64'));
+        const session = JSON.parse(plaintextSession);
+        logger.info(`finished loading session from disk`);
+        const { error } = await supabase.auth.setSession(session);
+        if (error) throw error;
 
-      // perform an initial scan
-      jobScanner.scanAllLinks().catch((error) => {
-        logger.error(getExceptionMessage(error));
-      });
+        // perform an initial scan only after the stored session is valid
+        jobScanner.scanAllLinks().catch((error) => {
+          logger.error(getExceptionMessage(error));
+        });
+      } catch (error) {
+        // A session can become invalid when the configured Supabase project changes
+        // or when Supabase revokes the refresh token. Remove only this stale session
+        // so the user can sign in again and receive a new OS-encrypted session.
+        logger.warn(`stored session is invalid; removing it and showing login`, { error: getExceptionMessage(error) });
+        try {
+          fs.unlinkSync(sessionPath);
+        } catch (removeError) {
+          logger.warn(`could not remove invalid stored session`, { error: getExceptionMessage(removeError) });
+        }
+      }
     } else {
       logger.info(`no session found on disk`);
     }

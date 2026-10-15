@@ -10,6 +10,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 
 import { Icons } from './icons';
+import { EMAIL_OTP_MAX_LENGTH, EMAIL_OTP_MIN_LENGTH, EMAIL_OTP_PLACEHOLDER } from '@first2apply/core';
 
 // Schema definition for form validation using Zod
 const schema = z.object({
@@ -102,7 +103,7 @@ export function LoginCard({
               )}
             </Button>
             <div className="w-full border-t pt-4">
-              {!codeSent ? <Button type="button" variant="outline" className="w-full" disabled={isSubmitting || !email} onClick={async () => { await onRequestLoginCode({ email }); setCodeSent(true); }}>Email me a sign-in code</Button> : <div className="space-y-2"><Input value={code} onChange={(event) => setCode(event.target.value)} inputMode="numeric" maxLength={6} placeholder="6-digit code" /><Button type="button" variant="outline" className="w-full" disabled={isSubmitting || code.length !== 6} onClick={() => onVerifyLoginCode({ email, token: code })}>Verify email code</Button></div>}
+              {!codeSent ? <Button type="button" variant="outline" className="w-full" disabled={isSubmitting || !email} onClick={async () => { await onRequestLoginCode({ email }); setCodeSent(true); }}>Email me a sign-in code</Button> : <div className="space-y-2"><Input value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, EMAIL_OTP_MAX_LENGTH))} inputMode="numeric" maxLength={EMAIL_OTP_MAX_LENGTH} placeholder={EMAIL_OTP_PLACEHOLDER} /><Button type="button" variant="outline" className="w-full" disabled={isSubmitting || code.length < EMAIL_OTP_MIN_LENGTH || code.length > EMAIL_OTP_MAX_LENGTH} onClick={() => onVerifyLoginCode({ email, token: code })}>Verify email code</Button></div>}
             </div>
 
             <div className="justify-self-end">

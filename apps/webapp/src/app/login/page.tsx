@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { EMAIL_OTP_MAX_LENGTH, EMAIL_OTP_MIN_LENGTH, EMAIL_OTP_PATTERN, EMAIL_OTP_PLACEHOLDER } from '@first2apply/core';
 
 import { login, requestLoginCode, verifyLoginCode } from '@/app/actions';
 
@@ -14,7 +15,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         {params.message && <p style={{ color: '#226b3a' }}>{params.message}</p>}
         {params.step === 'code' && params.email ? <form action={verifyLoginCode} style={{ display: 'grid', gap: 14 }}>
           <input type="hidden" name="email" value={params.email} />
-          <label>Email code<input className="field" name="token" inputMode="numeric" pattern="[0-9]{6,8}" minLength={6} maxLength={8} autoComplete="one-time-code" required /></label>
+          <label>Email code<input className="field" name="token" inputMode="numeric" pattern={EMAIL_OTP_PATTERN} minLength={EMAIL_OTP_MIN_LENGTH} maxLength={EMAIL_OTP_MAX_LENGTH} placeholder={EMAIL_OTP_PLACEHOLDER} autoComplete="one-time-code" required /></label>
           <button className="button primary" type="submit">Verify code</button>
           <button className="button" formAction={requestLoginCode} formNoValidate type="submit">Send a new code</button>
         </form> : <>

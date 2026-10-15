@@ -1,6 +1,6 @@
 'use server';
 
-import { JobStatus, WorkspaceJobEvent, WorkspaceMembership } from '@first2apply/core';
+import { isValidEmailOtp, JobStatus, WorkspaceJobEvent, WorkspaceMembership } from '@first2apply/core';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
@@ -27,6 +27,7 @@ export async function requestLoginCode(formData: FormData) {
 export async function verifyLoginCode(formData: FormData) {
   const email = String(formData.get('email') ?? '').trim();
   const token = String(formData.get('token') ?? '').trim();
+  if (!isValidEmailOtp(token)) redirect(`/login?step=code&email=${encodeURIComponent(email)}&error=${encodeURIComponent('Enter the 6- or 8-digit code from your email.')}`);
   const supabase = await createClient();
   const { error } = await supabase.auth.verifyOtp({ email, token, type: 'email' });
   if (error) redirect(`/login?step=code&email=${encodeURIComponent(email)}&error=${encodeURIComponent('The code is invalid or expired.')}`);
