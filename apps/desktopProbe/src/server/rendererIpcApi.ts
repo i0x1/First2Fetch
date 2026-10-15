@@ -74,6 +74,15 @@ export function initRendererIpcApi({
     }),
   );
 
+  ipcMain.handle('request-login-code', async (_, { email }) => _apiCall(() => supabaseApi.requestLoginCode({ email })));
+  ipcMain.handle('verify-login-code', async (_, { email, token }) =>
+    _apiCall(async () => {
+      const result = await supabaseApi.verifyLoginCode({ email, token });
+      analytics.trackEvent('user_logged_in', { method: 'email_otp' });
+      return result;
+    }),
+  );
+
   ipcMain.handle('send-password-reset-email', async (_, { email }) =>
     _apiCall(() => supabaseApi.sendPasswordResetEmail({ email })),
   );

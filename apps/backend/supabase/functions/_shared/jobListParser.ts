@@ -666,7 +666,13 @@ export function parseFlexjobsJobs({ siteId, html }: { siteId: number; html: stri
       else if (jobTypeText.includes('no remote')) jobType = 'onsite';
     }
 
+    const salary = el.querySelector(`li#salartRange-0-${externalId}`)?.textContent?.trim();
     const description = el.querySelector(`p#description-${externalId}`)?.textContent?.trim();
+    const tags = Array.from(
+      el.querySelectorAll(`ul > li.tag-name:not(#remoteoption-0-${externalId}):not(#salartRange-0-${externalId})`),
+    )
+      .map((tag) => tag.textContent?.trim() || '')
+      .filter(Boolean);
 
     return {
       siteId,
@@ -676,9 +682,10 @@ export function parseFlexjobsJobs({ siteId, html }: { siteId: number; html: stri
       companyName,
       location,
       jobType,
+      salary,
       description,
       labels: [],
-      tags: [],
+      tags,
     };
   });
 
@@ -1259,10 +1266,13 @@ export function parseUSAJobsJobs({ siteId, html }: { siteId: number; html: strin
       listFound: false,
       elementsCount: 0,
     };
-  const jobElements = Array.from(jobsList.querySelectorAll(':scope > div')) as Element[];
+  const modernJobElements = Array.from(jobsList.querySelectorAll('.page-section')) as Element[];
+  const jobElements = (modernJobElements.length > 0
+    ? modernJobElements
+    : Array.from(jobsList.querySelectorAll(':scope > div'))) as Element[];
 
   const jobs = jobElements.map((el): ParsedJob | null => {
-    const titleElement = el.querySelector('a[data-document-id]');
+    const titleElement = el.querySelector('h2 a[data-document-id]') ?? el.querySelector('a[data-document-id]');
 
     const externalId = titleElement?.getAttribute('data-document-id')?.trim();
     if (!externalId) return null;
@@ -1274,18 +1284,19 @@ export function parseUSAJobsJobs({ siteId, html }: { siteId: number; html: strin
     const title = titleElement?.textContent?.trim();
     if (!title) return null;
 
-    const companyName = el
-      .querySelector(':scope > div:nth-child(2) > div:first-child > p:nth-child(2)')
-      ?.textContent?.trim();
+    const infoColumn = el.querySelector('.grid > div:first-child');
+    const companyName =
+      infoColumn?.querySelector('div:first-child strong')?.textContent?.trim() ??
+      el.querySelector(':scope > div:nth-child(2) > div:first-child > p:nth-child(2)')?.textContent?.trim();
     if (!companyName) return null;
 
-    const location = el
-      .querySelector(':scope > div:nth-child(2) > div:first-child > p:nth-child(3)')
-      ?.textContent?.trim();
+    const location =
+      infoColumn?.querySelector('div:nth-child(2)')?.textContent?.trim() ??
+      el.querySelector(':scope > div:nth-child(2) > div:first-child > p:nth-child(3)')?.textContent?.trim();
 
-    const salary = el
-      .querySelector(':scope > div:nth-child(2) > div:nth-child(2) > p:first-child')
-      ?.textContent?.trim();
+    const salary =
+      el.querySelector('.grid > div:nth-child(2) span.badge-secondary')?.textContent?.trim() ??
+      el.querySelector(':scope > div:nth-child(2) > div:nth-child(2) > p:first-child')?.textContent?.trim();
 
     const jobType = location?.toLowerCase().includes('remote') ? 'remote' : 'onsite';
 

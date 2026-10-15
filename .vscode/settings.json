@@ -1,5 +1,6 @@
 {
   "deno.enablePaths": ["apps/backend/supabase/functions"],
   "deno.lint": true,
-  "deno.enable": true
+  "deno.enable": true,
+  "specstory.cloudSync.enabled": "never"
 }

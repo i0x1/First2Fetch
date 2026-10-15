@@ -22,6 +22,8 @@
     "test": "npx nx run-many -t test",
     "lint": "npx nx run-many -t lint",
     "prettier": "npx nx run-many -t prettier",
+    "audit": "pnpm audit --audit-level=critical",
+    "audit:fix": "pnpm audit --fix",
     "make": "npx nx run-many -t make",
     "publish": "npx nx run-many -t publish",
     "release": "npx release-it --ci",

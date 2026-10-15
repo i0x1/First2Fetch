@@ -182,6 +182,38 @@ export type AdvancedMatchingConfig = {
   ai_configured_providers?: string[] | null;
 };
 
+export type WorkspaceMembership = {
+  workspace_owner_id: string;
+  member_user_id: string;
+  member_email: string | null;
+  role: 'helper';
+  created_at: string;
+};
+
+export type WorkspaceInvitation = {
+  id: string;
+  workspace_owner_id: string;
+  email: string;
+  member_user_id: string | null;
+  status: 'pending' | 'accepted' | 'revoked';
+  created_at: string;
+  accepted_at: string | null;
+};
+
+export type WorkspaceJobEvent = {
+  id: number;
+  workspace_owner_id: string;
+  job_id: number;
+  actor_user_id: string;
+  actor_email: string;
+  action: 'status_changed' | 'labels_changed';
+  from_status: JobStatus | null;
+  to_status: JobStatus | null;
+  from_labels: string[] | null;
+  to_labels: string[] | null;
+  created_at: string;
+};
+
 /**
  * Supabase database schema.
  */
@@ -295,6 +327,24 @@ export type DbSchema = {
         >;
         Relationships: [];
       };
+      workspace_memberships: {
+        Row: WorkspaceMembership;
+        Insert: Pick<WorkspaceMembership, 'workspace_owner_id' | 'member_user_id' | 'member_email'>;
+        Update: Pick<WorkspaceMembership, 'role'>;
+        Relationships: [];
+      };
+      workspace_invitations: {
+        Row: WorkspaceInvitation;
+        Insert: Pick<WorkspaceInvitation, 'workspace_owner_id' | 'email'>;
+        Update: Pick<WorkspaceInvitation, 'status' | 'member_user_id' | 'accepted_at'>;
+        Relationships: [];
+      };
+      workspace_job_events: {
+        Row: WorkspaceJobEvent;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
     };
     Views: {};
     Functions: {
@@ -348,6 +398,35 @@ export type DbSchema = {
           link_id: number;
           job_count: number;
         }>;
+      };
+      invite_workspace_member: {
+        Params: { member_email: string };
+        Args: {};
+        Returns: string;
+      };
+      remove_workspace_member: {
+        Params: { member_id: string };
+        Args: {};
+        Returns: undefined;
+      };
+      workspace_update_job_review: {
+        Params: {
+          job_id: number;
+          new_status?: JobStatus | null;
+          new_labels?: string[] | null;
+        };
+        Args: {};
+        Returns: Job;
+      };
+      accept_workspace_invitation: {
+        Params: {};
+        Args: {};
+        Returns: undefined;
+      };
+      is_workspace_owner: {
+        Params: {};
+        Args: {};
+        Returns: boolean;
       };
     };
   };

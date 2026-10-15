@@ -31,6 +31,14 @@ export class F2aSupabaseApi {
     return this._supabaseApiCall(() => this._supabase.auth.signInWithPassword({ email, password }));
   }
 
+  requestLoginCode({ email }: { email: string }) {
+    return this._supabaseApiCall(() => this._supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } }));
+  }
+
+  verifyLoginCode({ email, token }: { email: string; token: string }) {
+    return this._supabaseApiCall(() => this._supabase.auth.verifyOtp({ email, token, type: 'email' }));
+  }
+
   /**
    * Send a password reset email.
    */
@@ -148,6 +156,7 @@ export class F2aSupabaseApi {
       webPageRuntimeData: WebPageRuntimeData;
       maxRetries: number;
       retryCount: number;
+      force?: boolean;
     }[],
   ) {
     return this._invokeEdgeFunction<{ htmls: typeof htmls }, { newJobs: Job[]; parseFailed: boolean }>('scan-urls', {

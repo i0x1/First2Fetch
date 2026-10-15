@@ -71,7 +71,7 @@ enabled = true
 # in emails.
 site_url = "http://app.dev.first2apply.com:4000/"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["http://app.dev.first2apply.com:4000/","first2apply://**","first2fetch://**"]
+additional_redirect_urls = ["http://app.dev.first2apply.com:4000/","http://127.0.0.1:3002/","http://localhost:3002/","first2apply://**","first2fetch://**"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # If disabled, the refresh token will never expire.
@@ -179,3 +179,6 @@ verify_jwt = false
 
 [functions.post-scan-hook]
 verify_jwt = false
+
+[functions.invite-workspace-member]
+verify_jwt = true

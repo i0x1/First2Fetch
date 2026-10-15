@@ -1,0 +1,16 @@
+.git
+.github
+.node_modules
+node_modules
+**/node_modules
+.next
+**/.next
+dist
+build
+coverage
+.env
+.env.*
+!.env.example
+apps/backend/supabase/.temp
+apps/backend/supabase/seed.sql
+apps/backend/supabase/*.csv

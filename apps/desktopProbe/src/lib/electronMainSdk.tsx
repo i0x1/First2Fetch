@@ -54,6 +54,15 @@ export async function loginWithEmail({ email, password }: { email: string; passw
   return user;
 }
 
+export async function requestLoginCode({ email }: { email: string }): Promise<void> {
+  await _mainProcessApiCall('request-login-code', { email });
+}
+
+export async function verifyLoginCode({ email, token }: { email: string; token: string }): Promise<User> {
+  const { user } = await _mainProcessApiCall<{ user: User }>('verify-login-code', { email, token });
+  return user;
+}
+
 /**
  * Send a password reset email.
  */
