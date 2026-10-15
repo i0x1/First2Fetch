@@ -1,4 +1,5 @@
 import {
+  ArrowRightIcon,
   ArchiveIcon,
   CheckIcon,
   CopyIcon,
@@ -155,7 +156,7 @@ export function JobSummary({
 
         {job.status === 'new' && (
           <DetailIconButton title="Move to Ready" onClick={() => onUpdateJobStatus(job.id, 'ready')}>
-            <CheckIcon className="h-3.5 w-3.5" />
+            <ArrowRightIcon className="h-3.5 w-3.5" />
           </DetailIconButton>
         )}
 

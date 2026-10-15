@@ -1,5 +1,6 @@
 import { Fragment } from 'react';
 import {
+  ArrowRightIcon,
   ArchiveIcon,
   CheckIcon,
   EyeOpenIcon,
@@ -173,7 +174,7 @@ function JobRow({
                     onClick={() => onReady(job)}
                     aria-label="Move job to Ready"
                   >
-                    <CheckIcon className="h-3 w-3" />
+                    <ArrowRightIcon className="h-3 w-3" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Ready</TooltipContent>
