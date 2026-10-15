@@ -39,7 +39,7 @@ import { JobViewMode, jobViewGridClass } from './jobViewModeSeg';
 const JOB_VIEW_MODE_KEY = 'jobs-view-mode';
 
 const JOB_BATCH_SIZE = 100;
-const ALL_JOB_STATUSES: JobStatus[] = ['new', 'applied', 'archived', 'excluded_by_advanced_matching'];
+const ALL_JOB_STATUSES: JobStatus[] = ['new', 'ready', 'applied', 'archived', 'excluded_by_advanced_matching'];
 
 /**
  * Job tabs content component.
@@ -207,6 +207,7 @@ export function JobTabsContent({
           ...listing,
           isLoading: false,
           new: counts.new,
+          ready: counts.ready,
           applied: counts.applied,
           archived: counts.archived,
           filtered: counts.filtered,
@@ -356,12 +357,15 @@ export function JobTabsContent({
           : tabToDecrement === 'archived'
             ? listing.archived - 1
             : listing.archived;
+      const readyCount =
+        tabToIncrement === 'ready' ? listing.ready + 1 : tabToDecrement === 'ready' ? listing.ready - 1 : listing.ready;
       const filteredCount =
         tabToDecrement === 'excluded_by_advanced_matching' ? listing.filtered - 1 : listing.filtered;
 
       return {
         ...listing,
         new: newCount,
+        ready: readyCount,
         applied: appliedCount,
         archived: archivedCount,
         filtered: filteredCount,
@@ -553,6 +557,7 @@ export function JobTabsContent({
       let newCount = prev.new;
       let appliedCount = prev.applied;
       let archivedCount = prev.archived;
+      let readyCount = prev.ready;
       let filteredCount = prev.filtered;
       const removedIds = new Set<number>();
 
@@ -567,6 +572,9 @@ export function JobTabsContent({
             break;
           case 'archived':
             archivedCount = Math.max(0, archivedCount - 1);
+            break;
+          case 'ready':
+            readyCount = Math.max(0, readyCount - 1);
             break;
           case 'excluded_by_advanced_matching':
             filteredCount = Math.max(0, filteredCount - 1);
@@ -585,6 +593,7 @@ export function JobTabsContent({
         ...prev,
         jobs: remainingJobs,
         new: newCount,
+        ready: readyCount,
         applied: appliedCount,
         archived: archivedCount,
         filtered: filteredCount,
@@ -722,6 +731,7 @@ export function JobTabsContent({
           status={status}
           listingCounts={{
             new: listing.new,
+            ready: listing.ready,
             applied: listing.applied,
             archived: listing.archived,
             filtered: listing.filtered,
@@ -751,6 +761,7 @@ export function JobTabsContent({
                 onLoadMoreForDate={loadJobsForDate}
                 onSelect={(job) => scanJobAndSelect(job)}
                 onApplied={(j) => onUpdateJobStatus(j.id, 'applied')}
+                onReady={(j) => onUpdateJobStatus(j.id, 'ready')}
                 onArchive={(j) => onUpdateJobStatus(j.id, 'archived')}
                 onDelete={(j) => onUpdateJobStatus(j.id, 'deleted')}
                 favoriteCompanies={favoriteCompanies}

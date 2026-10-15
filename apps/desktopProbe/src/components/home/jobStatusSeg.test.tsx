@@ -8,7 +8,7 @@ describe('JobStatusSeg', () => {
     render(
       <JobStatusSeg
         status="new"
-        counts={{ new: 18, applied: 3, archived: 12, filtered: 5 }}
+        counts={{ new: 18, ready: 4, applied: 3, archived: 12, filtered: 5 }}
         onChange={vi.fn()}
       />,
     );
@@ -23,7 +23,7 @@ describe('JobStatusSeg', () => {
     render(
       <JobStatusSeg
         status="new"
-        counts={{ new: 18, applied: 3, archived: 12, filtered: 5 }}
+        counts={{ new: 18, ready: 4, applied: 3, archived: 12, filtered: 5 }}
         onChange={onChange}
       />,
     );

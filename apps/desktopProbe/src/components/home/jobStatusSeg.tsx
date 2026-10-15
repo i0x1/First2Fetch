@@ -3,6 +3,7 @@ import { JobStatus } from '@first2apply/core';
 
 const STATUS_ITEMS: { value: JobStatus; label: string }[] = [
   { value: 'new', label: 'New' },
+  { value: 'ready', label: 'Ready' },
   { value: 'applied', label: 'Applied' },
   { value: 'archived', label: 'Archived' },
   { value: 'excluded_by_advanced_matching', label: 'Skipped' },
@@ -15,13 +16,15 @@ export function JobStatusSeg({
   onChange,
 }: {
   status: JobStatus;
-  counts: { new: number; applied: number; archived: number; filtered: number };
+  counts: { new: number; ready: number; applied: number; archived: number; filtered: number };
   onChange: (status: JobStatus) => void;
 }) {
   const countFor = (value: JobStatus) => {
     switch (value) {
       case 'new':
         return counts.new;
+      case 'ready':
+        return counts.ready;
       case 'applied':
         return counts.applied;
       case 'archived':

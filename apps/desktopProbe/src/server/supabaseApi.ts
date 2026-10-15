@@ -292,6 +292,7 @@ export class F2aSupabaseApi {
     const countersMap = new Map(counters.map((c) => [c.status, c.job_count]));
     return {
       new: countersMap.get('new') ?? 0,
+      ready: countersMap.get('ready') ?? 0,
       archived: countersMap.get('archived') ?? 0,
       applied: countersMap.get('applied') ?? 0,
       filtered: countersMap.get('excluded_by_advanced_matching') ?? 0,
@@ -378,6 +379,7 @@ export class F2aSupabaseApi {
     return {
       jobs,
       new: countersMap.get('new') ?? 0,
+      ready: countersMap.get('ready') ?? 0,
       archived: countersMap.get('archived') ?? 0,
       applied: countersMap.get('applied') ?? 0,
       filtered: countersMap.get('excluded_by_advanced_matching') ?? 0,

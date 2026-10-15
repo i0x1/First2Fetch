@@ -130,6 +130,8 @@ input {
 .checkbox-label { display: flex !important; align-items: center; min-height: 34px; }
 .checkbox-label input { margin: 0 4px 0 0; }
 .empty-cell { padding: 30px !important; text-align: center; color: #607087; }
+.load-more { width: calc(100% - 16px); margin: 8px; border: 1px solid #c7d1df; border-radius: 7px; background: white; padding: 8px; color: #1d5fd1; cursor: pointer; }
+.load-more:disabled { cursor: wait; opacity: .6; }
 .empty-detail { display: grid; min-height: 200px; place-items: center; color: #607087; }
 .detail-label { margin-top: 7px !important; font-size: 11px !important; }
 .label-select { margin-left: auto; min-width: 105px; border: 1px solid #c7d1df; border-radius: 6px; background: white; padding: 6px; color: #607087; font-size: 11px; }

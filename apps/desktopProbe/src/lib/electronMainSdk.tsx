@@ -212,6 +212,7 @@ export async function getJobCounts({
 }) {
   return await _mainProcessApiCall<{
     new: number;
+    ready: number;
     applied: number;
     archived: number;
     filtered: number;

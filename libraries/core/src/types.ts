@@ -64,7 +64,7 @@ export type Link = {
 };
 
 export type JobType = 'remote' | 'hybrid' | 'onsite';
-export type JobStatus = 'new' | 'applied' | 'archived' | 'deleted' | 'processing' | 'excluded_by_advanced_matching';
+export type JobStatus = 'new' | 'ready' | 'applied' | 'archived' | 'deleted' | 'processing' | 'excluded_by_advanced_matching';
 export type Job = {
   id: number;
   user_id: string;

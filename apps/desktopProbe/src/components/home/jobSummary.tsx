@@ -153,6 +153,12 @@ export function JobSummary({
           </DetailIconButton>
         )}
 
+        {job.status === 'new' && (
+          <DetailIconButton title="Move to Ready" onClick={() => onUpdateJobStatus(job.id, 'ready')}>
+            <CheckIcon className="h-3.5 w-3.5" />
+          </DetailIconButton>
+        )}
+
         {job.status !== 'new' && (
           <DetailIconButton title="Move to New" onClick={() => onUpdateJobStatus(job.id, 'new')}>
             <ResetIcon className="h-3.5 w-3.5" />

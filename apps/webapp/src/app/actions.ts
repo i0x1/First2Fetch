@@ -57,35 +57,39 @@ export async function acceptWorkspaceInvitation() {
   await supabase.rpc('accept_workspace_invitation');
 }
 
-export async function listJobs(status: JobStatus, search = '') {
+const WEB_JOB_PAGE_SIZE = 50;
+
+export async function listJobsPage(status: JobStatus, cursor?: string, search = '') {
   const supabase = await createClient();
-  if (!search) {
-    const { data, error } = await supabase
-      .from('jobs')
-      .select('*')
-      .eq('status', status)
-      .order('updated_at', { ascending: false })
-      .limit(100);
-    if (error) throw new Error(`Unable to load jobs: ${error.message}`);
-    return data ?? [];
-  }
+  const { data, error } = await supabase.rpc('list_jobs', {
+    jobs_status: status,
+    jobs_after: cursor ?? null,
+    jobs_page_size: WEB_JOB_PAGE_SIZE,
+    jobs_search: search || null,
+    jobs_site_ids: null,
+    jobs_link_ids: null,
+    jobs_labels: null,
+  });
+  if (error) throw new Error(`Unable to load jobs: ${error.message}`);
+  const jobs = data ?? [];
+  const lastJob = jobs[jobs.length - 1];
+  return {
+    jobs,
+    nextCursor: jobs.length === WEB_JOB_PAGE_SIZE && lastJob ? `${lastJob.id}!${lastJob.updated_at}` : undefined,
+  };
+}
 
-  const [titleResult, companyResult] = await Promise.all([
-    supabase.from('jobs').select('*').eq('status', status).ilike('title', `%${search}%`).limit(100),
-    supabase.from('jobs').select('*').eq('status', status).ilike('companyName', `%${search}%`).limit(100),
-  ]);
-  if (titleResult.error) throw new Error(`Unable to load jobs: ${titleResult.error.message}`);
-  if (companyResult.error) throw new Error(`Unable to load jobs: ${companyResult.error.message}`);
+export async function listJobs(status: JobStatus, search = '') {
+  return (await listJobsPage(status, undefined, search)).jobs;
+}
 
-  const jobsById = new Map([...(titleResult.data ?? []), ...(companyResult.data ?? [])].map((job) => [job.id, job]));
-  return [...jobsById.values()]
-    .sort((left, right) => new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime())
-    .slice(0, 100);
+export async function loadJobsPage(status: JobStatus, cursor?: string, search = '') {
+  return listJobsPage(status, cursor, search);
 }
 
 export async function listJobCounts() {
   const supabase = await createClient();
-  const statuses: JobStatus[] = ['new', 'applied', 'archived', 'excluded_by_advanced_matching'];
+  const statuses: JobStatus[] = ['new', 'ready', 'applied', 'archived', 'excluded_by_advanced_matching'];
   const results = await Promise.all(
     statuses.map((status) => supabase.from('jobs').select('id', { count: 'exact', head: true }).eq('status', status)),
   );
@@ -93,9 +97,10 @@ export async function listJobCounts() {
   if (failed?.error) throw new Error(`Unable to load job counts: ${failed.error.message}`);
   return {
     new: results[0].count ?? 0,
-    applied: results[1].count ?? 0,
-    archived: results[2].count ?? 0,
-    filtered: results[3].count ?? 0,
+    ready: results[1].count ?? 0,
+    applied: results[2].count ?? 0,
+    archived: results[3].count ?? 0,
+    filtered: results[4].count ?? 0,
   };
 }
 
@@ -137,6 +142,7 @@ export async function createJobNote(formData: FormData) {
   if (error) throw new Error(`Unable to create note: ${error.message}`);
   revalidatePath(`/jobs/${jobId}`);
   revalidatePath('/jobs/new');
+  revalidatePath('/jobs/ready');
   revalidatePath('/jobs/applied');
   revalidatePath('/jobs/archived');
 }
