@@ -39,9 +39,11 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
           <div style={{ display: 'grid', gap: 12 }}>
             {events.map((event) => (
               <div key={event.id} style={{ borderBottom: '1px solid #e4e9f0', paddingBottom: 10 }}>
-                <strong>{event.actor_email}</strong>{' '}
+                <strong>{event.actor_email || (event.actor_kind === 'system' ? 'System' : 'Unknown')}</strong>{' '}
                 {event.action === 'status_changed' ? `changed status from ${event.from_status ?? 'none'} to ${event.to_status}` : 'changed labels'}
-                <div className="muted">{new Date(event.created_at).toLocaleString()}</div>
+                {event.reason_code !== 'unspecified' ? ` · ${event.reason_code.replace(/_/g, ' ')}` : ''}
+                {event.reason_text ? ` · ${event.reason_text}` : ''}
+                <div className="muted">{new Date(event.created_at).toLocaleString()} · {event.channel}</div>
               </div>
             ))}
           </div>

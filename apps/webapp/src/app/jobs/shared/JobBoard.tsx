@@ -3,8 +3,8 @@
 import { FormEvent, Fragment, useEffect, useMemo, useState, useTransition } from 'react';
 import Markdown from 'react-markdown';
 
-import { createJobNote, listJobEvents, listJobNotes, loadJobsPage, updateJobReview } from '@/app/actions';
-import { JOB_LABELS, Job, JobLabel, JobStatus, WorkspaceJobEvent } from '@first2apply/core';
+import { createJobNote, getJob, listJobEvents, listJobNotes, loadJobsPage, updateJobReview } from '@/app/actions';
+import { JOB_LABELS, JOB_REVIEW_REASON_LABELS, Job, JobLabel, JobReviewReasonCode, JobStatus, WorkspaceJobEvent } from '@first2apply/core';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import remarkGfm from 'remark-gfm';
@@ -184,6 +184,8 @@ export function JobBoard({
     const route =
       nextStatus === 'new'
         ? 'new'
+        : nextStatus === 'ready'
+          ? 'ready'
         : nextStatus === 'applied'
           ? 'applied'
           : nextStatus === 'excluded_by_advanced_matching'
@@ -198,11 +200,13 @@ export function JobBoard({
     router.push(`${pathname}${params}`);
   };
 
-  const updateReview = (jobId: number, nextStatus?: JobStatus, labels?: JobLabel[]) => {
+  const updateReview = (jobId: number, nextStatus?: JobStatus, labels?: JobLabel[], reasonCode?: JobReviewReasonCode, reasonText?: string) => {
     const form = new FormData();
     form.set('jobId', String(jobId));
     if (nextStatus) form.set('status', nextStatus);
     if (labels) form.set('labels', labels.join(','));
+    if (reasonCode) form.set('reasonCode', reasonCode);
+    if (reasonText?.trim()) form.set('reasonText', reasonText.trim());
     startTransition(async () => {
       await updateJobReview(form);
       router.refresh();
@@ -388,7 +392,7 @@ export function JobBoard({
           <button className="button danger" type="button" onClick={() => bulkUpdate('archived')}>
             Archive visible
           </button>
-          <button className="button danger" type="button" onClick={() => bulkUpdate('deleted')}>
+          <button className="button danger" type="button" disabled title="Delete is disabled on web; archive jobs instead.">
             Delete visible
           </button>
           <button
@@ -496,13 +500,9 @@ export function JobBoard({
                             <button
                               className="icon-button danger"
                               type="button"
-                              title="Delete job"
+                              title="Delete is disabled on web; archive jobs instead."
                               aria-label="Delete job"
-                              disabled={pending}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                if (window.confirm('Delete this job?')) updateReview(job.id, 'deleted');
-                              }}
+                              disabled
                             >
                               <ActionIcon name="delete" />
                             </button>
@@ -522,7 +522,7 @@ export function JobBoard({
           </div>
         </div>
         {selected ? (
-          <JobDetail job={selected} pending={pending} onUpdate={updateReview} />
+          <JobDetail job={selected} onUpdate={updateReview} />
         ) : (
           <aside className="job-board-detail card empty-detail">Select a job to view its details.</aside>
         )}
@@ -536,19 +536,37 @@ export function JobBoard({
 }
 
 function JobDetail({
-  job,
-  pending,
+  job: summary,
   onUpdate,
 }: {
   job: Job;
-  pending: boolean;
-  onUpdate: (jobId: number, status?: JobStatus, labels?: JobLabel[]) => void;
+  onUpdate: (jobId: number, status?: JobStatus, labels?: JobLabel[], reasonCode?: JobReviewReasonCode, reasonText?: string) => void;
 }) {
+  const [description, setDescription] = useState<{ jobId: number; text: string | undefined } | null>(null);
+  const [descriptionError, setDescriptionError] = useState(false);
+  const job = { ...summary, description: description?.jobId === summary.id ? description.text : summary.description };
+  const loadingDescription = description?.jobId !== summary.id && !descriptionError;
+  useEffect(() => {
+    let active = true;
+    setDescription(null);
+    setDescriptionError(false);
+    getJob(summary.id).then(detail => {
+      if (active) setDescription({ jobId: detail.id, text: detail.description });
+    }).catch(() => { if (active) setDescriptionError(true); });
+    return () => { active = false; };
+  }, [summary.id]);
   const [events, setEvents] = useState<WorkspaceJobEvent[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [showActivity, setShowActivity] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const [noteText, setNoteText] = useState('');
+  const [archiveReason, setArchiveReason] = useState<JobReviewReasonCode>('unspecified');
+  const [archiveNote, setArchiveNote] = useState('');
+
+  useEffect(() => {
+    setArchiveReason('unspecified');
+    setArchiveNote('');
+  }, [job.id]);
 
   useEffect(() => {
     let active = true;
@@ -624,7 +642,7 @@ function JobDetail({
           </button>
         )}
         {job.status !== 'archived' && (
-          <button className="icon-button" type="button" title="Archive" onClick={() => onUpdate(job.id, 'archived')}>
+          <button className="icon-button" type="button" title="Archive" onClick={() => onUpdate(job.id, 'archived', undefined, archiveReason, archiveNote)}>
             <ActionIcon name="archive" />
           </button>
         )}
@@ -642,11 +660,8 @@ function JobDetail({
         <button
           className="icon-button danger"
           type="button"
-          title="Delete"
-          disabled={pending}
-          onClick={() => {
-            if (window.confirm('Delete this job?')) onUpdate(job.id, 'deleted');
-          }}
+          title="Delete is disabled on web; archive jobs instead."
+          disabled
         >
           <ActionIcon name="delete" />
         </button>
@@ -661,6 +676,15 @@ function JobDetail({
           ))}
         </select>
       </div>
+      <details className="detail-disclosure">
+        <summary>Optional archive reason</summary>
+        <div className="notes-content" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <select aria-label="Optional archive reason" value={archiveReason} onChange={(event) => setArchiveReason(event.target.value as JobReviewReasonCode)}>
+            {Object.entries(JOB_REVIEW_REASON_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+          <input aria-label="Optional archive note" maxLength={1000} placeholder="Short note (optional)" value={archiveNote} onChange={(event) => setArchiveNote(event.target.value)} />
+        </div>
+      </details>
       <div className="detail-disclosure">
         <button type="button" onClick={() => setShowNotes((value) => !value)}>
           ▸ Notes ({notes.length})
@@ -698,10 +722,13 @@ function JobDetail({
             ) : (
               events.map((event) => (
                 <p key={event.id}>
-                  <strong>{event.actor_email}</strong>{' '}
+                  <strong>{event.actor_email || (event.actor_kind === 'system' ? 'System' : 'Unknown')}</strong>{' '}
                   {event.action === 'status_changed'
                     ? `moved ${event.from_status ?? 'job'} to ${event.to_status}`
                     : 'changed labels'}{' '}
+                  {event.reason_code !== 'unspecified' && `· ${event.reason_code.replace(/_/g, ' ')} `}
+                  {event.reason_text && `· ${event.reason_text} `}
+                  · {event.channel}{' '}
                   · {dateValue(event.created_at)}
                 </p>
               ))
@@ -714,7 +741,7 @@ function JobDetail({
           <Markdown remarkPlugins={[remarkGfm]}>{job.description}</Markdown>
         ) : (
           <>
-            The job description is not available yet.
+            {loadingDescription ? 'Loading job description…' : descriptionError ? 'Unable to load the job description. Select the job again or refresh.' : 'The job description is not available yet.'}
             <br />
             <a href={job.externalUrl} target="_blank" rel="noreferrer">
               Read it directly on the source →

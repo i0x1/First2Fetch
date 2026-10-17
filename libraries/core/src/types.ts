@@ -65,6 +65,21 @@ export type Link = {
 
 export type JobType = 'remote' | 'hybrid' | 'onsite';
 export type JobStatus = 'new' | 'ready' | 'applied' | 'archived' | 'deleted' | 'processing' | 'excluded_by_advanced_matching';
+export const JOB_REVIEW_REASON_LABELS = {
+  unspecified: 'No reason selected',
+  seniority_mismatch: 'Seniority mismatch',
+  location_mismatch: 'Location mismatch',
+  sponsorship_unavailable: 'Sponsorship unavailable',
+  clearance_required: 'Clearance required',
+  skills_mismatch: 'Skills mismatch',
+  employment_type_mismatch: 'Employment type mismatch',
+  company_blacklisted: 'Company blocked',
+  duplicate: 'Duplicate',
+  expired: 'Expired',
+  not_interested: 'Not interested',
+  other: 'Other',
+} as const;
+export type JobReviewReasonCode = keyof typeof JOB_REVIEW_REASON_LABELS;
 export type Job = {
   id: number;
   user_id: string;
@@ -203,9 +218,13 @@ export type WorkspaceInvitation = {
 export type WorkspaceJobEvent = {
   id: number;
   workspace_owner_id: string;
-  job_id: number;
-  actor_user_id: string;
-  actor_email: string;
+  job_id: number | null;
+  actor_user_id: string | null;
+  actor_email: string | null;
+  actor_kind: 'human' | 'system' | 'import';
+  channel: 'electron' | 'web' | 'scanner' | 'import' | 'unknown';
+  reason_code: JobReviewReasonCode;
+  reason_text: string | null;
   action: 'status_changed' | 'labels_changed';
   from_status: JobStatus | null;
   to_status: JobStatus | null;
@@ -417,6 +436,42 @@ export type DbSchema = {
         };
         Args: {};
         Returns: Job;
+      };
+      workspace_list_jobs_v2: {
+        Args: {
+          jobs_status: JobStatus;
+          jobs_after: string | null;
+          jobs_page_size: number;
+          jobs_search?: string | null;
+          jobs_site_ids?: number[] | null;
+          jobs_link_ids?: number[] | null;
+          jobs_labels?: string[] | null;
+          hide_reposted?: boolean;
+          date_filter?: string | null;
+          timezone_name?: string;
+        };
+        Returns: Job[];
+      };
+      workspace_apply_job_scan_v1: {
+        Args: { job_id: number; updates: Record<string, unknown> };
+        Returns: Job | null;
+      };
+      workspace_update_job_review_v2: {
+        Params: {
+          job_id: number;
+          new_status?: JobStatus | null;
+          new_labels?: string[] | null;
+          reason_code?: string;
+          reason_text?: string | null;
+          channel?: 'electron' | 'web' | 'unknown';
+        };
+        Args: {};
+        Returns: Job;
+      };
+      workspace_bulk_update_job_status_v2: {
+        Params: { from_status: JobStatus; to_status: JobStatus; channel?: 'electron' | 'web' | 'unknown' };
+        Args: {};
+        Returns: number;
       };
       accept_workspace_invitation: {
         Params: {};

@@ -6,6 +6,7 @@ import { CORS_HEADERS } from '../_shared/cors.ts';
 import { getEdgeFunctionContext } from '../_shared/edgeFunctions.ts';
 import { parseJobDescriptionUpdates } from '../_shared/jobDescriptionParser.ts';
 import { createLoggerWithMeta } from '../_shared/logger.ts';
+import { normalizeJobDescription } from '@first2apply/core';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -67,7 +68,7 @@ Deno.serve(async (req) => {
         const isLastRetry = retryCount === maxRetries;
         updatedJob = {
           ...updatedJob,
-          description: updates.description ?? job.description,
+          description: normalizeJobDescription(updates.description) ?? normalizeJobDescription(job.description),
           salary: !job.salary ? updates.salary : job.salary,
           tags: Array.from(new Set((job.tags ?? []).concat(updates.tags ?? []))),
         };
@@ -89,7 +90,7 @@ Deno.serve(async (req) => {
           });
         }
 
-        const { newStatus, excludeReason } = await applyAdvancedMatchingFilters({
+        const match = await applyAdvancedMatchingFilters({
           logger,
           job: updatedJob,
           supabaseClient,
@@ -98,8 +99,8 @@ Deno.serve(async (req) => {
 
         updatedJob = {
           ...updatedJob,
-          status: newStatus,
-          exclude_reason: excludeReason,
+          status: match.newStatus,
+          exclude_reason: match.excludeReason,
         };
 
         if (!updatedJob.description) {
@@ -113,22 +114,14 @@ Deno.serve(async (req) => {
           site: site.provider,
         });
 
-        const { error: updateJobErr } = await supabaseClient
-          .from('jobs')
-          .update({
-            description: updatedJob.description,
-            salary: updatedJob.salary,
-            tags: updatedJob.tags,
-            status: updatedJob.status,
-            updated_at: new Date(),
-            exclude_reason: updatedJob.exclude_reason,
-          })
-          .eq('id', jobId)
-
-          // I think this is causing jobs to be put back on new from deleted
-          // if the app fails to process an entire batch in one cron interval
-          // then the same job will be processed twice (since it's status is processing still)
-          .in('status', ['processing', 'new']);
+        const { error: updateJobErr } = await supabaseClient.rpc('workspace_apply_job_scan_v1', { job_id: jobId, updates: {
+          description: updatedJob.description,
+          salary: updatedJob.salary,
+          tags: updatedJob.tags,
+          status: updatedJob.status,
+          exclude_reason: updatedJob.exclude_reason ?? null,
+          updated_at: new Date().toISOString(),
+        } });
         if (updateJobErr) {
           throw updateJobErr;
         }
@@ -148,14 +141,12 @@ Deno.serve(async (req) => {
         
         // Update job status back to 'new' so it can be retried and shows up in frontend
         try {
-          await supabaseClient
-            .from('jobs')
-            .update({
-              status: 'new',
-              updated_at: new Date(),
-            })
-            .eq('id', jobId)
-            .in('status', ['processing', 'new']);
+          const { error: resetError } = await supabaseClient.rpc('workspace_apply_job_scan_v1', { job_id: jobId, updates: {
+            status: 'new',
+            exclude_reason: getExceptionMessage(error).slice(0, 1000),
+            updated_at: new Date().toISOString(),
+          } });
+          if (resetError) throw resetError;
         } catch (updateError) {
           logger.error('failed to reset job status after parser error', {
             jobId,

@@ -1,4 +1,4 @@
-import { DbSchema, Job, JobLabel, JobStatus, Link, WebPageRuntimeData } from '@first2apply/core';
+import { DbSchema, Job, JobLabel, JobStatus, Link, WebPageRuntimeData, WorkspaceJobEvent } from '@first2apply/core';
 import { FunctionsHttpError, PostgrestError, SupabaseClient, User } from '@supabase/supabase-js';
 import { backOff } from 'exponential-backoff';
 import * as luxon from 'luxon';
@@ -334,7 +334,7 @@ export class F2aSupabaseApi {
     const timezone_name = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
     const [jobs, counters] = await Promise.all([
       this._supabaseApiCall<Job[], PostgrestError>(async () => {
-        const res = await this._supabase.rpc('list_jobs', {
+        const res = await this._supabase.rpc('workspace_list_jobs_v2', {
           jobs_status: status,
           jobs_after: after ?? null,
           jobs_page_size: limit,
@@ -390,16 +390,21 @@ export class F2aSupabaseApi {
   /**
    * Update the status of a job.
    */
-  updateJobStatus({ jobId, status }: { jobId: number; status: JobStatus }) {
+  updateJobStatus({ jobId, status, reasonCode = 'unspecified', reasonText = null }: {
+    jobId: number;
+    status: JobStatus;
+    reasonCode?: string;
+    reasonText?: string | null;
+  }) {
     return this._supabaseApiCall(
-      async () =>
-        await this._supabase
-          .from('jobs')
-          .update({
-            status,
-            updated_at: luxon.DateTime.now().toUTC().toJSDate(),
-          })
-          .eq('id', jobId),
+      async () => await this._supabase.rpc('workspace_update_job_review_v2', {
+        job_id: jobId,
+        new_status: status,
+        new_labels: null,
+        reason_code: reasonCode,
+        reason_text: reasonText,
+        channel: 'electron',
+      }),
     );
   }
 
@@ -408,15 +413,15 @@ export class F2aSupabaseApi {
    * @returns the updated job
    */
   async updateJobLabels({ jobId, labels }: { jobId: number; labels: JobLabel[] }) {
-    const [updatedJob] = await this._supabaseApiCall(
-      async () =>
-        await this._supabase
-          .from('jobs')
-          .update({
-            labels,
-          })
-          .eq('id', jobId)
-          .select('*'),
+    const updatedJob = await this._supabaseApiCall(async () =>
+      this._supabase.rpc('workspace_update_job_review_v2', {
+        job_id: jobId,
+        new_status: null,
+        new_labels: labels,
+        reason_code: 'unspecified',
+        reason_text: null,
+        channel: 'electron',
+      }),
     );
 
     return updatedJob;
@@ -437,18 +442,22 @@ export class F2aSupabaseApi {
     return job;
   }
 
+  async listJobEvents(jobId: number): Promise<WorkspaceJobEvent[]> {
+    return this._supabaseApiCall(async () =>
+      this._supabase.from('workspace_job_events').select('*').eq('job_id', jobId).order('created_at', { ascending: false }),
+    );
+  }
+
   /**
    * Change the status of all jobs with a certain status to another status.
    */
   async changeAllJobStatus({ from, to }: { from: JobStatus; to: JobStatus }) {
     return this._supabaseApiCall(async () =>
-      this._supabase
-        .from('jobs')
-        .update({
-          status: to,
-          updated_at: luxon.DateTime.now().toUTC().toJSDate(),
-        })
-        .eq('status', from),
+      this._supabase.rpc('workspace_bulk_update_job_status_v2', {
+        from_status: from,
+        to_status: to,
+        channel: 'electron',
+      }),
     );
   }
 

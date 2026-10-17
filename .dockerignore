@@ -10,7 +10,13 @@ build
 coverage
 .env
 .env.*
+**/.env
+**/.env.*
 !.env.example
+private-exports
+**/.webpack
+**/out
+**/*.tsbuildinfo
 apps/backend/supabase/.temp
 apps/backend/supabase/seed.sql
 apps/backend/supabase/*.csv

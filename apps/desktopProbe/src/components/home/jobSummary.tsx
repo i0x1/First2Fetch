@@ -18,7 +18,7 @@ import { useSites } from '@/hooks/sites';
 import { formatShortPostedWithFallback, formatShortRelativeTime } from '@/lib/jobDisplayUtils';
 import { LABEL_COLOR_CLASSES } from '@/lib/labels';
 import { cn } from '@/lib/utils';
-import { JOB_LABELS, Job, JobLabel, JobStatus } from '@first2apply/core';
+import { JOB_LABELS, JOB_REVIEW_REASON_LABELS, Job, JobLabel, JobReviewReasonCode, JobStatus } from '@first2apply/core';
 import { Button } from '@first2apply/ui';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@first2apply/ui';
 import { toast } from '@first2apply/ui';
@@ -52,7 +52,7 @@ export function JobSummary({
 }: {
   job: Job;
   onView: (job: Job) => void;
-  onUpdateJobStatus: (jobId: number, status: JobStatus) => void;
+  onUpdateJobStatus: (jobId: number, status: JobStatus, reasonCode?: JobReviewReasonCode, reasonText?: string | null) => void;
   onUpdateLabels: (jobId: number, labels: JobLabel[]) => void;
   onOpenUrl: (url: string) => void;
   isFavoriteCompany?: boolean;
@@ -67,6 +67,12 @@ export function JobSummary({
   const { siteLogos, siteMap } = useSites();
   const { links } = useLinks();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
+  const [archiveReason, setArchiveReason] = React.useState<JobReviewReasonCode>('unspecified');
+  const [archiveNote, setArchiveNote] = React.useState('');
+  React.useEffect(() => {
+    setArchiveReason('unspecified');
+    setArchiveNote('');
+  }, [job.id]);
 
   const usedLink = useMemo(() => links.find((l) => l.id === job.link_id), [links, job.link_id]);
   const boardName = siteMap[job.siteId]?.name ?? 'Job board';
@@ -167,7 +173,7 @@ export function JobSummary({
         )}
 
         {job.status !== 'archived' && (
-          <DetailIconButton title="Archive" onClick={() => onUpdateJobStatus(job.id, 'archived')}>
+          <DetailIconButton title="Archive" onClick={() => onUpdateJobStatus(job.id, 'archived', archiveReason, archiveNote.trim() || null)}>
             <ArchiveIcon className="h-3.5 w-3.5" />
           </DetailIconButton>
         )}
@@ -237,6 +243,29 @@ export function JobSummary({
         <div className="ml-auto">
           <JobLabelSelector job={job} onUpdateLabels={onUpdateLabels} />
         </div>
+        <details className="basis-full pt-1 text-[10px] text-muted-foreground">
+          <summary className="cursor-pointer">Optional archive reason</summary>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            <select
+              aria-label="Optional archive reason"
+              className="max-w-full rounded border border-border bg-background px-1.5 py-1"
+              value={archiveReason}
+              onChange={(event) => setArchiveReason(event.target.value as JobReviewReasonCode)}
+            >
+              {Object.entries(JOB_REVIEW_REASON_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+            <input
+              aria-label="Optional archive note"
+              className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-1"
+              maxLength={1000}
+              placeholder="Short note (optional)"
+              value={archiveNote}
+              onChange={(event) => setArchiveNote(event.target.value)}
+            />
+          </div>
+        </details>
       </div>
 
       <DeleteJobDialog

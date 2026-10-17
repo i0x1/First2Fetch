@@ -30,6 +30,7 @@ import { JobDetails } from './jobDetails';
 import { JobFilters } from './jobFilters';
 import { JobFiltersType } from './jobFilters/jobFiltersMenu';
 import { JobNotes } from './jobNotes';
+import { JobActivity } from './jobActivity';
 import { JobSummary } from './jobSummary';
 import { JobListing } from './jobTabs';
 import { JobsList } from './jobsList';
@@ -305,8 +306,8 @@ export function JobTabsContent({
   ]);
 
   // Update the status of a job and remove it from the list if necessary
-  const updateListedJobStatus = async (jobId: number, newStatus: JobStatus) => {
-    await updateJobStatus({ jobId, status: newStatus });
+  const updateListedJobStatus = async (jobId: number, newStatus: JobStatus, reasonCode?: string, reasonText?: string | null) => {
+    await updateJobStatus({ jobId, status: newStatus, reasonCode, reasonText });
 
     // Find and remove job from jobsByDate
     let oldJob: Job | undefined;
@@ -394,9 +395,9 @@ export function JobTabsContent({
     }
   };
 
-  const onUpdateJobStatus = async (jobId: number, newStatus: JobStatus) => {
+  const onUpdateJobStatus = async (jobId: number, newStatus: JobStatus, reasonCode?: string, reasonText?: string | null) => {
     try {
-      await updateListedJobStatus(jobId, newStatus);
+      await updateListedJobStatus(jobId, newStatus, reasonCode, reasonText);
       selectNextJob(jobId);
     } catch (error) {
       handleError({ error, title: 'Failed to update job status' });
@@ -811,6 +812,7 @@ export function JobTabsContent({
                 />
                 <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-2.5">
                   <JobNotes jobId={selectedJob.id} compact />
+                  <JobActivity jobId={selectedJob.id} />
                   <JobDetails
                     job={selectedJob}
                     compact

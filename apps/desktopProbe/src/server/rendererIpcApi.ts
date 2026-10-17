@@ -184,9 +184,9 @@ export function initRendererIpcApi({
       ),
   );
 
-  ipcMain.handle('update-job-status', async (_, { jobId, status }) =>
+  ipcMain.handle('update-job-status', async (_, { jobId, status, reasonCode, reasonText }) =>
     _apiCall(async () => {
-      const res = await supabaseApi.updateJobStatus({ jobId, status });
+      const res = await supabaseApi.updateJobStatus({ jobId, status, reasonCode, reasonText });
       analytics.trackEvent('job_status_updated', { jobId, status });
       return res;
     }),
@@ -328,6 +328,8 @@ export function initRendererIpcApi({
   );
 
   ipcMain.handle('list-notes', async (_, { job_id }) => _apiCall(() => supabaseApi.listNotes(job_id)));
+
+  ipcMain.handle('list-job-events', async (_, { job_id }) => _apiCall(() => supabaseApi.listJobEvents(job_id)));
 
   ipcMain.handle('update-note', async (_, { noteId, text }) =>
     _apiCall(() => supabaseApi.updateNote({ noteId, text })),

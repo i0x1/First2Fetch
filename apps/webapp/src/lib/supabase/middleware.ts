@@ -1,10 +1,13 @@
 import { DbSchema } from '@first2apply/core';
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { supabaseConfig } from './config';
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
-  const supabase = createServerClient<DbSchema>(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
+  if (request.nextUrl.pathname === '/api/health') return response;
+  const { url: supabaseUrl, key } = supabaseConfig();
+  const supabase = createServerClient<DbSchema>(supabaseUrl, key, {
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll: (cookiesToSet) => {
@@ -26,13 +29,17 @@ export async function updateSession(request: NextRequest) {
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
-    return NextResponse.redirect(url);
+    const redirect = NextResponse.redirect(url);
+    response.cookies.getAll().forEach(cookie => redirect.cookies.set(cookie));
+    return redirect;
   }
 
   if (user && isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = '/jobs/new';
-    return NextResponse.redirect(url);
+    const redirect = NextResponse.redirect(url);
+    response.cookies.getAll().forEach(cookie => redirect.cookies.set(cookie));
+    return redirect;
   }
 
   return response;

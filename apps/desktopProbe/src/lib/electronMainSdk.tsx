@@ -10,6 +10,7 @@ import {
   Review,
   StripeConfig,
   WebPageRuntimeData,
+  WorkspaceJobEvent,
 } from '@first2apply/core';
 import { User } from '@supabase/supabase-js';
 
@@ -277,8 +278,13 @@ export async function listJobs({
 /**
  * Update the archived status of a job.
  */
-export async function updateJobStatus({ jobId, status }: { jobId: number; status: JobStatus }): Promise<void> {
-  await _mainProcessApiCall('update-job-status', { jobId, status });
+export async function updateJobStatus({ jobId, status, reasonCode, reasonText }: {
+  jobId: number;
+  status: JobStatus;
+  reasonCode?: string;
+  reasonText?: string | null;
+}): Promise<void> {
+  await _mainProcessApiCall('update-job-status', { jobId, status, reasonCode, reasonText });
 }
 
 /**
@@ -449,6 +455,10 @@ export async function createNote({
 export async function listNotes(job_id: number): Promise<Note[]> {
   const notes = await _mainProcessApiCall<Note[]>('list-notes', { job_id });
   return notes;
+}
+
+export async function listJobEvents(job_id: number): Promise<WorkspaceJobEvent[]> {
+  return _mainProcessApiCall<WorkspaceJobEvent[]>('list-job-events', { job_id });
 }
 
 /**

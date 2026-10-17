@@ -61,7 +61,7 @@ const WEB_JOB_PAGE_SIZE = 50;
 
 export async function listJobsPage(status: JobStatus, cursor?: string, search = '') {
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc('list_jobs', {
+  const { data, error } = await supabase.rpc('workspace_list_jobs_v2', {
     jobs_status: status,
     jobs_after: cursor ?? null,
     jobs_page_size: WEB_JOB_PAGE_SIZE,
@@ -78,7 +78,7 @@ export async function listJobsPage(status: JobStatus, cursor?: string, search = 
   const lastJob = jobs[jobs.length - 1];
   return {
     jobs,
-    nextCursor: jobs.length === WEB_JOB_PAGE_SIZE && lastJob ? `${lastJob.id}!${lastJob.updated_at}` : undefined,
+    nextCursor: jobs.length === WEB_JOB_PAGE_SIZE && lastJob ? `${lastJob.id}!${lastJob.created_at}` : undefined,
   };
 }
 
@@ -156,18 +156,24 @@ export async function updateJobReview(formData: FormData) {
   const labelsValue = formData.get('labels');
   const status = statusValue ? (String(statusValue) as JobStatus) : null;
   const labels = labelsValue ? String(labelsValue).split(',').map((label) => label.trim()).filter(Boolean) : null;
+  const reasonCode = String(formData.get('reasonCode') ?? 'unspecified');
+  const reasonText = String(formData.get('reasonText') ?? '').trim().slice(0, 1000) || null;
 
   if (!Number.isInteger(jobId) || (!status && !labels)) throw new Error('Invalid job review update.');
 
   const supabase = await createClient();
-  const { error } = await supabase.rpc('workspace_update_job_review', {
+  const { error } = await supabase.rpc('workspace_update_job_review_v2', {
     job_id: jobId,
     new_status: status,
     new_labels: labels,
+    reason_code: reasonCode,
+    reason_text: reasonText,
+    channel: 'web',
   });
   if (error) throw new Error(`Unable to update job: ${error.message}`);
 
   revalidatePath('/jobs/new');
+  revalidatePath('/jobs/ready');
   revalidatePath('/jobs/applied');
   revalidatePath('/jobs/archived');
   revalidatePath(`/jobs/${jobId}`);
@@ -184,7 +190,15 @@ export async function inviteMember(formData: FormData) {
   const memberEmail = String(formData.get('email') ?? '').trim();
   const supabase = await createClient();
   const { error } = await supabase.functions.invoke('invite-workspace-member', { body: { email: memberEmail } });
-  if (error) redirect(`/team?error=${encodeURIComponent(error.message)}`);
+  if (error) {
+    let message = error.message;
+    if (error.context instanceof Response) {
+      const body = await error.context.json().catch(() => null);
+      if (typeof body?.error === 'string') message = body.error;
+      else if (typeof body?.message === 'string') message = body.message;
+    }
+    redirect(`/team?error=${encodeURIComponent(message)}`);
+  }
   revalidatePath('/team');
   redirect('/team?message=Invitation%20sent');
 }

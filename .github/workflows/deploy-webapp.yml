@@ -1,8 +1,8 @@
-name: Validate web companion
+name: Web companion checks and release
 
 on:
   push:
-    branches: [main, codex/web-companion]
+    branches: [main, codex/web-companion, codex/jd-analytics]
     paths:
       - 'apps/webapp/**'
       - 'apps/backend/supabase/migrations/**'
@@ -12,7 +12,17 @@ on:
       - 'pnpm-workspace.yaml'
       - 'tsconfig.base.json'
       - '.github/workflows/deploy-webapp.yml'
+      - '.dockerignore'
   workflow_dispatch:
+    inputs:
+      publish_image:
+        description: Publish the tested image (does not enable Oracle deployment)
+        type: boolean
+        default: false
+
+concurrency:
+  group: web-companion-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -31,4 +41,69 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm --filter @first2apply/core build
+      - run: pnpm --filter first2fetch-webapp test
       - run: pnpm --filter first2fetch-webapp build
+
+  image:
+    needs: build
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.publish_image) ||
+      (vars.WEBAPP_PUBLISH_ENABLED == 'true' && github.ref_name == (vars.WEBAPP_DEPLOY_BRANCH || 'main'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.name.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - id: name
+        shell: bash
+        run: |
+          echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/first2fetch-webapp:sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/webapp/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.name.outputs.image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: image
+    if: vars.ORACLE_DEPLOY_ENABLED == 'true' && github.ref_name == (vars.WEBAPP_DEPLOY_BRANCH || 'main')
+    runs-on: ubuntu-latest
+    environment: oracle
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy the tested commit and wait for health
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_SSH_PORT: ${{ secrets.VPS_SSH_PORT || '22' }}
+          VPS_APP_DIR: ${{ secrets.VPS_APP_DIR || '/opt/first2fetch-webapp' }}
+          WEBAPP_IMAGE: ${{ needs.image.outputs.image }}
+        run: |
+          set -euo pipefail
+          test -n "$VPS_HOST" && test -n "$VPS_USER" && test -n "$VPS_SSH_KEY" && test -n "$VPS_KNOWN_HOSTS"
+          [[ "$VPS_APP_DIR" =~ ^/[A-Za-z0-9/_-]+$ ]]
+          [[ "$WEBAPP_IMAGE" =~ ^ghcr\.io/[a-z0-9_-]+/first2fetch-webapp:sha-[a-f0-9]{40}$ ]]
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf '%s\n' "$VPS_SSH_KEY" > "$HOME/.ssh/oracle_key"
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/oracle_key" "$HOME/.ssh/known_hosts"
+          ssh -i "$HOME/.ssh/oracle_key" -p "$VPS_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "$VPS_USER@$VPS_HOST" bash -s -- "$VPS_APP_DIR" "$WEBAPP_IMAGE" < apps/webapp/scripts/deploy.sh

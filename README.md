@@ -42,7 +42,7 @@ Use normal filters, company include/exclude lists, or configurable AI rules to r
 
 - Multi-source monitoring for LinkedIn, Indeed, Dice, Glassdoor, Hiring Cafe, Built In, Remote OK, Remotive, We Work Remotely, USAJobs, and additional sources
 - Local Electron browser sessions for loading and scanning saved searches
-- Date-grouped job inbox with search, labels, notes, status tracking, bulk actions, and CSV export
+- Date-grouped job inbox with search, labels, notes, status tracking, and bulk actions
 - Configurable scan intervals, pause/resume controls, failure visibility, and desktop/email alerts
 - Optional AI-assisted parsing and advanced matching with configurable providers
 - Supabase authentication, PostgreSQL storage, Row Level Security, migrations, and edge functions
@@ -63,14 +63,34 @@ Browser sessions and page scanning run on the user’s computer. Supabase handle
 
 See [docs/architecture.md](docs/architecture.md) for the complete runtime and data-flow guide.
 
+## Daily operation
+
+Use the existing hosted Supabase project for both Electron and the web companion. Docker and local Supabase are not needed for normal use. Keep the desktop app on your computer for scanning; the web companion uses the same hosted jobs and workspace.
+
+On macOS, double-click **Start First2Fetch.command** in this repository. Alternatively, open a normal macOS Terminal at the repository root and run:
+
+```bash
+pnpm --filter first2fetch-desktop start
+```
+
+Keep that Terminal window open while using the development app. Quit from the app menu, or press `Ctrl+C` in its Terminal. To reopen it, use the same launcher. Start one instance at a time.
+
+The launcher uses `apps/desktopProbe/.env`. This file must contain the application bundle ID, hosted Supabase URL, and a public publishable or anon key. It is ignored by Git. A separate working copy must reuse or receive this configuration before it is built; cloning the repository does not copy `.env` or your saved login.
+
+Electron restores a valid session from its OS-encrypted local storage. If Supabase revokes or expires that session, sign in again. Keep the same environment and application identity to reuse the same session. Scanning retains its saved paused/running setting; check that setting before resuming scans.
+
+When an agent launches Electron, allow the process to access the macOS desktop outside its command sandbox. In the 2026-10-16 test, sandboxed startup caused an AppKit registration crash (`SIGABRT`) and file-watcher errors (`EMFILE`). Running from a normal Terminal resolved both. A package built without `APP_BUNDLE_ID` also failed to initialize its API handlers. Do not use an incomplete test package as the normal launcher.
+
+For occasional job analysis, use the separate job and activity queries in [docs/jd-analytics-export.sql](docs/jd-analytics-export.sql) in the hosted Supabase SQL Editor. Each job description stays in its existing job row; an export does not require an analytics database or an import tool.
+
 ## Quick Start
 
 ### Prerequisites
 
 - Node.js 22
 - pnpm 10
-- Docker Desktop
-- Supabase CLI
+- Access to the existing hosted Supabase project
+- Supabase CLI for backend maintenance; Docker only for container builds or optional isolated tests
 
 ### 1. Install
 
@@ -84,26 +104,19 @@ pnpm --filter @first2apply/ui build
 
 The internal `@first2apply/*` package names are retained for compatibility with the upstream project.
 
-### 2. Start Supabase
-
-```bash
-cd apps/backend
-pnpm exec supabase start
-pnpm exec supabase status -o env
-```
-
-Copy the local `API_URL` and `ANON_KEY` values into a desktop environment file:
+### 2. Configure the hosted Supabase project
 
 ```bash
 cp apps/desktopProbe/.env.example apps/desktopProbe/.env
 ```
 
 ```dotenv
-SUPABASE_URL=http://127.0.0.1:54321
-SUPABASE_KEY=your_local_anon_key
+APP_BUNDLE_ID=ro.beastx.first2fetch.dev
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_PUBLISHABLE_KEY=your_publishable_key
 ```
 
-Never place a `service_role` key in the desktop app.
+Use the existing project URL and its public publishable key from the Supabase dashboard. `SUPABASE_KEY` remains supported for an existing anon-key configuration. Never place a `service_role` key in the desktop app. Do not replace a working `.env` with the example.
 
 ### 3. Run the desktop app
 
@@ -111,12 +124,7 @@ Never place a `service_role` key in the desktop app.
 pnpm --filter first2fetch-desktop start
 ```
 
-Optional edge functions can be served in a second terminal:
-
-```bash
-cd apps/backend
-pnpm exec supabase functions serve
-```
+Edge Functions run on hosted Supabase. See [web deployment preparation](apps/webapp/DEPLOYMENT.md) before changing hosted migrations or functions.
 
 ## Common Commands
 

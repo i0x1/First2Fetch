@@ -38,7 +38,10 @@ Deno.serve(async (req) => {
         options: { redirectTo },
       });
       if (error) throw error;
-      existingUserMagicLink = data.properties?.action_link ?? null;
+      const tokenHash = data.properties?.hashed_token;
+      if (!tokenHash) throw new Error('Supabase did not return the sign-in token hash.');
+      // Server-side cookie auth needs a query token; URL fragments never reach the callback route.
+      existingUserMagicLink = `${redirectTo}&token_hash=${encodeURIComponent(tokenHash)}&type=magiclink`;
     } else {
       const { data, error } = await context.supabaseAdminClient.auth.admin.inviteUserByEmail(email, {
         redirectTo,
@@ -57,13 +60,18 @@ Deno.serve(async (req) => {
 
     const { data: previousInvitation } = await context.supabaseAdminClient
       .from('workspace_invitations')
-      .select('id')
+      .select('id,accepted_at')
       .eq('workspace_owner_id', context.user.id)
       .ilike('email', email)
       .maybeSingle();
+    const invitationValues = {
+      member_user_id: memberUserId,
+      status,
+      accepted_at: status === 'accepted' ? previousInvitation?.accepted_at ?? new Date().toISOString() : null,
+    };
     const invitationQuery = previousInvitation
-      ? context.supabaseAdminClient.from('workspace_invitations').update({ member_user_id: memberUserId, status }).eq('id', previousInvitation.id)
-      : context.supabaseAdminClient.from('workspace_invitations').insert({ workspace_owner_id: context.user.id, email, member_user_id: memberUserId, status });
+      ? context.supabaseAdminClient.from('workspace_invitations').update(invitationValues).eq('id', previousInvitation.id)
+      : context.supabaseAdminClient.from('workspace_invitations').insert({ workspace_owner_id: context.user.id, email, ...invitationValues });
     const { error: invitationError } = await invitationQuery;
     if (invitationError) throw invitationError;
 

@@ -1,6 +1,7 @@
 import { DbSchema } from '@first2apply/core';
 import { createServerClient, type CookieMethodsServer } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { supabaseConfig } from './config';
 
 export async function createClient() {
   const cookieStore = await cookies();
@@ -15,7 +16,8 @@ export async function createClient() {
     },
   };
 
-  return createServerClient<DbSchema>(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!, {
+  const { url, key } = supabaseConfig();
+  return createServerClient<DbSchema>(url, key, {
     cookies: cookieMethods,
   });
 }

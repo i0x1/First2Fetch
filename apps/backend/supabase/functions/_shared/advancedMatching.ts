@@ -21,7 +21,10 @@ export async function applyAdvancedMatchingFilters({
   supabaseClient: SupabaseClient<DbSchema, 'public'>;
   supabaseAdminClient: SupabaseClient<DbSchema, 'public'>;
   job: Job;
-}): Promise<{ newStatus: JobStatus; excludeReason?: string }> {
+}): Promise<{
+  newStatus: JobStatus;
+  excludeReason?: string;
+}> {
   logger.debug('advanced matching started', { jobId: job.id });
   // check if the user has advanced matching enabled
   const { hasAdvancedMatching } = await checkUserSubscription({
@@ -78,6 +81,7 @@ export async function applyAdvancedMatchingFilters({
         excludeReason: exclusionDecision.reason ?? undefined,
       };
     }
+    return { newStatus: 'new' };
   }
 
   logger.debug('advanced matching passed', { jobId: job.id });
@@ -126,7 +130,7 @@ async function promptAI({
   prompt: string;
   logger: ILogger;
   supabaseAdminClient: SupabaseClient<DbSchema, 'public'>;
-}) {
+}): Promise<{ exclusionDecision: z.infer<typeof JobExclusionFormat> }> {
   // Try to use user's configured AI provider
   const userProvider = await buildAIProviderForTask({
     supabaseAdminClient,
@@ -146,6 +150,7 @@ async function promptAI({
   const provider = userProvider.provider;
   const llmConfig = userProvider.config;
 
+  const generatedUserPrompt = generateUserPrompt({ prompt, job });
   const aiResponse = await provider.createChatCompletion({
     messages: [
       {
@@ -154,10 +159,7 @@ async function promptAI({
       },
       {
         role: 'user',
-        content: generateUserPrompt({
-          prompt,
-          job,
-        }),
+        content: generatedUserPrompt.content,
       },
     ],
     maxCompletionTokens: 300,
@@ -181,9 +183,7 @@ async function promptAI({
     response,
   });
 
-  return {
-    exclusionDecision,
-  };
+  return { exclusionDecision };
 }
 
 /**
@@ -196,7 +196,7 @@ function generateUserPrompt({ prompt, job }: { prompt: string; job: Job }) {
     ? '\n(Note: job description was truncated for length; use the visible portion.)'
     : '';
 
-  return `Here are my requirements for job filtering:
+  return { content: `Here are my requirements for job filtering:
 ${prompt}
 
 Job Title: ${job.title}
@@ -206,7 +206,7 @@ Tags: ${job?.tags?.join(', ') ?? 'None'}
 Job Description:
 ${trimmedDescription}${truncationNote}
 
-Should this job be excluded from my feed? Return JSON only.`;
+Should this job be excluded from my feed? Return JSON only.`, truncated };
 }
 
 const SYSTEM_PROMPT = `You decide whether a job should be removed from a user's feed.
