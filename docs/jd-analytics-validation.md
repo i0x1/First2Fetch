@@ -1,6 +1,6 @@
 # Hosted job data and app validation
 
-Date: 2026-10-16 (America/Los_Angeles)
+Date: 2026-10-17 (America/Los_Angeles)
 Branch: `codex/jd-analytics`
 Scope: current working-copy changes and the existing hosted Supabase project. No Oracle deployment.
 
@@ -31,6 +31,7 @@ Deno checks passed for all three functions from the backend Functions workspace.
 - Web tests: 2 passed.
 - Web TypeScript check: passed after rebuilding the shared `@first2apply/core` declarations.
 - Electron TypeScript build: passed.
+- Electron tests: 34 passed across 11 files.
 - Deno checks for both scanner functions and the invitation function: passed.
 - Next.js production build: passed. The standard Next.js ESLint plugin notice appeared during one build; the unused parameter warning found in that run was removed, and the final Docker build passed without it.
 - Final Docker image built from the current source. It runs as `node`, reports healthy, and `/api/health` returned HTTP 200.
@@ -64,7 +65,7 @@ The Electron app remains running from the working copy, signed into the hosted p
 3. Complete the public DNS/HTTPS check, then test a normal helper login and invitation email. Do not send a fresh invitation until the hostname resolves and serves the app. The live browser-control service timed out, so no browser OTP was requested. Eight-digit OTP acceptance remains covered by source checks, not a fresh delivery test.
 4. Review whether to enable Auth leaked-password protection. The advisor recommends it; it was not changed because it can affect password creation and change flows.
 5. Arrange a verified full hosted backup and restore path. The checked project reported no managed backup and PITR disabled. CSV exports do not provide database restore coverage.
-6. The reviewed work is committed and pushed to `origin/codex/jd-analytics` (`0e985c6`, `a7c3323`, followed by the security hardening and final docs commits). GitHub Actions run [39016455000](https://github.com/i0x1/First2Fetch/actions/runs/39016455000) passed the web test and production-build job. Image publication and Oracle deployment were skipped by their separate gates.
+6. The reviewed work is committed and pushed to `origin/codex/jd-analytics` at `67296da`. GitHub Actions run [39016700609](https://github.com/i0x1/First2Fetch/actions/runs/39016700609) passed the web tests and production build with the new privilege migration. Image publication and Oracle deployment were skipped by their separate gates.
 7. Before enabling deployment, add and verify the missing `VPS_KNOWN_HOSTS` repository secret, check runner connectivity to the Oracle host, and confirm the existing remote Compose service and rollback image. The required host, user, SSH key, and app-directory values are already stored as repository secrets; their values were not read or printed.
 8. The user must complete a manual test of the local Electron and web apps before Oracle migration.
 
