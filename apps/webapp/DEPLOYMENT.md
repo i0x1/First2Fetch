@@ -38,7 +38,7 @@ The owner self-invite check is verified to return “The owner cannot invite its
 
 ## GitHub image and Oracle workflow
 
-`.github/workflows/deploy-webapp.yml` runs tests and a production build for pushes to `main`, `codex/web-companion`, and `codex/jd-analytics`. Image publication requires either a manual workflow run with `publish_image=true`, or repository variable `WEBAPP_PUBLISH_ENABLED=true` on `WEBAPP_DEPLOY_BRANCH` (default `main`). Oracle deployment additionally requires `ORACLE_DEPLOY_ENABLED=true` and the same branch gate. No workflow run has yet been started for this working copy.
+`.github/workflows/deploy-webapp.yml` runs tests and a production build for pushes to `main`, `codex/web-companion`, and `codex/jd-analytics`. Image publication requires either a manual workflow run with `publish_image=true`, or repository variable `WEBAPP_PUBLISH_ENABLED=true` on `WEBAPP_DEPLOY_BRANCH` (default `main`). Oracle deployment additionally requires `ORACLE_DEPLOY_ENABLED=true` and the same branch gate. GitHub Actions run [39016455000](https://github.com/i0x1/First2Fetch/actions/runs/39016455000) passed the web test and production-build job for commit `0e985c68`; the image and deploy jobs were skipped.
 
 The deployment job requires GitHub secrets `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, and `VPS_KNOWN_HOSTS`; `VPS_SSH_PORT` and `VPS_APP_DIR` are optional. The first three required values and `VPS_APP_DIR` are already stored as repository secrets. `VPS_KNOWN_HOSTS` is missing. Secret values were not read or printed. Add and verify `VPS_KNOWN_HOSTS`, then check runner network reachability before enabling anything. No Oracle deployment was run for this validation.
 
