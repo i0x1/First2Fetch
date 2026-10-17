@@ -64,7 +64,7 @@ The Electron app remains running from the working copy, signed into the hosted p
 4. Run and review Supabase security/performance advisors through a supported route. The CLI cannot create its temporary login role, and this turn did not grant it extra privileges. Do not “fix” that by weakening database roles.
 5. Arrange a verified full hosted backup and restore path. The checked project reported no managed backup and PITR disabled. CSV exports do not provide database restore coverage.
 6. Push the reviewed branch and confirm remote CI. No commit or push was made. The optional image publication and Oracle deployment workflow were not run.
-7. Before enabling deployment, migrate the existing `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, and `VPS_APP_DIR` repository variables to the workflow's expected secret configuration, add and verify the missing `VPS_KNOWN_HOSTS` secret, check runner connectivity to the Oracle host, and confirm the existing remote Compose service and rollback image. The current `VPS_SSH_KEY` variable should be treated as sensitive; its value was not read or printed.
+7. Before enabling deployment, add and verify the missing `VPS_KNOWN_HOSTS` repository secret, check runner connectivity to the Oracle host, and confirm the existing remote Compose service and rollback image. The required host, user, SSH key, and app-directory values are already stored as repository secrets; their values were not read or printed.
 8. The user must complete a manual test of the local Electron and web apps before Oracle migration.
 
 The Oracle VPS was only inspected earlier in the task. No Oracle files, containers, secrets, Cloudflare settings, or GitHub deployment variables were changed. Deployment is not enabled and this work does not claim Oracle readiness.
