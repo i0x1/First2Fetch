@@ -25,7 +25,7 @@ export const ENV = {
     url: process.env.SUPABASE_URL,
     // Prefer the hosted project's modern publishable key when it is present.
     // Keep SUPABASE_KEY as a compatibility fallback for older local setups.
-    key: process.env.SUPABASE_PUBLISHABLE_KEY ?? process.env.SUPABASE_KEY,
+    key: process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_KEY,
   },
   axiomToken: process.env.AXIOM_TOKEN,
   axiomDataset: process.env.AXIOM_DATASET,

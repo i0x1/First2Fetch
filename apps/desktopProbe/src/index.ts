@@ -505,7 +505,8 @@ async function bootstrap() {
     trayMenu = new TrayMenu({ logger, onQuit: quit, onNavigate: navigate, onShow: onActivate });
 
     const userDataPath = app.getPath('userData');
-    const sessionPath = path.join(userDataPath, `${ENV.nodeEnv}-encrypted-session.json`);
+    const sessionMode = ENV.nodeEnv ?? (app.isPackaged ? 'production' : 'development');
+    const sessionPath = path.join(userDataPath, `${sessionMode}-encrypted-session.json`);
 
     // manual logout for testing
     // fs.unlinkSync(sessionPath);

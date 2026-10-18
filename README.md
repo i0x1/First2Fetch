@@ -67,7 +67,9 @@ See [docs/architecture.md](docs/architecture.md) for the complete runtime and da
 
 Use the existing hosted Supabase project for both Electron and the web companion. Docker and local Supabase are not needed for normal use. Keep the desktop app on your computer for scanning; the web companion uses the same hosted jobs and workspace.
 
-On macOS, double-click **Start First2Fetch.command** in this repository. Alternatively, open a normal macOS Terminal at the repository root and run:
+For a signed macOS release, download the Apple Silicon or Intel DMG from this repository's GitHub Releases page, drag **First 2 Fetch** into Applications, then open it from Applications or the Dock. The installed app checks for desktop updates on startup and each hour. A web deployment does not update the desktop scanner; it needs a desktop release.
+
+Until the first signed release is published, double-click **Start First2Fetch.command** in this repository. Alternatively, open a normal macOS Terminal at the repository root and run:
 
 ```bash
 pnpm --filter first2fetch-desktop start
@@ -75,11 +77,13 @@ pnpm --filter first2fetch-desktop start
 
 Keep that Terminal window open while using the development app. Quit from the app menu, or press `Ctrl+C` in its Terminal. To reopen it, use the same launcher. Start one instance at a time.
 
-The launcher uses `apps/desktopProbe/.env`. This file must contain the application bundle ID, hosted Supabase URL, and a public publishable or anon key. It is ignored by Git. A separate working copy must reuse or receive this configuration before it is built; cloning the repository does not copy `.env` or your saved login.
+The launcher uses `apps/desktopProbe/.env`. This file must contain the application bundle ID, hosted Supabase URL, and a public publishable or anon key. It is ignored by Git. A desktop package embeds the hosted URL and public key at build time. A separate working copy must reuse or receive this configuration before it is built; cloning the repository does not copy `.env` or your saved login.
 
 Electron restores a valid session from its OS-encrypted local storage. If Supabase revokes or expires that session, sign in again. Keep the same environment and application identity to reuse the same session. Scanning retains its saved paused/running setting; check that setting before resuming scans.
 
 When an agent launches Electron, allow the process to access the macOS desktop outside its command sandbox. In the 2026-10-16 test, sandboxed startup caused an AppKit registration crash (`SIGABRT`) and file-watcher errors (`EMFILE`). Running from a normal Terminal resolved both. A package built without `APP_BUNDLE_ID` also failed to initialize its API handlers. Do not use an incomplete test package as the normal launcher.
+
+The release workflow requires an Apple Developer ID Application certificate and Apple notarization credentials. It stops before publishing if they are missing. See [docs/macos-release.md](docs/macos-release.md) for the release steps and update test.
 
 For occasional job analysis, use the separate job and activity queries in [docs/jd-analytics-export.sql](docs/jd-analytics-export.sql) in the hosted Supabase SQL Editor. Each job description stays in its existing job row; an export does not require an analytics database or an import tool.
 

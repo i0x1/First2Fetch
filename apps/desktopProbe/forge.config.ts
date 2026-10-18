@@ -16,6 +16,9 @@ import { rendererConfig } from './webpack.renderer.config';
 loadEnvVars({ path: path.join(__dirname, '.env') });
 
 const windowsCertificatePath = process.env.WINDOWS_APPX_CERT_PATH;
+const macNotarizationConfigured = Boolean(
+  process.env.APPLE_ID && process.env.APPLE_PASSWORD && process.env.APPLE_TEAM_ID,
+);
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -28,12 +31,17 @@ const config: ForgeConfig = {
         schemes: ['first2fetch'],
       },
     ],
-    osxSign: {},
-    osxNotarize: {
-      appleId: process.env.APPLE_ID ?? '',
-      appleIdPassword: process.env.APPLE_PASSWORD ?? '',
-      teamId: process.env.APPLE_TEAM_ID ?? '',
-    },
+    // Local packages can be built without Apple credentials. Release CI requires them.
+    ...(macNotarizationConfigured
+      ? {
+          osxSign: {},
+          osxNotarize: {
+            appleId: process.env.APPLE_ID!,
+            appleIdPassword: process.env.APPLE_PASSWORD!,
+            teamId: process.env.APPLE_TEAM_ID!,
+          },
+        }
+      : {}),
   },
   rebuildConfig: {},
   makers: [
@@ -81,25 +89,7 @@ const config: ForgeConfig = {
     }),
     {
       name: '@electron-forge/maker-zip',
-      config: (arch: string) => ({
-        // Note that we must provide this S3 URL here
-        // in order to support smooth version transitions
-        // especially when using a CDN to front your updates
-        macUpdateManifestBaseUrl: `https://s3.eu-central-1.amazonaws.com/first2apply.com/releases/darwin/${arch}`,
-      }),
-    },
-  ],
-  publishers: [
-    {
-      name: '@electron-forge/publisher-s3',
-      config: {
-        bucket: 'first2apply.com',
-        region: 'eu-central-1',
-        public: true,
-        keyResolver: (fileName: string, platform: string, arch: string) => {
-          return `releases/${platform}/${arch}/${fileName}`;
-        },
-      },
+      config: {},
     },
   ],
   plugins: [
