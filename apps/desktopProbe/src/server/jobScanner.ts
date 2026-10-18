@@ -153,7 +153,8 @@ export class JobScanner {
     isPaused: false,
   };
   private _cronJob: ScheduledTask | undefined;
-  private _linkedinCronJob: ScheduledTask | undefined;
+  private _linkedinTimer: NodeJS.Timeout | undefined;
+  private _nextLinkedinScanAt: Date | undefined;
   private _prowerSaveBlockerId: number | undefined;
   private _notificationsMap: Map<string, Notification> = new Map();
   private _runningScansCount = 0;
@@ -229,7 +230,7 @@ export class JobScanner {
       this._settings.linkedinScanIntervalMinutes &&
       this._settings.linkedinScanIntervalMinutes > 0
     ) {
-      linkedinCronRule = `*/${this._settings.linkedinScanIntervalMinutes} * * * *`;
+      linkedinCronRule = `Every ${this._settings.linkedinScanIntervalMinutes} minutes`;
     }
 
     // Calculate next run times
@@ -242,12 +243,7 @@ export class JobScanner {
     }
 
     let nextLinkedinScanTime: string | null = null;
-    if (linkedinCronRule) {
-      const nextTime = getNextCronTime(linkedinCronRule);
-      if (nextTime) {
-        nextLinkedinScanTime = nextTime.toISOString();
-      }
-    }
+    if (this._nextLinkedinScanAt) nextLinkedinScanTime = this._nextLinkedinScanAt.toISOString();
 
     return {
       isScanning: this.isScanning(),
@@ -270,7 +266,7 @@ export class JobScanner {
   /**
    * Scan all links for the current user.
    */
-  async scanAllLinks({ linkedinOnly = false }: { linkedinOnly?: boolean } = {}) {
+  async scanAllLinks({ linkedinOnly = false, excludeLinkedIn = false }: { linkedinOnly?: boolean; excludeLinkedIn?: boolean } = {}) {
     // if paused, skip the scan
     if (this._settings.isPaused) {
       this._logger.info('skipping scheduled scan because scraping is paused');
@@ -290,12 +286,12 @@ export class JobScanner {
     
     // filter links if LinkedIn-only scan
     let linksToScan = allLinks;
-    if (linkedinOnly) {
+    if (linkedinOnly || excludeLinkedIn) {
       const sites = await this._supabaseApi.listSites();
       const linkedinSiteIds = sites.filter(site => site.provider === 'linkedin').map(site => site.id);
-      linksToScan = allLinks.filter(link => linkedinSiteIds.includes(link.site_id));
-      this._logger.info('scan links selected', { mode: 'linkedin', linksCount: linksToScan.length });
-      this._logToUi(`Found ${linksToScan.length} LinkedIn links to scan`);
+      linksToScan = allLinks.filter(link => linkedinSiteIds.includes(link.site_id) === linkedinOnly);
+      this._logger.info('scan links selected', { mode: linkedinOnly ? 'linkedin' : 'other', linksCount: linksToScan.length });
+      this._logToUi(`Found ${linksToScan.length} ${linkedinOnly ? 'LinkedIn' : 'other'} links to scan`);
     } else {
       this._logger.info('scan links selected', { mode: 'all', linksCount: allLinks.length });
       this._logToUi(`Found ${allLinks.length} links to scan`);
@@ -629,10 +625,12 @@ export class JobScanner {
       this._cronJob.stop();
     }
 
-    // end LinkedIn cron job
-    if (this._linkedinCronJob) {
-      this._logger.info(`stopping LinkedIn cron schedule`);
-      this._linkedinCronJob.stop();
+    // End the LinkedIn interval timer.
+    if (this._linkedinTimer) {
+      this._logger.info(`stopping LinkedIn scan timer`);
+      clearInterval(this._linkedinTimer);
+      this._linkedinTimer = undefined;
+      this._nextLinkedinScanAt = undefined;
     }
 
     // stop power blocker
@@ -679,24 +677,31 @@ export class JobScanner {
       }
       // start new cron job if needed
       if (settings.cronRule) {
-        this._cronJob = schedule(settings.cronRule, () => this.scanAllLinks());
+        this._cronJob = schedule(settings.cronRule, () => this.scanAllLinks({ excludeLinkedIn: !!this._settings.linkedinScanIntervalMinutes }));
         this._logger.info(`cron job started successfully ${settings.cronRule}`);
       }
     }
 
     // Handle LinkedIn-specific scan interval
     if (settings.linkedinScanIntervalMinutes !== this._settings.linkedinScanIntervalMinutes) {
-      // stop old LinkedIn cron job
-      if (this._linkedinCronJob) {
-        this._logger.info(`stopping old LinkedIn cron schedule`);
-        this._linkedinCronJob.stop();
-        this._linkedinCronJob = undefined;
+      // Stop the previous interval before applying the new one.
+      if (this._linkedinTimer) {
+        clearInterval(this._linkedinTimer);
+        this._linkedinTimer = undefined;
+        this._nextLinkedinScanAt = undefined;
       }
-      // start new LinkedIn cron job if interval is set
-      if (settings.linkedinScanIntervalMinutes && settings.linkedinScanIntervalMinutes > 0) {
-        const linkedinCronRule = `*/${settings.linkedinScanIntervalMinutes} * * * *`;
-        this._linkedinCronJob = schedule(linkedinCronRule, () => this.scanLinkedInLinks());
-        this._logger.info(`LinkedIn cron job started successfully: every ${settings.linkedinScanIntervalMinutes} minutes`);
+      // A timer supports every interval accepted by settings, including values above 60.
+      const interval = settings.linkedinScanIntervalMinutes;
+      if (interval && Number.isInteger(interval) && interval >= 1 && interval <= 1440) {
+        const intervalMs = interval * 60_000;
+        this._nextLinkedinScanAt = new Date(Date.now() + intervalMs);
+        this._linkedinTimer = setInterval(() => {
+          this._nextLinkedinScanAt = new Date(Date.now() + intervalMs);
+          void this.scanLinkedInLinks().catch((error) => {
+            this._logger.error(`LinkedIn scan failed: ${getExceptionMessage(error)}`);
+          });
+        }, intervalMs);
+        this._logger.info(`LinkedIn scan timer started: every ${interval} minutes`);
       }
     }
 

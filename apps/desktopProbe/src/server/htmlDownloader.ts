@@ -8,6 +8,16 @@ import { ILogger } from './logger';
 import { WorkerQueue } from './workerQueue';
 
 const KNOWN_AUTHWALLS = ['authwall', 'login'];
+let linkedInAccessBlocked = false;
+
+function isLinkedInUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === 'linkedin.com' || host.endsWith('.linkedin.com');
+  } catch {
+    return false;
+  }
+}
 
 // Chrome User-Agents for anti-detection (safe change)
 const CHROME_USER_AGENTS = [
@@ -143,10 +153,13 @@ export class HtmlDownloader {
    */
   private async _loadUrl(window: BrowserWindow, url: string, scrollTimes: number) {
     if (!this._isRunning) return '<html></html>';
+    const isLinkedIn = isLinkedInUrl(url);
+    if (isLinkedIn && linkedInAccessBlocked) throw new Error('LinkedIn access challenge; restart after resolving it');
 
     this._logger.debug('page load started', getUrlSummary(url));
     await backOff(
       async () => {
+        if (isLinkedIn && linkedInAccessBlocked) throw new Error('LinkedIn access challenge; restart after resolving it');
         let statusCode: number | undefined;
         window.webContents.once('did-navigate', (event, url, httpResponseCode) => {
           statusCode = httpResponseCode;
@@ -155,9 +168,13 @@ export class HtmlDownloader {
 
         // handle rate limits
         const title = await window.webContents.executeJavaScript('document.title');
-        if (statusCode === 429 || title?.toLowerCase().startsWith('just a moment')) {
-          this._logger.warn('page load rate limited', { ...getUrlSummary(url), statusCode });
-          await waitRandomBetween(30_000, 60_000);
+        if (
+          statusCode === 429 ||
+          (isLinkedIn && (statusCode === 403 || statusCode === 999)) ||
+          title?.toLowerCase().startsWith('just a moment')
+        ) {
+          this._logger.warn('page access challenge detected', { ...getUrlSummary(url), statusCode });
+          if (isLinkedIn) linkedInAccessBlocked = true;
           throw new Error('rate limit exceeded');
         }
 
@@ -207,17 +224,18 @@ export class HtmlDownloader {
           const finalUrl = window.webContents.getURL();
           if (KNOWN_AUTHWALLS.some((authwall) => finalUrl?.includes(authwall))) {
             this._logger.warn('page load authwall detected', getUrlSummary(finalUrl));
+            if (isLinkedIn) linkedInAccessBlocked = true;
             throw new Error('authwall');
           }
         }
       },
       {
         jitter: 'full',
-        numOfAttempts: 20,
+        numOfAttempts: isLinkedIn ? 2 : 20,
         maxDelay: 10_000,
-        retry: () => {
-          // perform retries only if the window is still running
-          return this._isRunning;
+        retry: (error) => {
+          // Access challenges require user action. Repeating the request adds load.
+          return this._isRunning && !linkedInAccessBlocked && !['rate limit exceeded', 'authwall'].includes(getExceptionMessage(error));
         },
       },
     );

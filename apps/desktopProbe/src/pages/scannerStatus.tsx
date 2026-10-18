@@ -117,6 +117,7 @@ export function ScannerStatusPage() {
 
   const getCronLabel = (rule: string | undefined) => {
     if (!rule) return 'Manual only';
+    if (rule.startsWith('Every ') && rule.endsWith(' minutes')) return rule;
     const found = AVAILABLE_CRON_RULES.find((r) => r.value === rule);
     return found ? found.name : `Custom (${rule})`;
   };
