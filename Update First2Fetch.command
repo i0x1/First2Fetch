@@ -62,8 +62,8 @@ STAGING_DIR=$(mktemp -d '/Applications/.first2fetch-update.XXXXXX')
 STAGED_APP="$STAGING_DIR/First 2 Fetch.app"
 BACKUP_APP="$STAGING_DIR/previous.app"
 cleanup_staging() {
-  local status=$?
-  if (( status != 0 )) && [[ -d "$BACKUP_APP" ]]; then
+  local update_exit_code=$?
+  if (( update_exit_code != 0 )) && [[ -d "$BACKUP_APP" ]]; then
     [[ ! -d "$INSTALLED_APP" ]] || mv "$INSTALLED_APP" "$STAGED_APP" || true
     mv "$BACKUP_APP" "$INSTALLED_APP" || true
   fi
