@@ -38,7 +38,7 @@ git fetch origin codex/jd-analytics
 git merge --ff-only FETCH_HEAD
 
 print 'Building the desktop app...'
-pnpm install --frozen-lockfile
+CI=true pnpm install --frozen-lockfile
 pnpm --filter first2fetch-desktop build
 if [[ "$(uname -m)" == arm64 ]]; then
   ARCH=arm64
