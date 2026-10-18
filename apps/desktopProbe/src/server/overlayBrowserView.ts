@@ -1,7 +1,7 @@
 import { OverlayBrowserViewResult } from '@/lib/types';
 import { BrowserWindow, WebContentsView } from 'electron';
 
-import { consumeRuntimeData, getLinkedinReactContextBuilder } from './browserHelpers';
+import { consumeRuntimeData, getLinkedinReactContextBuilder, installLinkedInCapture } from './browserHelpers';
 
 /**
  * Class used to render a WebContentsView on top of the main window
@@ -36,6 +36,11 @@ export class OverlayBrowserView {
         partition: 'persist:scraper',
       },
     });
+    try {
+      installLinkedInCapture(this._searchView.webContents);
+    } catch {
+      // The browser remains usable if response capture is unavailable.
+    }
 
     // Suppress DevTools protocol warnings
     this._searchView.webContents.on('console-message', (event, level, message) => {

@@ -2,7 +2,7 @@ import { WebPageRuntimeData, getExceptionMessage } from '@first2apply/core';
 import { BrowserWindow } from 'electron';
 import { backOff } from 'exponential-backoff';
 
-import { consumeRuntimeData, getLinkedinReactContextBuilder } from './browserHelpers';
+import { consumeRuntimeData, getLinkedinReactContextBuilder, installLinkedInCapture } from './browserHelpers';
 import { sleep, waitRandomBetween } from './helpers';
 import { ILogger } from './logger';
 import { WorkerQueue } from './workerQueue';
@@ -276,6 +276,7 @@ class BrowserWindowPool {
         if (!window.webContents.debugger.isAttached()) {
           window.webContents.debugger.attach('1.3');
         }
+        if (!incognitoMode) installLinkedInCapture(window.webContents);
         window.webContents.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
           source: `
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });

@@ -1,6 +1,6 @@
 import { SiteProvider, WebPageRuntimeData } from '@first2apply/core';
 import { createHash } from 'crypto';
-import { Session } from 'electron';
+import type { WebContents } from 'electron';
 
 const runtimeDataStore = new Map<string, WebPageRuntimeData>();
 
@@ -11,47 +11,52 @@ function extractRehydrationScript(html: string): string | undefined {
   return scriptMatch?.[1];
 }
 
-export function installLinkedInDecorator(session: Session): void {
-  session.protocol.handle('https', async (request) => {
-    const isGet = request.method === 'GET';
-    const destination = request.headers.get('sec-fetch-dest');
-    const accept = request.headers.get('accept') ?? '';
-    const looksLikeDocument = destination === 'document' || accept.includes('text/html');
+export function installLinkedInCapture(contents: WebContents): void {
+  const debuggerSession = contents.debugger;
+  if (!debuggerSession.isAttached()) debuggerSession.attach('1.3');
 
-    if (!isGet || !looksLikeDocument) {
-      return session.fetch(request, { bypassCustomProtocolHandlers: true });
+  const documents = new Map<string, string>();
+  debuggerSession.on('message', (_event, method, params) => {
+    const requestId = params.requestId as string | undefined;
+    if (!requestId) return;
+
+    if (method === 'Network.responseReceived' && params.type === 'Document') {
+      const url = params.response?.url as string | undefined;
+      const contentType = params.response?.mimeType as string | undefined;
+      if (url && isLinkedInJobsUrl(url) && contentType?.includes('html')) documents.set(requestId, url);
     }
 
-    const response = await session.fetch(request, { bypassCustomProtocolHandlers: true });
+    if (method === 'Network.loadingFailed') documents.delete(requestId);
+    if (method !== 'Network.loadingFinished') return;
 
-    const contentType = response.headers.get('content-type') ?? '';
-    if (!request.url.includes('linkedin.com/jobs') || !contentType.includes('text/html')) {
-      return response;
-    }
-
-    const rawHtml = await response.text();
-    const rehydrationScript = extractRehydrationScript(rawHtml);
-
-    if (rehydrationScript) {
-      const runtimeData: WebPageRuntimeData = {
-        linkedin: { type: SiteProvider.linkedin, comoRehydration: rehydrationScript },
-      };
-
-      storeRuntimeData(request.url, runtimeData);
-      storeRuntimeData(response.url, runtimeData);
-
-      if (runtimeDataStore.size > MAX_STORE_SIZE) {
-        const oldestKey = runtimeDataStore.keys().next().value;
-        if (oldestKey) runtimeDataStore.delete(oldestKey);
-      }
-    }
-
-    return new Response(rawHtml, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
-    });
+    const url = documents.get(requestId);
+    documents.delete(requestId);
+    if (!url) return;
+    void debuggerSession.sendCommand('Network.getResponseBody', { requestId })
+      .then((result: { body: string; base64Encoded: boolean }) => {
+        const html = result.base64Encoded ? Buffer.from(result.body, 'base64').toString('utf8') : result.body;
+        const rehydrationScript = extractRehydrationScript(html);
+        if (!rehydrationScript) return;
+        storeRuntimeData(url, {
+          linkedin: { type: SiteProvider.linkedin, comoRehydration: rehydrationScript },
+        });
+        if (runtimeDataStore.size > MAX_STORE_SIZE) {
+          const oldestKey = runtimeDataStore.keys().next().value;
+          if (oldestKey) runtimeDataStore.delete(oldestKey);
+        }
+      })
+      .catch((): void => {});
   });
+  void debuggerSession.sendCommand('Network.enable').catch((): void => {});
+}
+
+function isLinkedInJobsUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (url.hostname === 'linkedin.com' || url.hostname.endsWith('.linkedin.com')) && url.pathname.startsWith('/jobs');
+  } catch {
+    return false;
+  }
 }
 
 export function consumeRuntimeData(url: string): WebPageRuntimeData {
