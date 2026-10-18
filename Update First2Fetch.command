@@ -61,6 +61,15 @@ codesign --verify --deep --strict "$BUILT_APP"
 STAGING_DIR=$(mktemp -d '/Applications/.first2fetch-update.XXXXXX')
 STAGED_APP="$STAGING_DIR/First 2 Fetch.app"
 BACKUP_APP="$STAGING_DIR/previous.app"
+cleanup_staging() {
+  local status=$?
+  if (( status != 0 )) && [[ -d "$BACKUP_APP" ]]; then
+    [[ ! -d "$INSTALLED_APP" ]] || mv "$INSTALLED_APP" "$STAGED_APP" || true
+    mv "$BACKUP_APP" "$INSTALLED_APP" || true
+  fi
+  rm -rf "$STAGING_DIR"
+}
+trap cleanup_staging EXIT
 ditto "$BUILT_APP" "$STAGED_APP"
 codesign --verify --deep --strict "$STAGED_APP"
 
@@ -71,6 +80,14 @@ if [[ -d "$INSTALLED_APP" ]]; then
     pgrep -f '^/Applications/First 2 Fetch.app/Contents/MacOS/First 2 Fetch$' >/dev/null || break
     sleep 1
   done
+  if pgrep -f '^/Applications/First 2 Fetch.app/Contents/MacOS/First 2 Fetch$' >/dev/null; then
+    # The main process handles SIGTERM with the same bounded cleanup as Quit.
+    pkill -TERM -f '^/Applications/First 2 Fetch.app/Contents/MacOS/First 2 Fetch$' || true
+    for (( attempt = 0; attempt < 10; attempt++ )); do
+      pgrep -f '^/Applications/First 2 Fetch.app/Contents/MacOS/First 2 Fetch$' >/dev/null || break
+      sleep 1
+    done
+  fi
   pgrep -f '^/Applications/First 2 Fetch.app/Contents/MacOS/First 2 Fetch$' >/dev/null && fail 'The running app did not quit.'
   mv "$INSTALLED_APP" "$BACKUP_APP"
 fi
@@ -88,4 +105,3 @@ fi
 open "$INSTALLED_APP"
 print 'First 2 Fetch is installed and opening from Applications.'
 print 'You can use it from Applications or the Dock each day.'
-rm -rf "$STAGING_DIR"
