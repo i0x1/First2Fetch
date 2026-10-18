@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 
 import { getJob, listJobEvents } from '@/app/actions';
 import { updateJobReview } from '@/app/actions';
+import { LocalTimestamp } from '@/app/components/LocalTimestamp';
 
 export default async function JobPage({ params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await params;
@@ -23,7 +24,7 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
       <article className="card" style={{ padding: 24 }}>
         <p className="muted">{job.companyName}{job.location ? ` · ${job.location}` : ''}</p>
         <h1>{job.title}</h1>
-        <p className="muted">{job.salary ?? 'Salary not listed'} · Found {new Date(job.created_at).toLocaleString()}</p>
+        <p className="muted">{job.salary ?? 'Salary not listed'} · Found <LocalTimestamp value={job.created_at} /> · Posted at scan: {job.posted_at_raw || 'not captured'}</p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '20px 0' }}>
           <a className="button primary" href={job.externalUrl} target="_blank" rel="noreferrer">Open application link</a>
           {job.status !== 'applied' && <ReviewButton jobId={job.id} status="applied" label="Mark applied" />}
@@ -43,7 +44,7 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
                 {event.action === 'status_changed' ? `changed status from ${event.from_status ?? 'none'} to ${event.to_status}` : 'changed labels'}
                 {event.reason_code !== 'unspecified' ? ` · ${event.reason_code.replace(/_/g, ' ')}` : ''}
                 {event.reason_text ? ` · ${event.reason_text}` : ''}
-                <div className="muted">{new Date(event.created_at).toLocaleString()} · {event.channel}</div>
+                <div className="muted"><LocalTimestamp value={event.created_at} /> · {event.channel}</div>
               </div>
             ))}
           </div>

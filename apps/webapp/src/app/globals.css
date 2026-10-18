@@ -154,18 +154,25 @@ input {
 }
 .job-table {
   width: 100%;
-  min-width: 0;
+  min-width: 1050px;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 13px;
   table-layout: fixed;
 }
+.job-table th:nth-child(1) { width: 4%; }
+.job-table th:nth-child(2) { width: 25%; }
+.job-table th:nth-child(3) { width: 16%; }
+.job-table th:nth-child(4) { width: 18%; }
+.job-table th:nth-child(5) { width: 12%; }
+.job-table th:nth-child(6) { width: 14%; }
+.job-table th:nth-child(7) { width: 11%; }
 .job-table th {
   position: sticky;
   top: 0;
   z-index: 1;
   background: #f0f3f7;
   color: #607087;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-align: left;
@@ -186,12 +193,13 @@ input {
   background: #edf4ff;
 }
 .job-table td:first-child {
-  width: 34px;
+  width: 4%;
 }
 .job-table td strong,
-.job-table td small {
+.job-table td small,
+.cell-ellipsis {
   display: block;
-  max-width: 210px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -209,7 +217,7 @@ input {
 }
 .job-table td:nth-child(n + 3) {
   color: #607087;
-  font-size: 11px;
+  font-size: 12px;
   white-space: nowrap;
 }
 .job-date-row th {
@@ -245,8 +253,8 @@ input {
   gap: 3px;
 }
 .icon-button {
-  width: 24px;
-  height: 24px;
+  width: 30px;
+  height: 30px;
   border: 1px solid #c7d1df;
   border-radius: 5px;
   background: #fff;
@@ -302,6 +310,10 @@ input {
 }
 .job-detail-actions form {
   display: contents;
+}
+.job-detail-actions .button {
+  padding: 7px 9px;
+  font-size: 12px;
 }
 .job-description {
   max-height: 500px;
@@ -569,6 +581,15 @@ input {
   }
 }
 @media (max-width: 620px) {
+  .job-table {
+    min-width: 0;
+  }
+  .job-table th:first-child {
+    width: 40px;
+  }
+  .job-table th:nth-child(2) {
+    width: auto;
+  }
   .shell {
     padding: 12px;
   }
@@ -596,7 +617,7 @@ input {
   }
   .job-table th:last-child,
   .job-table td:last-child {
-    width: 116px;
+    width: 100px;
   }
   .job-table td strong,
   .job-table td small {

@@ -21,20 +21,24 @@ const statuses: Array<{ value: JobStatus; label: string; count: keyof Counts }> 
   { value: 'excluded_by_advanced_matching', label: 'Skipped', count: 'filtered' },
 ];
 
-function dateValue(value: string | Date) {
-  return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+function dateValue(value: string | Date, local: boolean) {
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric', timeZone: local ? undefined : 'UTC',
+  }).format(new Date(value));
 }
 
-function relativeTime(value: string | Date) {
-  const days = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 86_400_000));
-  return days === 0 ? 'today' : `${days}d`;
+function exactTime(value: string | Date, local: boolean) {
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
+    timeZoneName: 'short', timeZone: local ? undefined : 'UTC',
+  }).format(new Date(value));
 }
 
 function siteCode(job: Job) {
   return `S${job.siteId}`.slice(0, 3).toUpperCase();
 }
 
-function ActionIcon({ name }: { name: 'ready' | 'applied' | 'archive' | 'reset' | 'copy' | 'delete' }) {
+function ActionIcon({ name }: { name: 'ready' | 'applied' | 'archive' }) {
   const paths = {
     ready: (
       <>
@@ -48,25 +52,6 @@ function ActionIcon({ name }: { name: 'ready' | 'applied' | 'archive' | 'reset' 
         <path d="M3 6h10v8H3z" />
         <path d="M2 4h12v2H2z" />
         <path d="M6 9h4" />
-      </>
-    ),
-    reset: (
-      <>
-        <path d="M4 6a5 5 0 1 1 0 5" />
-        <path d="M4 3v3h3" />
-      </>
-    ),
-    copy: (
-      <>
-        <rect x="5" y="5" width="7" height="7" rx="1" />
-        <path d="M3 9V4a1 1 0 0 1 1-1h5" />
-      </>
-    ),
-    delete: (
-      <>
-        <path d="M4 5v9h8V5" />
-        <path d="M3 5h10" />
-        <path d="M6 3h4" />
       </>
     ),
   };
@@ -118,7 +103,12 @@ export function JobBoard({
   const [linkFilter, setLinkFilter] = useState('');
   const [labelFilter, setLabelFilter] = useState('');
   const [pending, startTransition] = useTransition();
+  const [localTime, setLocalTime] = useState(false);
   const searchTitles = useMemo(() => new Map(searches.map((item) => [item.id, item.title])), [searches]);
+
+  useEffect(() => {
+    setLocalTime(true);
+  }, []);
 
   useEffect(() => {
     setLoadedJobs(jobs);
@@ -152,11 +142,11 @@ export function JobBoard({
   const groupedJobs = useMemo(() => {
     const groups = new Map<string, Job[]>();
     filteredJobs.forEach((job) => {
-      const key = dateValue(job.created_at);
+      const key = dateValue(job.created_at, localTime);
       groups.set(key, [...(groups.get(key) ?? []), job]);
     });
     return [...groups.entries()];
-  }, [filteredJobs]);
+  }, [filteredJobs, localTime]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -268,17 +258,8 @@ export function JobBoard({
         <div>
           <p className="muted">Shared workspace</p>
           <h1>Jobs</h1>
-          <p className="jobs-subtitle">Tabular board · logos · search · times in columns</p>
+          <p className="jobs-subtitle">Review jobs and share progress with your team.</p>
         </div>
-        <button
-          className="icon-button"
-          type="button"
-          title="Tab actions"
-          aria-label="Tab actions"
-          onClick={() => setShowFilters((value) => !value)}
-        >
-          ⋮
-        </button>
       </div>
 
       <div className="jobs-toolbar">
@@ -326,13 +307,12 @@ export function JobBoard({
           </button>
         </div>
         <button
-          className={`icon-button ${showFilters ? 'selected-icon' : ''}`}
+          className={`button ${showFilters ? 'selected-icon' : ''}`}
           type="button"
-          title="Filters"
           aria-label="Filters"
           onClick={() => setShowFilters((value) => !value)}
         >
-          ⌯
+          Filters
         </button>
       </div>
 
@@ -392,9 +372,6 @@ export function JobBoard({
           <button className="button danger" type="button" onClick={() => bulkUpdate('archived')}>
             Archive visible
           </button>
-          <button className="button danger" type="button" disabled title="Delete is disabled on web; archive jobs instead.">
-            Delete visible
-          </button>
           <button
             className="button"
             type="button"
@@ -417,7 +394,7 @@ export function JobBoard({
                   <th>Job / company</th>
                   <th>Location</th>
                   <th>Found</th>
-                  <th>Posted</th>
+                  <th title="Posting age reported by the source when the job was scanned">Posted at scan</th>
                   <th>Search</th>
                   <th aria-label="Actions" />
                 </tr>
@@ -447,15 +424,15 @@ export function JobBoard({
                             <span className="job-site-code">{siteCode(job)}</span>
                           </td>
                           <td>
-                            <strong>{job.title}</strong>
-                            <small>{job.companyName}</small>
+                            <strong title={job.title}>{job.title}</strong>
+                            <small title={job.companyName}>{job.companyName}</small>
                             {job.labels?.length ? <em>{job.labels.join(' · ')}</em> : null}
                           </td>
-                          <td>{job.location || '—'}</td>
-                          <td>{relativeTime(job.created_at)}</td>
-                          <td>{job.posted_at_raw || '—'}</td>
-                          <td>{job.link_id ? searchTitles.get(job.link_id) || `#${job.link_id}` : '—'}</td>
-                          <td className="job-row-actions">
+                          <td title={job.location || undefined}><span className="cell-ellipsis">{job.location || '—'}</span></td>
+                          <td><time dateTime={new Date(job.created_at).toISOString()}>{exactTime(job.created_at, localTime)}</time></td>
+                          <td title={job.posted_at_raw ? `Reported by the source when this job was found: ${job.posted_at_raw}` : 'Posting time was not captured'}><span className="cell-ellipsis">{job.posted_at_raw || '—'}</span></td>
+                          <td title={job.link_id ? searchTitles.get(job.link_id) || `#${job.link_id}` : undefined}><span className="cell-ellipsis">{job.link_id ? searchTitles.get(job.link_id) || `#${job.link_id}` : '—'}</span></td>
+                          <td><div className="job-row-actions">
                             {job.status === 'new' && (
                               <button
                                 className="icon-button"
@@ -497,16 +474,7 @@ export function JobBoard({
                             >
                               <ActionIcon name="archive" />
                             </button>
-                            <button
-                              className="icon-button danger"
-                              type="button"
-                              title="Delete is disabled on web; archive jobs instead."
-                              aria-label="Delete job"
-                              disabled
-                            >
-                              <ActionIcon name="delete" />
-                            </button>
-                          </td>
+                          </div></td>
                         </tr>
                       ))}
                     </Fragment>
@@ -522,7 +490,7 @@ export function JobBoard({
           </div>
         </div>
         {selected ? (
-          <JobDetail job={selected} onUpdate={updateReview} />
+          <JobDetail job={selected} onUpdate={updateReview} localTime={localTime} />
         ) : (
           <aside className="job-board-detail card empty-detail">Select a job to view its details.</aside>
         )}
@@ -538,9 +506,11 @@ export function JobBoard({
 function JobDetail({
   job: summary,
   onUpdate,
+  localTime,
 }: {
   job: Job;
   onUpdate: (jobId: number, status?: JobStatus, labels?: JobLabel[], reasonCode?: JobReviewReasonCode, reasonText?: string) => void;
+  localTime: boolean;
 }) {
   const [description, setDescription] = useState<{ jobId: number; text: string | undefined } | null>(null);
   const [descriptionError, setDescriptionError] = useState(false);
@@ -617,8 +587,8 @@ function JobDetail({
             {job.companyName} · {job.location || 'Location not listed'}
           </p>
           <p className="detail-label">
-            found <strong>{relativeTime(job.created_at)}</strong> · posted{' '}
-            <strong>{job.posted_at_raw || dateValue(job.created_at)}</strong> · status <strong>{job.status}</strong>
+            Found <strong>{exactTime(job.created_at, localTime)}</strong> · posted at scan{' '}
+            <strong>{job.posted_at_raw || 'not captured'}</strong> · status <strong>{job.status}</strong>
           </p>
         </div>
       </div>
@@ -627,44 +597,25 @@ function JobDetail({
           Open
         </a>
         {job.status === 'new' && (
-          <button className="icon-button" type="button" title="Move to ready" onClick={() => onUpdate(job.id, 'ready')}>
-            <ActionIcon name="ready" />
-          </button>
+          <button className="button" type="button" onClick={() => onUpdate(job.id, 'ready')}>Ready</button>
         )}
         {job.status !== 'applied' && (
-          <button className="icon-button" type="button" title="Applied" onClick={() => onUpdate(job.id, 'applied')}>
-            <ActionIcon name="applied" />
-          </button>
+          <button className="button" type="button" onClick={() => onUpdate(job.id, 'applied')}>Applied</button>
         )}
         {job.status !== 'new' && (
-          <button className="icon-button" type="button" title="Move to new" onClick={() => onUpdate(job.id, 'new')}>
-            <ActionIcon name="reset" />
-          </button>
+          <button className="button" type="button" onClick={() => onUpdate(job.id, 'new')}>New</button>
         )}
         {job.status !== 'archived' && (
-          <button className="icon-button" type="button" title="Archive" onClick={() => onUpdate(job.id, 'archived', undefined, archiveReason, archiveNote)}>
-            <ActionIcon name="archive" />
-          </button>
+          <button className="button" type="button" onClick={() => onUpdate(job.id, 'archived', undefined, archiveReason, archiveNote)}>Archive</button>
         )}
         <button
-          className="icon-button"
+          className="button"
           type="button"
-          title="Copy URL"
           onClick={() => navigator.clipboard.writeText(job.externalUrl)}
         >
-          <ActionIcon name="copy" />
+          Copy link
         </button>
-        <button className="icon-button" type="button" title="Copy details" onClick={copyDetails}>
-          <ActionIcon name="copy" />
-        </button>
-        <button
-          className="icon-button danger"
-          type="button"
-          title="Delete is disabled on web; archive jobs instead."
-          disabled
-        >
-          <ActionIcon name="delete" />
-        </button>
+        <button className="button" type="button" onClick={copyDetails}>Copy details</button>
         <select
           className="label-select"
           value={job.labels?.[0] ?? ''}
@@ -704,7 +655,7 @@ function JobDetail({
             </form>
             {notes.map((note) => (
               <article className="note" key={note.id}>
-                <time>{dateValue(note.created_at)}</time>
+                <time dateTime={new Date(note.created_at).toISOString()}>{exactTime(note.created_at, localTime)}</time>
                 <p>{note.text}</p>
               </article>
             ))}
@@ -729,7 +680,7 @@ function JobDetail({
                   {event.reason_code !== 'unspecified' && `· ${event.reason_code.replace(/_/g, ' ')} `}
                   {event.reason_text && `· ${event.reason_text} `}
                   · {event.channel}{' '}
-                  · {dateValue(event.created_at)}
+                  · <time dateTime={new Date(event.created_at).toISOString()}>{exactTime(event.created_at, localTime)}</time>
                 </p>
               ))
             )}
