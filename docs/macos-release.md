@@ -10,6 +10,8 @@ Use the same `APP_BUNDLE_ID` for every release. Changing it can break updates an
 
 The workflow checks the required signing secrets and version before it builds. No release is published when a check or build fails. Local packages can be built without Apple credentials for development, but they are not official releases and cannot provide verified macOS auto updates.
 
+Without an Apple Developer membership, the owner can use the locally installed app in Applications and double-click `Update First2Fetch.command` in the repository after new code is pushed. The updater only performs a fast-forward Git update and stops if local changes exist. It builds with Node.js 22, applies a local ad hoc signature, verifies the replacement, then reopens the app. It does not publish a DMG or update another Mac. The helper can use the web companion while this Mac runs the desktop scanner.
+
 ## Publish a release
 
 1. Finish and push the code changes. Confirm that desktop TypeScript and focused tests pass.

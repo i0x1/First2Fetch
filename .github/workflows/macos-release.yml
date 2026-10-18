@@ -77,6 +77,7 @@ jobs:
         working-directory: apps/desktopProbe
         env:
           APP_BUNDLE_ID: ${{ secrets.APP_BUNDLE_ID || 'com.i0x1.first2fetch' }}
+          DESKTOP_AUTO_UPDATES: 'true'
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}

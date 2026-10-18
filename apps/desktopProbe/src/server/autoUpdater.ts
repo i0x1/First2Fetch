@@ -49,7 +49,10 @@ export class F2aAutoUpdater {
     private _analytics: IAnalyticsClient,
   ) {
     // only enable auto-updates in packaged apps
-    this._canAutoUpdate = app.isPackaged;
+    // Squirrel.Mac requires a Developer ID signature. Local ad-hoc builds use the
+    // one-click updater instead; only official signed releases enable this feed.
+    this._canAutoUpdate =
+      app.isPackaged && (process.platform !== 'darwin' || process.env.DESKTOP_AUTO_UPDATES === 'true');
     this._feedUrl =
       process.platform === 'darwin'
         ? `${MAC_UPDATE_SERVER}/darwin-${process.arch}/${app.getVersion()}`

@@ -19,6 +19,7 @@ export const plugins = [
     SUPABASE_URL: '',
     SUPABASE_PUBLISHABLE_KEY: '',
     SUPABASE_KEY: '',
+    DESKTOP_AUTO_UPDATES: 'false',
     AMPLITUDE_API_KEY: '',
   }),
   new CopyWebpackPlugin({

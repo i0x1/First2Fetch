@@ -67,7 +67,9 @@ See [docs/architecture.md](docs/architecture.md) for the complete runtime and da
 
 Use the existing hosted Supabase project for both Electron and the web companion. Docker and local Supabase are not needed for normal use. Keep the desktop app on your computer for scanning; the web companion uses the same hosted jobs and workspace.
 
-For a signed macOS release, download the Apple Silicon or Intel DMG from this repository's GitHub Releases page, drag **First 2 Fetch** into Applications, then open it from Applications or the Dock. The installed app checks for desktop updates on startup and each hour. A web deployment does not update the desktop scanner; it needs a desktop release.
+The local macOS app is installed in Applications. Open **First 2 Fetch** from Applications or the Dock for daily use; no Terminal command is needed. To install later code changes on this Mac, double-click **Update First2Fetch.command** in this repository. It checks for a clean checkout, fetches the pushed branch, builds and verifies a replacement, and then reopens the app. A web deployment does not update the desktop scanner.
+
+This local app has an ad hoc signature and does not auto update. A signed macOS release would need an Apple Developer membership, a Developer ID Application certificate, and notarization credentials. Once available, download the Apple Silicon or Intel DMG from this repository's GitHub Releases page; signed releases check for desktop updates on startup and each hour.
 
 Until the first signed release is published, double-click **Start First2Fetch.command** in this repository. Alternatively, open a normal macOS Terminal at the repository root and run:
 
