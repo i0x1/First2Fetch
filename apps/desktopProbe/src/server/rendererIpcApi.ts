@@ -215,6 +215,19 @@ export function initRendererIpcApi({
 
   ipcMain.handle('get-scanner-status', async (_) => _apiCall(async () => jobScanner.getScannerStatus()));
 
+  ipcMain.handle('scan-linkedin-now', async (_) => _apiCall(async () => {
+    if (!jobScanner.getSettings().linkedinScanIntervalMinutes) throw new Error('LinkedIn scanning is off');
+    void jobScanner.scanLinkedInLinks().catch((error) => {
+      logger.error('manual LinkedIn scan failed', { error: getExceptionMessage(error) });
+    });
+  }));
+
+  ipcMain.handle('scan-other-sites-now', async (_) => _apiCall(async () => {
+    void jobScanner.scanAllLinks().catch((error) => {
+      logger.error('manual other-sites scan failed', { error: getExceptionMessage(error) });
+    });
+  }));
+
   ipcMain.handle('open-external-url', async (_, { url }) => _apiCall(async () => shell.openExternal(url)));
 
   ipcMain.handle('scan-job-description', async (_, { job }) =>

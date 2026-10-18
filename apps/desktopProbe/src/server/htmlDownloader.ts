@@ -3,14 +3,14 @@ import { BrowserWindow } from 'electron';
 import { backOff } from 'exponential-backoff';
 
 import { consumeRuntimeData, getLinkedinReactContextBuilder, installLinkedInCapture } from './browserHelpers';
-import { sleep, waitRandomBetween } from './helpers';
+import { sleep } from './helpers';
 import { ILogger } from './logger';
 import { WorkerQueue } from './workerQueue';
 
-const KNOWN_AUTHWALLS = ['authwall', 'login'];
+const KNOWN_AUTHWALLS = ['/authwall', '/login', '/checkpoint/'];
 let linkedInAccessBlocked = false;
 
-function isLinkedInUrl(url: string): boolean {
+export function isLinkedInUrl(url: string): boolean {
   try {
     const host = new URL(url).hostname.toLowerCase();
     return host === 'linkedin.com' || host.endsWith('.linkedin.com');
@@ -19,15 +19,17 @@ function isLinkedInUrl(url: string): boolean {
   }
 }
 
-// Chrome User-Agents for anti-detection (safe change)
-const CHROME_USER_AGENTS = [
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-];
+export function isLinkedInAccessBlocked(): boolean {
+  return linkedInAccessBlocked;
+}
 
-function getRandomUserAgent(): string {
-  const isMac = process.platform === 'darwin';
-  return isMac ? CHROME_USER_AGENTS[0] : CHROME_USER_AGENTS[1];
+function isAuthwallUrl(url: string): boolean {
+  try {
+    const path = new URL(url).pathname.toLowerCase();
+    return KNOWN_AUTHWALLS.some((authwall) => path.includes(authwall));
+  } catch {
+    return false;
+  }
 }
 
 function getUrlSummary(url: string) {
@@ -54,6 +56,7 @@ export class HtmlDownloader {
   private _logger: ILogger;
   private _numInstances: number;
   private _incognitoMode: boolean;
+  private _linkedInEnabled = false;
 
   /**
    * Class constructor.
@@ -85,6 +88,16 @@ export class HtmlDownloader {
     return this._pool.getSession();
   }
 
+  setLinkedInEnabled(enabled: boolean) {
+    this._linkedInEnabled = enabled;
+  }
+
+  private _checkLinkedInAccess(url: string) {
+    if (!isLinkedInUrl(url)) return;
+    if (!this._linkedInEnabled) throw new Error('LinkedIn scanning is off');
+    if (linkedInAccessBlocked) throw new Error('LinkedIn access challenge; restart after resolving it');
+  }
+
   /**
    * Load the HTML of a given URL with concurrency support.
    *
@@ -107,15 +120,19 @@ export class HtmlDownloader {
     }) => Promise<T>;
   }): Promise<T> {
     if (!this._pool) throw new Error('Pool not initialized');
+    this._checkLinkedInAccess(url);
 
     return this._pool.useBrowserWindow(async (window) => {
+      this._checkLinkedInAccess(url);
       await this._loadUrl(window, url, scrollTimes);
+      this._checkLinkedInAccess(url);
 
       const maxRetries = 1;
       let retryCount = 0;
       return backOff(
         async () => {
-          if (window.webContents.getURL().includes('linkedin.com')) {
+          this._checkLinkedInAccess(url);
+          if (isLinkedInUrl(window.webContents.getURL())) {
             await window.webContents.executeJavaScript(getLinkedinReactContextBuilder()).catch((error) => {
               this._logger.error(`Failed to inject LinkedIn React context fallback: ${getExceptionMessage(error)}`);
             });
@@ -124,6 +141,7 @@ export class HtmlDownloader {
           const html: string = await window.webContents.executeJavaScript('document.documentElement.innerHTML');
           const finalUrl = window.webContents.getURL();
           const webPageRuntimeData = consumeRuntimeData(finalUrl);
+          this._checkLinkedInAccess(url);
           return callback({ html, webPageRuntimeData, maxRetries, retryCount: retryCount++ });
         },
         {
@@ -133,7 +151,7 @@ export class HtmlDownloader {
           startingDelay: 1_000,
           retry: () => {
             // perform retries only if the window is still running
-            return this._isRunning;
+            return this._isRunning && !isLinkedInUrl(url);
           },
         },
       );
@@ -154,12 +172,12 @@ export class HtmlDownloader {
   private async _loadUrl(window: BrowserWindow, url: string, scrollTimes: number) {
     if (!this._isRunning) return '<html></html>';
     const isLinkedIn = isLinkedInUrl(url);
-    if (isLinkedIn && linkedInAccessBlocked) throw new Error('LinkedIn access challenge; restart after resolving it');
+    this._checkLinkedInAccess(url);
 
     this._logger.debug('page load started', getUrlSummary(url));
     await backOff(
       async () => {
-        if (isLinkedIn && linkedInAccessBlocked) throw new Error('LinkedIn access challenge; restart after resolving it');
+        this._checkLinkedInAccess(url);
         let statusCode: number | undefined;
         window.webContents.once('did-navigate', (event, url, httpResponseCode) => {
           statusCode = httpResponseCode;
@@ -178,8 +196,16 @@ export class HtmlDownloader {
           throw new Error('rate limit exceeded');
         }
 
+        const loadedUrl = window.webContents.getURL();
+        if (isLinkedIn && isAuthwallUrl(loadedUrl)) {
+          this._logger.warn('page load authwall detected', getUrlSummary(loadedUrl));
+          linkedInAccessBlocked = true;
+          throw new Error('authwall');
+        }
+
         // scroll to bottom a few times to trigger infinite loading with human-like behavior
         for (let i = 0; i < scrollTimes; i++) {
+          this._checkLinkedInAccess(url);
           // Random mouse movement
           if (i > 0) {
             const x = Math.floor(Math.random() * 800);
@@ -222,7 +248,7 @@ export class HtmlDownloader {
 
           // check if page was redirected to a login page
           const finalUrl = window.webContents.getURL();
-          if (KNOWN_AUTHWALLS.some((authwall) => finalUrl?.includes(authwall))) {
+          if (isAuthwallUrl(finalUrl)) {
             this._logger.warn('page load authwall detected', getUrlSummary(finalUrl));
             if (isLinkedIn) linkedInAccessBlocked = true;
             throw new Error('authwall');
@@ -235,7 +261,7 @@ export class HtmlDownloader {
         maxDelay: 10_000,
         retry: (error) => {
           // Access challenges require user action. Repeating the request adds load.
-          return this._isRunning && !linkedInAccessBlocked && !['rate limit exceeded', 'authwall'].includes(getExceptionMessage(error));
+          return this._isRunning && (!isLinkedIn || !linkedInAccessBlocked) && !['rate limit exceeded', 'authwall', 'LinkedIn scanning is off'].includes(getExceptionMessage(error));
         },
       },
     );
@@ -271,9 +297,6 @@ class BrowserWindowPool {
         },
       });
 
-      // Set Chrome User-Agent instead of Electron default (safe anti-detection measure)
-      const userAgent = getRandomUserAgent();
-      window.webContents.setUserAgent(userAgent);
       logger.debug('browser worker ready', { workerId: i, incognitoMode });
 
       // Suppress DevTools protocol warnings
@@ -289,37 +312,15 @@ class BrowserWindowPool {
         }
       });
 
-      // Apply stealth scripts using debugger
+      // Attach the debugger for LinkedIn response capture.
       try {
         if (!window.webContents.debugger.isAttached()) {
           window.webContents.debugger.attach('1.3');
         }
         if (!incognitoMode) installLinkedInCapture(window.webContents);
-        window.webContents.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
-          source: `
-            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            if (!window.chrome) window.chrome = { runtime: {} };
-            const originalQuery = window.navigator.permissions.query;
-            window.navigator.permissions.query = (parameters) => (
-              parameters.name === 'notifications' ?
-                Promise.resolve({ state: Notification.permission }) :
-                originalQuery(parameters)
-            );
-          `,
-        });
       } catch (err) {
-        logger.error(`Failed to apply stealth scripts to window ${i}`, err);
+        logger.error(`Failed to attach response capture to window ${i}`, err);
       }
-
-      // disable LinkedIn's passkey request, because it triggers an annoying popup
-      window.webContents.session.webRequest.onBeforeRequest((details, callback) => {
-        // if the request url matches the url which appears to be sending the passkey request
-        if (details.url.includes('checkpoint/pk/initiateLogin')) {
-          // never call the callback to block the request
-        } else {
-          callback({});
-        }
-      });
 
       this._pool.push({
         id: i,

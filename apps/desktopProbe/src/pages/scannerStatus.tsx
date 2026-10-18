@@ -1,7 +1,8 @@
-import { getScannerStatus } from '@/lib/electronMainSdk';
+import { getScannerStatus, scanLinkedInNow, scanOtherSitesNow } from '@/lib/electronMainSdk';
+import { useError } from '@/hooks/error';
 import { AVAILABLE_CRON_RULES, ScannerStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { Badge } from '@first2apply/ui';
+import { Badge, Button } from '@first2apply/ui';
 import * as luxon from 'luxon';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -53,6 +54,7 @@ function buildAttentionSummary({
 }
 
 export function ScannerStatusPage() {
+  const { handleError } = useError();
   const [status, setStatus] = useState<ScannerStatus | null>(null);
   const { links } = useLinks();
   const { siteLogos, siteMap } = useSites();
@@ -164,14 +166,41 @@ export function ScannerStatusPage() {
           />
           <Metric label="Errors" value={`${totalErrors}`} tone={totalErrors > 0 ? 'bad' : 'good'} />
         </div>
-        <div className="border-t border-border px-2 py-1 text-[11px] text-muted-foreground">
-          LinkedIn:{' '}
-          {status.nextLinkedinScanTime
-            ? luxon.DateTime.fromISO(status.nextLinkedinScanTime).toRelative()
-            : status.linkedinCronRule
-              ? `every ${status.linkedinCronRule.split('/')[1]?.split(' ')[0]} min`
-              : 'not scheduled'}{' '}
-          · Active jobs: {currentJobs.length}
+        <div className="grid gap-1 border-t border-border px-2 py-2 text-[11px] text-muted-foreground md:grid-cols-2">
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              <strong className="text-foreground">Other sites</strong> · {status.isOtherScanning ? 'Scanning' : 'Idle'}
+              {' · '}Last: {status.lastOtherScanTime ? luxon.DateTime.fromISO(status.lastOtherScanTime).toRelative() : 'None this session'}
+              {' · '}Next: {status.nextScanTime ? luxon.DateTime.fromISO(status.nextScanTime).toRelative() : 'Manual only'}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 shrink-0 px-2 text-[10px]"
+              disabled={status.isOtherScanning}
+              onClick={() => void scanOtherSitesNow().catch((error) => handleError({ error }))}
+            >
+              Scan other sites now
+            </Button>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span>
+              <strong className="text-foreground">LinkedIn</strong> · {status.linkedinEnabled ? status.linkedinAccessBlocked ? 'Access challenge' : status.isLinkedinScanning ? 'Scanning' : 'Idle' : 'Off'}
+              {' · '}Last: {status.lastLinkedinScanTime ? luxon.DateTime.fromISO(status.lastLinkedinScanTime).toRelative() : 'None this session'}
+              {' · '}Next: {status.linkedinEnabled && !status.linkedinAccessBlocked && status.nextLinkedinScanTime ? luxon.DateTime.fromISO(status.nextLinkedinScanTime).toRelative() : 'None'}
+            </span>
+            {status.linkedinEnabled && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 shrink-0 px-2 text-[10px]"
+                disabled={status.linkedinAccessBlocked || status.isLinkedinScanning}
+                onClick={() => void scanLinkedInNow().catch((error) => handleError({ error }))}
+              >
+                Scan LinkedIn now
+              </Button>
+            )}
+          </div>
         </div>
       </CompactPanel>
 

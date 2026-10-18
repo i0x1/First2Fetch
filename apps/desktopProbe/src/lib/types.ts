@@ -40,13 +40,15 @@ export const AVAILABLE_CRON_RULES = [
 ];
 export type CronRule = (typeof AVAILABLE_CRON_RULES)[number];
 
+export const LINKEDIN_SCAN_INTERVALS = [30, 60, 120, 240, 480, 720, 1440] as const;
+
 export type JobScannerSettings = {
   cronRule?: string;
   preventSleep: boolean;
   useSound: boolean;
   areEmailAlertsEnabled: boolean;
   inAppBrowserEnabled: boolean;
-  linkedinScanIntervalMinutes?: number; // LinkedIn-specific scan interval override
+  linkedinScanIntervalMinutes?: number; // undefined means LinkedIn scanning is off
   isPaused: boolean; // Global pause/resume for job scraping
 };
 
@@ -76,6 +78,12 @@ export type ScannerStatus = {
   nextLinkedinScanTime: string | null; // ISO string
   cronRule: string | undefined;
   linkedinCronRule: string | undefined;
+  linkedinEnabled: boolean;
+  linkedinAccessBlocked: boolean;
+  isLinkedinScanning: boolean;
+  isOtherScanning: boolean;
+  lastLinkedinScanTime: string | null;
+  lastOtherScanTime: string | null;
   currentJobs: ScannerJobStatus[];
   logs: string[];
 };

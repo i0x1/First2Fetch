@@ -325,6 +325,14 @@ export async function getScannerStatus(): Promise<ScannerStatus> {
   return await _mainProcessApiCall<ScannerStatus>('get-scanner-status', {});
 }
 
+export async function scanLinkedInNow(): Promise<void> {
+  await _mainProcessApiCall('scan-linkedin-now', {});
+}
+
+export async function scanOtherSitesNow(): Promise<void> {
+  await _mainProcessApiCall('scan-other-sites-now', {});
+}
+
 /**
  * Open a url in the default browser.
  */
