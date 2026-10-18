@@ -70,3 +70,9 @@ The Electron app remains running from the working copy, signed into the hosted p
 8. The user must complete a manual test of the local Electron and web apps before Oracle migration.
 
 The Oracle VPS was only inspected earlier in the task. No Oracle files, containers, secrets, Cloudflare settings, or GitHub deployment variables were changed. Deployment is not enabled and this work does not claim Oracle readiness.
+
+## Later production web release — 17 October 2026
+
+The earlier scope above is a historical validation record. After separate user authorization, the web UI was released to the existing Oracle Compose service. GitHub Actions run [39093617205](https://github.com/i0x1/First2Fetch/actions/runs/39093617205) passed web tests, build, and image publication; its automated deploy job remained gated. A locally built ARM64 image from the current web source was transferred and deployed as `first2fetch-webapp:release-acfc369`. The previous image and private Compose backup remain on the host for rollback. The new container was healthy, and the origin `/api/health` returned HTTP 200.
+
+In the owner's authenticated Chrome session, `https://apply.pritk.com/jobs/new` displayed the new sidebar, Ready/Skipped tabs, filters, view modes, and hosted job rows. Ready kept its controls while empty. Team still listed the helper. No browser console errors or release-time job changes were observed. The user reported that the helper had signed in separately and could see and change shared jobs; the helper's new UI was not independently inspected. Automated Oracle deployment remains disabled; GHCR host pull access, the missing `VPS_KNOWN_HOSTS` secret, and GitHub runner routing remain open operational work. No full hosted database backup or restore was verified by this web release.

@@ -4,7 +4,7 @@
 
 The Electron app runs the job scanner. The web app supports the same hosted Supabase workspace for job review. Both apps use the existing hosted project; do not start local Supabase as part of normal operation.
 
-The Oracle VPS already runs a First2Fetch web service on `127.0.0.1:3002` behind the existing Cloudflare setup. A future release must update that Compose service in place. Do not start a second container on the same port.
+The Oracle VPS runs the First2Fetch web service on `127.0.0.1:3002` behind Cloudflare. Update its existing Compose `web` service in place. Do not start a second container on the same port.
 
 ## Local web test
 
@@ -30,7 +30,7 @@ The `scan-job-description` and `scan-urls` functions were updated and deployed t
 
 ## Authentication and invitations
 
-The current confirmed hostname is `apply.pritk.com`. Hosted Auth uses `https://apply.pritk.com`; the exact `/auth/callback` redirect was added while preserving the existing local and Electron redirects. The new-user invite template passes `token_hash` and `type=invite` to the server callback. The Edge Function `WEBAPP_URL` secret uses this hostname. SMTP settings were preserved. DNS resolves through Cloudflare. The owner's signed-in Chrome session reached hosted jobs and remained signed in after reload on 17 October 2026. A new OTP login and the helper's own login still need a browser test.
+The current hostname is `apply.pritk.com`. Hosted Auth uses `https://apply.pritk.com`; the exact `/auth/callback` redirect was added while preserving the existing local and Electron redirects. The new-user invite template passes `token_hash` and `type=invite` to the server callback. The Edge Function `WEBAPP_URL` secret uses this hostname. SMTP settings were preserved. DNS resolves through Cloudflare. The owner's signed-in Chrome session reached hosted jobs and remained signed in after reload on 17 October 2026. The user reported that the helper signed in from another browser and could view and change shared jobs. A fresh OTP/callback flow was not independently tested in this release.
 
 The invitation function verifies the caller's session. Existing accounts receive a server-side callback token; new accounts use the hosted invitation template with the server callback token hash. The user confirmed `pritkx@gmail.com`, which is already a member and appears on the live Team page. The live Cloudflare `First2Fetch helper access` Allow policy includes the owner and helper email addresses. No duplicate invitation was sent. Verify the helper's own Cloudflare Access and Supabase login before relying on shared browser access. Test invitation delivery only if a new invitation is needed later.
 
@@ -40,17 +40,22 @@ The owner self-invite check is verified to return “The owner cannot invite its
 
 `.github/workflows/deploy-webapp.yml` runs tests and a production build for pushes to `main`, `codex/web-companion`, and `codex/jd-analytics`. Image publication requires either a manual workflow run with `publish_image=true`, or repository variable `WEBAPP_PUBLISH_ENABLED=true` on `WEBAPP_DEPLOY_BRANCH` (default `main`). Oracle deployment additionally requires `ORACLE_DEPLOY_ENABLED=true` and the same branch gate. GitHub Actions run [39016455000](https://github.com/i0x1/First2Fetch/actions/runs/39016455000) passed the web test and production-build job for commit `0e985c68`; the image and deploy jobs were skipped.
 
-The deployment job requires GitHub secrets `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, and `VPS_KNOWN_HOSTS`; `VPS_SSH_PORT` and `VPS_APP_DIR` are optional. The first three required values and `VPS_APP_DIR` are already stored as repository secrets. `VPS_KNOWN_HOSTS` is missing. Secret values were not read or printed. Add and verify `VPS_KNOWN_HOSTS`, then check runner network reachability before enabling anything. No Oracle deployment was run for this validation.
+The automated deployment job requires GitHub secrets `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, and `VPS_KNOWN_HOSTS`; `VPS_SSH_PORT` and `VPS_APP_DIR` are optional. `VPS_KNOWN_HOSTS` is still missing, and GitHub runner access to the Tailscale host has not been verified. Do not enable automated deployment until both are resolved.
+
+### Production web release on 17 October 2026
+
+- GitHub Actions run [39093617205](https://github.com/i0x1/First2Fetch/actions/runs/39093617205) passed tests, build, and multi-architecture image publication for `acfc369`. Its gated deploy job was skipped.
+- The same web source was built locally as ARM64 `first2fetch-webapp:release-acfc369`, transferred to the Oracle host, and installed in the existing Compose `web` service. No database migration or scanner change was part of this web release.
+- The prior image `first2fetch-webapp:codex-web-companion` remains on the host. The prior `.env` and Compose file are in the private `rollback-20261018T032635Z` directory. The deployment script now updates both `.env` and `.deployed-image` after health passes, so a later Compose restart retains the released image.
+- Docker reported the new container healthy; the origin `/api/health` returned HTTP 200. The owner's authenticated Chrome session at `https://apply.pritk.com/jobs/new` showed the new sidebar, Ready/Skipped tabs, filters, Table/Split/Detail views, job rows, and Team membership. No browser console errors were observed. No real job state was changed during release verification.
+- The published GHCR package denied both anonymous and temporary user-token pulls from the host. The host currently uses the transferred local image. Resolve registry access before relying on GHCR-based automated redeployment.
 
 The script `apps/webapp/scripts/deploy.sh` requires the existing remote `.env` and `docker-compose.yml`, validates Compose configuration, pulls a commit-pinned image, waits for health, and restores the previous image tag if the new container fails health checks. It was syntax-checked but has not been run on Oracle.
 
-Before a later Oracle release:
+Before the next automated Oracle release:
 
-1. Confirm the exact public hostname and helper email.
-2. Finish the hosted auth URL, redirect, invitation template, and delivery checks.
-3. Review and commit the tested source. Confirm GitHub CI and multi-platform image publication.
-4. Verify the existing remote Compose directory, `.env`, service name, Cloudflare origin, SSH known-host value, and GitHub runner route. Take and verify the required database and VPS backups.
-5. Enable image publication and Oracle deployment only for an approved branch and release.
-6. Update the existing First2Fetch Compose service, then verify `/api/health`, login, shared jobs, invitation acceptance, and rollback.
+1. Resolve the GHCR package read access, add the SSH known-host secret, and verify GitHub runner access to the Tailscale host.
+2. Confirm a restorable hosted database and VPS backup path before any schema or infrastructure migration.
+3. Use an approved branch and release gate, then verify `/api/health`, login, shared jobs, invitation acceptance, and rollback.
 
-Do not report Oracle deployment readiness until these checks are complete. The CSV analysis exports are not a database backup. Supabase reported no managed backups in the checked project and PITR was disabled; arrange a verified backup and restore path before production schema or deployment changes.
+The CSV analysis exports are not a database backup. Supabase reported no managed backups in the checked project and PITR was disabled; arrange a verified backup and restore path before production schema or infrastructure changes.
