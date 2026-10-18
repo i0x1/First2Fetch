@@ -26,7 +26,7 @@ The following workspace migrations are applied and recorded: `20260608010000`, `
 
 Never run an unchecked `supabase db push` against the production project. Before a schema release, inspect the exact pending migration files and hosted history, confirm compatibility with the current Electron and Oracle clients, run rollback tests, then apply only the reviewed migrations. The CLI's hosted SQL/advisor commands currently fail when they try to modify `cli_login_postgres`; do not grant extra database role privileges to bypass that failure. The read-only advisor review used the documented Supabase Management API route instead.
 
-The `scan-job-description` and `scan-urls` functions were updated and deployed to versions 14 and 18. The invitation function is version 4. Scanner scraping stays paused in Electron during verification. Do not test scraping by starting a real scan unless that is separately requested.
+The `scan-job-description` and `scan-urls` functions were updated and deployed to versions 14 and 18. The invitation function is version 4. After the web release, the user authorized normal operation and Electron's scanner was resumed. Settings showed a 30-minute scan frequency and 120-minute LinkedIn interval. A new scheduled listing scan has not yet been observed; Scanner Status still showed three earlier job-description read errors.
 
 ## Authentication and invitations
 
@@ -49,6 +49,7 @@ The automated deployment job requires GitHub secrets `VPS_HOST`, `VPS_USER`, `VP
 - The prior image `first2fetch-webapp:codex-web-companion` remains on the host. The prior `.env` and Compose file are in the private `rollback-20261018T032635Z` directory. The deployment script now updates both `.env` and `.deployed-image` after health passes, so a later Compose restart retains the released image.
 - Docker reported the new container healthy; the origin `/api/health` returned HTTP 200. The owner's authenticated Chrome session at `https://apply.pritk.com/jobs/new` showed the new sidebar, Ready/Skipped tabs, filters, Table/Split/Detail views, job rows, and Team membership. No browser console errors were observed. No real job state was changed during release verification.
 - The published GHCR package denied both anonymous and temporary user-token pulls from the host. The host currently uses the transferred local image. Resolve registry access before relying on GHCR-based automated redeployment.
+- Follow-up commit `3d78c60` records the release and deployment-script fix. Its GitHub test/build run [39094395924](https://github.com/i0x1/First2Fetch/actions/runs/39094395924) passed; image and deploy jobs stayed gated.
 
 The script `apps/webapp/scripts/deploy.sh` requires the existing remote `.env` and `docker-compose.yml`, validates Compose configuration, pulls a commit-pinned image, waits for health, and restores the previous image tag if the new container fails health checks. It was syntax-checked but has not been run on Oracle.
 
