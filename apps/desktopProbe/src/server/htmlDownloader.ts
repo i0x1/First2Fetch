@@ -52,6 +52,7 @@ function getUrlSummary(url: string) {
  */
 export class HtmlDownloader {
   private _isRunning = false;
+  private _shutdownController = new AbortController();
   private _pool: BrowserWindowPool | undefined;
   private _logger: ILogger;
   private _numInstances: number;
@@ -80,6 +81,7 @@ export class HtmlDownloader {
    */
   init() {
     this._pool = new BrowserWindowPool(this._numInstances, this._incognitoMode, this._logger);
+    this._shutdownController = new AbortController();
     this._isRunning = true;
   }
 
@@ -163,6 +165,7 @@ export class HtmlDownloader {
    */
   async close() {
     this._isRunning = false;
+    this._shutdownController.abort();
     return this._pool?.close();
   }
 
@@ -211,7 +214,7 @@ export class HtmlDownloader {
             const x = Math.floor(Math.random() * 800);
             const y = Math.floor(Math.random() * 600);
             window.webContents.sendInputEvent({ type: 'mouseMove', x, y });
-            await sleep(200 + Math.floor(Math.random() * 300));
+            await sleep(200 + Math.floor(Math.random() * 300), this._shutdownController.signal);
           }
 
           await window.webContents.executeJavaScript(
@@ -244,7 +247,7 @@ export class HtmlDownloader {
             `,
           );
 
-          await sleep(2_000 + Math.floor(Math.random() * 2000));
+          await sleep(2_000 + Math.floor(Math.random() * 2000), this._shutdownController.signal);
 
           // check if page was redirected to a login page
           const finalUrl = window.webContents.getURL();
@@ -358,20 +361,15 @@ class BrowserWindowPool {
   }
 
   /**
-   * Wait until all windows are available and close them.
+   * Stop queued work and destroy the windows immediately. Active Electron
+   * navigation and renderer JavaScript promises do not always settle when a
+   * BrowserWindow is destroyed, so waiting for the queue to become idle can
+   * keep app shutdown blocked until the quit timeout.
    */
   close() {
-    return new Promise<void>((resolve) => {
-      // wait until the queue is empty
-      this._queue.on('empty', () => {
-        this._pool.forEach((w) => w.window.close());
-
-        // artificial delay to allow the window to close
-        setTimeout(() => resolve(), 500);
-      });
-
-      // trigger the empty event if the queue is already empty
-      this._queue.next();
+    this._queue.close();
+    this._pool.forEach(({ window }) => {
+      if (!window.isDestroyed()) window.destroy();
     });
   }
 }

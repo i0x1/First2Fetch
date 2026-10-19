@@ -1,13 +1,18 @@
 import { EventEmitter } from 'events';
 
 type AsyncTask<T> = () => Promise<T>;
+type QueuedTask = {
+  run: () => Promise<void>;
+  reject: (error: Error) => void;
+};
 
 /**
  * A simple queue for managing concurrency of async tasks.
  */
 export class WorkerQueue extends EventEmitter {
-  private _queue: AsyncTask<unknown>[] = [];
+  private _queue: QueuedTask[] = [];
   private _currentlyActive = 0;
+  private _isClosed = false;
 
   /**
    * Class constructor.
@@ -21,15 +26,43 @@ export class WorkerQueue extends EventEmitter {
    */
   enqueue<T>(task: AsyncTask<T>): Promise<T> {
     return new Promise((resolve, reject) => {
-      this._queue.push(() => task().then(resolve).catch(reject));
+      if (this._isClosed) {
+        reject(new Error('Worker queue is closed'));
+        return;
+      }
+
+      this._queue.push({
+        run: async () => {
+          try {
+            resolve(await task());
+          } catch (error) {
+            reject(error);
+          }
+        },
+        reject,
+      });
       this.next();
     });
+  }
+
+  /** Stop queued work and emit `empty` after active work finishes. */
+  close() {
+    this._isClosed = true;
+    const queuedTasks = this._queue.splice(0);
+    queuedTasks.forEach(({ reject }) => reject(new Error('Worker queue is closed')));
+
+    if (this._currentlyActive === 0) this.emit('empty');
   }
 
   /**
    * Start the next task in the queue.
    */
   next() {
+    if (this._isClosed) {
+      if (this._currentlyActive === 0) this.emit('empty');
+      return;
+    }
+
     if (this._currentlyActive >= this._concurrency) {
       // too many tasks already running
       return;
@@ -47,7 +80,7 @@ export class WorkerQueue extends EventEmitter {
     this._currentlyActive++;
     const task = this._queue.shift();
 
-    task().finally(() => {
+    task!.run().finally(() => {
       this._currentlyActive--;
       this.next();
     });
