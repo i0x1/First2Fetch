@@ -126,6 +126,10 @@ Use the existing project URL and its public publishable key from the Supabase da
 
 ### 3. Run the desktop app
 
+For daily use while the app changes often, double-click `Start First2Fetch.command` in this folder. It starts Electron from the current source, so restart it after a code update to load that update. Keep the Terminal window open while the app runs; it shows startup errors and logs. The launcher selects Node.js 22 with nvm when available, checks the local setup, and enables polling to avoid macOS file watcher exhaustion.
+
+The app in `/Applications` is a separate packaged copy. It does not receive source edits. Quit it before you start the development copy. Both copies share sign-in and settings, and only one can run at a time. For daily use, open only the development copy. Use `Update First2Fetch.command` when you want to rebuild and replace the packaged copy. A signed, notarized release with automatic updates needs an Apple Developer Program membership and release credentials.
+
 ```bash
 pnpm --filter first2fetch-desktop start
 ```

@@ -300,17 +300,21 @@ class BrowserWindowPool {
       logger.debug('browser worker ready', { workerId: i, incognitoMode });
 
       // Suppress DevTools protocol warnings
-      window.webContents.on('console-message', (event, level, message) => {
-        // Suppress Autofill protocol warnings
-        if (
-          message.includes('Autofill.enable') ||
-          message.includes('Autofill.setAddresses') ||
-          message.includes("wasn't found")
-        ) {
-          event.preventDefault();
-          return;
-        }
-      });
+      window.webContents.on(
+        'console-message',
+        (details: Electron.Event<Electron.WebContentsConsoleMessageEventParams>) => {
+          const { message } = details;
+          // Suppress Autofill protocol warnings
+          if (
+            message.includes('Autofill.enable') ||
+            message.includes('Autofill.setAddresses') ||
+            message.includes("wasn't found")
+          ) {
+            details.preventDefault();
+            return;
+          }
+        },
+      );
 
       // Attach the debugger for LinkedIn response capture.
       try {
