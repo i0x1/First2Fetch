@@ -4,6 +4,7 @@ import {
   getApiModelId,
   getModelConfig,
   isProviderName,
+  providerSupportsTask,
   resolveTaskAiConfig,
 } from '@first2apply/core';
 import { getExceptionMessage } from '@first2apply/core';
@@ -226,6 +227,10 @@ export function buildAIProvider(config: AIProviderConfig): AIProvider {
     return new GoogleGeminiProvider(config);
   }
 
+  if (config.provider === 'typesafe') {
+    throw new Error('TypeSafe is a decision provider, not a chat provider');
+  }
+
   const apiModelId = getApiModelId(config.provider, config.model);
   return new OpenAICompatibleProvider(config, apiModelId);
 }
@@ -273,7 +278,7 @@ function getEncryptedKeyForProvider(
 /**
  * Build provider client for a specific AI task (JD filter, job list scrape, JD parse).
  */
-export async function buildAIProviderForTask({
+export async function resolveUserAiConfigForTask({
   supabaseAdminClient,
   userId,
   task,
@@ -283,7 +288,7 @@ export async function buildAIProviderForTask({
   userId: string;
   task: AiTaskId;
   logger: ILogger;
-}): Promise<{ provider: AIProvider; config: LLMConfig } | null> {
+}): Promise<AIProviderConfig | null> {
   const { data: advancedMatching, error } = await supabaseAdminClient
     .from('advanced_matching')
     .select(
@@ -302,6 +307,9 @@ export async function buildAIProviderForTask({
     logger.info(`User ${userId} has no complete AI config for task ${task}`);
     return null;
   }
+  if (!providerSupportsTask(taskConfig.provider, task)) {
+    throw new Error(`${taskConfig.provider} does not support ${task}`);
+  }
 
   const encryptedKey = getEncryptedKeyForProvider(advancedMatching as AdvancedMatchingAiFields, taskConfig.provider);
   if (!encryptedKey) {
@@ -319,15 +327,23 @@ export async function buildAIProviderForTask({
     throw new Error('Failed to decrypt API key');
   }
 
+  return { provider: taskConfig.provider, model: taskConfig.model, apiKey: decryptedKey };
+}
+
+/** Build a chat provider for a task that needs generated text. */
+export async function buildAIProviderForTask(args: {
+  supabaseAdminClient: SupabaseClient;
+  userId: string;
+  task: AiTaskId;
+  logger: ILogger;
+}): Promise<{ provider: AIProvider; config: LLMConfig } | null> {
+  const config = await resolveUserAiConfigForTask(args);
+  if (!config) return null;
   try {
-    const provider = buildAIProvider({
-      provider: taskConfig.provider,
-      model: taskConfig.model,
-      apiKey: decryptedKey,
-    });
+    const provider = buildAIProvider(config);
     return { provider, config: provider.getConfig() };
   } catch (err) {
-    logger.error(`Failed to build AI provider for user ${userId}: ${getExceptionMessage(err)}`);
+    args.logger.error(`Failed to build AI provider for user ${args.userId}: ${getExceptionMessage(err)}`);
     throw err;
   }
 }

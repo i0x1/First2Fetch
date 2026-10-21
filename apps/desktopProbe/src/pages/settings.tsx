@@ -124,6 +124,14 @@ export function SettingsPage() {
       const missingKeys = providersInUse.filter(
         (provider) => !aiForm.apiKeyInputs[provider]?.trim() && !aiForm.storedProviders.includes(provider),
       );
+      if (missingKeys.includes('typesafe')) {
+        toast({
+          title: 'TypeSafe API key required',
+          description: 'Add a TypeSafe API key before selecting Jev for the JD filter.',
+          variant: 'destructive',
+        });
+        return;
+      }
       if (missingKeys.length > 0) {
         const shouldContinue = window.confirm(
           `Missing API keys for: ${missingKeys.join(', ')}. Custom scraping and AI filters will not work until you add keys. Continue saving anyway?`,

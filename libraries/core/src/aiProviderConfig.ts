@@ -8,7 +8,8 @@ export type ProviderName =
   | 'google_gemini'
   | 'deepseek'
   | 'moonshot'
-  | 'openrouter';
+  | 'openrouter'
+  | 'typesafe';
 
 export type AiTaskId = 'jd_filter' | 'job_list' | 'jd_parse';
 
@@ -28,6 +29,7 @@ export type ProviderConfig = {
   /** OpenAI-compatible API base URL (not used for google_gemini) */
   openAiBaseUrl?: string;
   apiKeyHint?: string;
+  supportedTasks?: AiTaskId[];
 };
 
 export type AiTaskConfig = {
@@ -186,6 +188,15 @@ export const AI_PROVIDER_CONFIG: Record<ProviderName, ProviderConfig> = {
       },
     },
   },
+  typesafe: {
+    name: 'typesafe',
+    displayName: 'TypeSafe (decision)',
+    supportedTasks: ['jd_filter'],
+    models: {
+      'jev-1.13.0': { input: 0.042, output: 0, label: 'Jev 1.13' },
+      'jev-1.14.0': { input: 0.042, output: 0, label: 'Jev 1.14' },
+    },
+  },
 };
 
 export const PROVIDER_NAMES = Object.keys(AI_PROVIDER_CONFIG) as ProviderName[];
@@ -198,8 +209,15 @@ export function getProviderNames(): ProviderName[] {
   return PROVIDER_NAMES;
 }
 
-export function getProviderModels(provider: ProviderName): Record<string, ModelConfig> {
-  return AI_PROVIDER_CONFIG[provider]?.models ?? {};
+export function getProviderModels(provider: ProviderName, task?: AiTaskId): Record<string, ModelConfig> {
+  const config = AI_PROVIDER_CONFIG[provider];
+  if (task && config.supportedTasks && !config.supportedTasks.includes(task)) return {};
+  return config?.models ?? {};
+}
+
+export function providerSupportsTask(provider: ProviderName, task: AiTaskId): boolean {
+  const supported = AI_PROVIDER_CONFIG[provider]?.supportedTasks;
+  return !supported || supported.includes(task);
 }
 
 export function getModelConfig(provider: ProviderName, model: string): ModelConfig | undefined {
@@ -286,7 +304,7 @@ export function resolveTaskAiConfig(
     return null;
   }
 
-  if (!getModelConfig(provider, model)) {
+  if (!providerSupportsTask(provider, task) || !getModelConfig(provider, model)) {
     return null;
   }
 

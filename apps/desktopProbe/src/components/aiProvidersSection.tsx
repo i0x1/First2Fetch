@@ -89,7 +89,6 @@ type Props = {
 };
 
 export function AiProvidersSection({ form, onChange }: Props) {
-  const providerOptions = useMemo(() => getProviderOptions(), []);
   const providersInUse = useMemo(() => collectProvidersInUse(form.taskConfigs), [form.taskConfigs]);
   const [visibleKeyProvider, setVisibleKeyProvider] = useState<ProviderName | null>(null);
 
@@ -120,7 +119,7 @@ export function AiProvidersSection({ form, onChange }: Props) {
 
       {AI_TASKS.map((task) => {
         const state = form.taskConfigs[task.id];
-        const models = state.provider ? getProviderModels(state.provider) : {};
+        const models = state.provider ? getProviderModels(state.provider, task.id) : {};
 
         return (
           <div
@@ -136,7 +135,7 @@ export function AiProvidersSection({ form, onChange }: Props) {
               onValueChange={(value) => {
                 const provider = value as ProviderName;
                 const defaultModel = getDefaultTaskConfig(task.id).model;
-                const modelEntries = Object.keys(getProviderModels(provider));
+                const modelEntries = Object.keys(getProviderModels(provider, task.id));
                 const model = modelEntries.includes(defaultModel) ? defaultModel : modelEntries[0] ?? '';
                 updateTask(task.id, { provider, model });
               }}
@@ -145,7 +144,7 @@ export function AiProvidersSection({ form, onChange }: Props) {
                 <SelectValue placeholder="Provider" />
               </SelectTrigger>
               <SelectContent>
-                {providerOptions.map((option) => (
+                {getProviderOptions(task.id).map((option) => (
                   <SelectItem key={option.value} value={option.value}>
                     {option.label}
                   </SelectItem>

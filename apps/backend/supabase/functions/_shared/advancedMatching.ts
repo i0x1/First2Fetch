@@ -1,9 +1,10 @@
-import { AdvancedMatchingConfig, DbSchema, Job, JobStatus, throwError } from '@first2apply/core';
+import { AdvancedMatchingConfig, DbSchema, getModelConfig, Job, JobStatus, throwError } from '@first2apply/core';
 import { SupabaseClient } from '@supabase/supabasefork';
 import { z } from 'zod';
 
-import { buildAIProviderForTask, logAiUsage } from './aiProvider.ts';
+import { buildAIProvider, logAiUsage, resolveUserAiConfigForTask } from './aiProvider.ts';
 import { truncateJobDescriptionForFilter } from './aiHtmlLimits.ts';
+import { decideJobExclusionWithTypeSafe } from './jobDecisionProvider.ts';
 import { ILogger } from './logger.ts';
 import { checkUserSubscription } from './subscription.ts';
 
@@ -132,7 +133,7 @@ async function promptAI({
   supabaseAdminClient: SupabaseClient<DbSchema, 'public'>;
 }): Promise<{ exclusionDecision: z.infer<typeof JobExclusionFormat> }> {
   // Try to use user's configured AI provider
-  const userProvider = await buildAIProviderForTask({
+  const userProvider = await resolveUserAiConfigForTask({
     supabaseAdminClient,
     userId: job.user_id,
     task: 'jd_filter',
@@ -147,8 +148,31 @@ async function promptAI({
   }
 
   // Use user's configured provider
-  const provider = userProvider.provider;
-  const llmConfig = userProvider.config;
+  if (userProvider.provider === 'typesafe') {
+    const decision = await decideJobExclusionWithTypeSafe({
+      apiKey: userProvider.apiKey,
+      model: userProvider.model,
+      prompt,
+      job,
+    });
+    const modelConfig = getModelConfig('typesafe', userProvider.model)!;
+    await logAiUsage({
+      logger,
+      supabaseAdminClient,
+      forUserId: job.user_id,
+      llmConfig: {
+        model: userProvider.model,
+        costPerMillionInputTokens: modelConfig.input,
+        costPerMillionOutputTokens: 0,
+      },
+      response: { content: '', usage: { prompt_tokens: decision.inputTokens, completion_tokens: 0 } },
+    });
+    logger.info('TypeSafe job decision', { jobId: job.id, model: userProvider.model, probability: decision.probability });
+    return { exclusionDecision: { excluded: decision.excluded, reason: decision.reason } };
+  }
+
+  const provider = buildAIProvider(userProvider);
+  const llmConfig = provider.getConfig();
 
   const generatedUserPrompt = generateUserPrompt({ prompt, job });
   const aiResponse = await provider.createChatCompletion({
@@ -171,10 +195,7 @@ async function promptAI({
     content: aiResponse.content,
   };
 
-  // Parse the response
-  const exclusionDecision = JobExclusionFormat.parse(JSON.parse(response.content));
-
-  // Persist the cost of the AI API call
+  // Persist usage even if the response cannot be parsed.
   await logAiUsage({
     logger,
     supabaseAdminClient,
@@ -182,6 +203,8 @@ async function promptAI({
     llmConfig,
     response,
   });
+
+  const exclusionDecision = JobExclusionFormat.parse(JSON.parse(response.content));
 
   return { exclusionDecision };
 }
