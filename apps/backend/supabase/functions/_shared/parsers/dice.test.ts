@@ -37,7 +37,7 @@ Deno.test('parseDiceJobs reads modern Dice card fields and removes salary from t
   if (job.jobType !== 'remote' || job.salary !== '$120,000 - $150,000 per year') {
     throw new Error(`Dice metadata was not parsed: ${JSON.stringify(job)}`);
   }
-  if (job.tags.includes('$120,000 - $150,000 per year') || !job.tags.includes('Full-time')) {
+  if ((job.tags ?? []).includes('$120,000 - $150,000 per year') || !(job.tags ?? []).includes('Full-time')) {
     throw new Error(`Dice salary/tag separation failed: ${JSON.stringify(job.tags)}`);
   }
 });

@@ -207,6 +207,19 @@ function parseIndeedJobDescription({ html }: { html: string }): JobDescriptionUp
     return updatesFromScriptTag;
   }
 
+  // Indeed's current view-job page keeps its description in _rootProps.
+  // Read only this JSON string; _initialData can contain JavaScript references.
+  const rootPropsDescription = html.match(/"sanitizedJobDescription"\s*:\s*("(?:\\.|[^"\\])*")/);
+  if (rootPropsDescription) {
+    try {
+      const descriptionHtml = JSON.parse(rootPropsDescription[1]);
+      const description = turndownService.turndown(descriptionHtml).trim();
+      if (description) return { description };
+    } catch {
+      // Continue to the visible DOM if the embedded value is malformed.
+    }
+  }
+
   const { descriptionContainer } = extractCommonDomElements({
     provider: SiteProvider.indeed,
     html,
@@ -234,7 +247,14 @@ function parseIndeedJobDescription({ html }: { html: string }): JobDescriptionUp
     const globalDataMatch = html.match(/window\._initialData\s*=\s*({.*?});?\s*(?=\n|$|<\/script>)/s);
 
     if (globalDataMatch) {
-      const globalData = JSON.parse(globalDataMatch[1]);
+      let globalData: any;
+      try {
+        globalData = JSON.parse(globalDataMatch[1]);
+      } catch {
+        // Indeed can embed JavaScript object syntax rather than JSON. Use the
+        // visible description below instead of failing the entire job.
+        return undefined;
+      }
       // Extract job data from the hostQueryExecutionResult
       const jobData = globalData?.hostQueryExecutionResult?.data?.jobData?.results?.[0]?.job;
 

@@ -125,8 +125,6 @@ ${htmlContent}
     usage: aiResponse.usage,
     content: aiResponse.content,
   };
-  const parseResult = PARSE_JOBS_PAGE_SCHEMA.parse(JSON.parse(response.content));
-
   await logAiUsage({
     logger,
     supabaseAdminClient,
@@ -134,6 +132,7 @@ ${htmlContent}
     llmConfig,
     response,
   });
+  const parseResult = PARSE_JOBS_PAGE_SCHEMA.parse(JSON.parse(response.content));
 
   const listFound = !parseResult.errorMessage && parseResult.jobs.length > 0;
   if (!listFound) {
@@ -363,8 +362,6 @@ ${withAdvancedMatchingPreferences}
     usage: aiResponse.usage,
     content: aiResponse.content,
   };
-  const parseResult = PARSE_JOB_DESCRIPTION_SCHEMA.parse(JSON.parse(response.content));
-
   await logAiUsage({
     logger,
     supabaseAdminClient,
@@ -372,6 +369,7 @@ ${withAdvancedMatchingPreferences}
     llmConfig,
     response,
   });
+  const parseResult = PARSE_JOB_DESCRIPTION_SCHEMA.parse(JSON.parse(response.content));
 
   let updates: JobDescriptionUpdates = {};
   // Keep employer JD text separate from summaries, diagnostics, old descriptions,
