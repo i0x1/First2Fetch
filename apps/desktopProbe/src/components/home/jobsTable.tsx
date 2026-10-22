@@ -1,5 +1,6 @@
 import { Fragment } from 'react';
 import {
+  ArrowRightIcon,
   ArchiveIcon,
   CheckIcon,
   EyeOpenIcon,
@@ -47,6 +48,7 @@ function JobRow({
   isWatchedCompany,
   onSelect,
   onApplied,
+  onReady,
   onArchive,
   onRequestDelete,
   showAppliedAction,
@@ -60,6 +62,7 @@ function JobRow({
   isWatchedCompany: (companyName?: string | null) => boolean;
   onSelect: (job: Job) => void;
   onApplied?: (job: Job) => void;
+  onReady?: (job: Job) => void;
   onArchive: (job: Job) => void;
   onRequestDelete: (job: Job) => void;
   showAppliedAction?: boolean;
@@ -160,6 +163,24 @@ function JobRow({
               </Tooltip>
             </TooltipProvider>
           )}
+          {job.status === 'new' && onReady && (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-[22px] w-[22px] rounded border border-border bg-card p-0 text-muted-foreground hover:border-primary hover:text-primary"
+                    onClick={() => onReady(job)}
+                    aria-label="Move job to Ready"
+                  >
+                    <ArrowRightIcon className="h-3 w-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Ready</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
           {job.status !== 'archived' && (
             <TooltipProvider delayDuration={200}>
               <Tooltip>
@@ -206,6 +227,7 @@ export function JobsBoardTable({
   selectedJobId,
   onSelect,
   onApplied,
+  onReady,
   onArchive,
   onRequestDelete,
   siteLogos,
@@ -219,6 +241,7 @@ export function JobsBoardTable({
   selectedJobId?: number | null;
   onSelect: (job: Job) => void;
   onApplied?: (job: Job) => void;
+  onReady?: (job: Job) => void;
   onArchive: (job: Job) => void;
   onRequestDelete: (job: Job) => void;
   siteLogos: Record<number, string>;
@@ -258,6 +281,7 @@ export function JobsBoardTable({
                 isWatchedCompany={isWatchedCompany}
                 onSelect={onSelect}
                 onApplied={onApplied}
+              onReady={onReady}
                 onArchive={onArchive}
                 onRequestDelete={onRequestDelete}
                 showAppliedAction={showAppliedAction}

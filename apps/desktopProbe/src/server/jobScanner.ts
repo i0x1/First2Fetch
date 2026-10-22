@@ -1,5 +1,5 @@
 import { IAnalyticsClient } from '@/lib/analytics';
-import { getExceptionMessage, throwError } from '@first2apply/core';
+import { getExceptionMessage } from '@first2apply/core';
 import { Job, Link } from '@first2apply/core';
 import { Notification, app, powerSaveBlocker } from 'electron';
 import fs from 'fs';
@@ -113,9 +113,8 @@ function getNextCronTime(cronExpression: string): Date | null {
 }
 
 import { AVAILABLE_CRON_RULES, JobScannerSettings, ScannerJobStatus, ScannerStatus } from '../lib/types';
-import { installLinkedInDecorator } from './browserHelpers';
 import { chunk, promiseAllSequence, waitRandomBetween } from './helpers';
-import { HtmlDownloader } from './htmlDownloader';
+import { HtmlDownloader, isLinkedInAccessBlocked, isLinkedInUrl } from './htmlDownloader';
 import { ILogger } from './logger';
 import { F2aSupabaseApi } from './supabaseApi';
 
@@ -128,7 +127,7 @@ const DEFAULT_SETTINGS: JobScannerSettings = {
   useSound: true,
   areEmailAlertsEnabled: true,
   inAppBrowserEnabled: true,
-  linkedinScanIntervalMinutes: undefined, // use global cron rule by default
+  linkedinScanIntervalMinutes: undefined, // LinkedIn is off until explicitly enabled
   isPaused: false, // scraping is active by default
 };
 
@@ -154,10 +153,20 @@ export class JobScanner {
     isPaused: false,
   };
   private _cronJob: ScheduledTask | undefined;
-  private _linkedinCronJob: ScheduledTask | undefined;
+  private _linkedinTimer: NodeJS.Timeout | undefined;
+  private _backlogTimer: NodeJS.Timeout | undefined;
+  private _backlogRunning = false;
+  private _jobScanPromises = new Map<number, Promise<Job>>();
+  private _nextLinkedinScanAt: Date | undefined;
   private _prowerSaveBlockerId: number | undefined;
   private _notificationsMap: Map<string, Notification> = new Map();
   private _runningScansCount = 0;
+  private _activeLinkedinScans = 0;
+  private _activeOtherScans = 0;
+  private _startingLinkedinScan = false;
+  private _startingOtherScan = false;
+  private _lastLinkedinScanAt: Date | undefined;
+  private _lastOtherScanAt: Date | undefined;
   
   // Status tracking for UI
   private _statusLogs: string[] = [];
@@ -207,7 +216,6 @@ export class JobScanner {
 
     this._applySettings(settingsToApply);
 
-    installLinkedInDecorator(this._normalHtmlDownloader.getSession());
   }
 
   private _logToUi(message: string) {
@@ -231,7 +239,7 @@ export class JobScanner {
       this._settings.linkedinScanIntervalMinutes &&
       this._settings.linkedinScanIntervalMinutes > 0
     ) {
-      linkedinCronRule = `*/${this._settings.linkedinScanIntervalMinutes} * * * *`;
+      linkedinCronRule = `Every ${this._settings.linkedinScanIntervalMinutes} minutes`;
     }
 
     // Calculate next run times
@@ -244,15 +252,16 @@ export class JobScanner {
     }
 
     let nextLinkedinScanTime: string | null = null;
-    if (linkedinCronRule) {
-      const nextTime = getNextCronTime(linkedinCronRule);
-      if (nextTime) {
-        nextLinkedinScanTime = nextTime.toISOString();
-      }
-    }
+    if (this._nextLinkedinScanAt) nextLinkedinScanTime = this._nextLinkedinScanAt.toISOString();
 
     return {
       isScanning: this.isScanning(),
+      linkedinEnabled: !!this._settings.linkedinScanIntervalMinutes,
+      linkedinAccessBlocked: isLinkedInAccessBlocked(),
+      isLinkedinScanning: this._activeLinkedinScans > 0,
+      isOtherScanning: this._activeOtherScans > 0,
+      lastLinkedinScanTime: this._lastLinkedinScanAt?.toISOString() ?? null,
+      lastOtherScanTime: this._lastOtherScanAt?.toISOString() ?? null,
       nextScanTime,
       nextLinkedinScanTime,
       cronRule: this._settings.cronRule,
@@ -279,32 +288,42 @@ export class JobScanner {
       this._logToUi('Skipping scheduled scan because scraping is paused');
       return;
     }
-
-    // if the scanner hasn't finished scanning the previous links, skip this scan
-    if (this.isScanning()) {
-      this._logger.info('skipping scheduled scan because the scanner is processing other links');
-      this._logToUi('Skipping scheduled scan because scanner is busy');
+    if (linkedinOnly && !this._settings.linkedinScanIntervalMinutes) {
+      this._logToUi('LinkedIn scan skipped because LinkedIn is off');
+      return;
+    }
+    if (linkedinOnly && isLinkedInAccessBlocked()) {
+      this._logToUi('LinkedIn scan skipped because an access challenge was detected');
       return;
     }
 
-    // fetch all links from the database
-    const allLinks = (await this._supabaseApi.listLinks()) ?? [];
-    
-    // filter links if LinkedIn-only scan
-    let linksToScan = allLinks;
-    if (linkedinOnly) {
-      const sites = await this._supabaseApi.listSites();
-      const linkedinSiteIds = sites.filter(site => site.provider === 'linkedin').map(site => site.id);
-      linksToScan = allLinks.filter(link => linkedinSiteIds.includes(link.site_id));
-      this._logger.info('scan links selected', { mode: 'linkedin', linksCount: linksToScan.length });
-      this._logToUi(`Found ${linksToScan.length} LinkedIn links to scan`);
-    } else {
-      this._logger.info('scan links selected', { mode: 'all', linksCount: allLinks.length });
-      this._logToUi(`Found ${allLinks.length} links to scan`);
+    // Keep each source from overlapping itself, without holding up the other source.
+    if (linkedinOnly ? this._activeLinkedinScans > 0 || this._startingLinkedinScan : this._activeOtherScans > 0 || this._startingOtherScan) {
+      this._logger.info('skipping scheduled scan because this source is already scanning');
+      this._logToUi(`Skipping ${linkedinOnly ? 'LinkedIn' : 'other sites'} scan because it is busy`);
+      return;
     }
 
-    // start the scan
-    return this.scanLinks({ links: linksToScan });
+    if (linkedinOnly) this._startingLinkedinScan = true;
+    else this._startingOtherScan = true;
+    try {
+
+      // Fetch links and keep each source in its own scan.
+      const allLinks = (await this._supabaseApi.listLinks()) ?? [];
+    
+      const sites = await this._supabaseApi.listSites();
+      const linkedinSiteIds = new Set(sites.filter(site => site.provider === 'linkedin').map(site => site.id));
+      const linksToScan = allLinks.filter(link =>
+        (linkedinSiteIds.has(link.site_id) || isLinkedInUrl(link.url)) === linkedinOnly,
+      );
+      this._logger.info('scan links selected', { mode: linkedinOnly ? 'linkedin' : 'other', linksCount: linksToScan.length });
+      this._logToUi(`Found ${linksToScan.length} ${linkedinOnly ? 'LinkedIn' : 'other'} links to scan`);
+
+      return await this.scanLinks({ links: linksToScan, source: linkedinOnly ? 'linkedin' : 'other' });
+    } finally {
+      if (linkedinOnly) this._startingLinkedinScan = false;
+      else this._startingOtherScan = false;
+    }
   }
 
   /**
@@ -314,10 +333,63 @@ export class JobScanner {
     return this.scanAllLinks({ linkedinOnly: true });
   }
 
+  /** Process pending descriptions between listing scans. Each run is bounded. */
+  startBacklogDrain() {
+    if (this._backlogTimer) return;
+    this._backlogTimer = setInterval(() => {
+      void this.drainPendingDescriptions().catch((error) => {
+        this._logger.error('pending description drain failed', { error: getExceptionMessage(error) });
+      });
+    }, 60_000);
+  }
+
+  stopBacklogDrain() {
+    if (this._backlogTimer) clearInterval(this._backlogTimer);
+    this._backlogTimer = undefined;
+  }
+
+  async drainPendingDescriptions() {
+    if (this._backlogRunning || this._settings.isPaused || !this._isRunning || this.isScanning()) return;
+    this._backlogRunning = true;
+    try {
+      const jobs = await this._loadPendingJobs(50, 'other');
+      if (jobs.length > 0) {
+        this._logger.info('pending description drain started', { jobsCount: jobs.length });
+        await this.scanJobs(jobs, 'other');
+        this._logger.info('pending description drain completed', { jobsCount: jobs.length });
+      }
+    } finally {
+      this._backlogRunning = false;
+    }
+  }
+
+  private async _loadPendingJobs(batchSize: number, source: 'linkedin' | 'other'): Promise<Job[]> {
+    const pending: Job[] = [];
+    let after: string | undefined;
+    for (let page = 0; page < 20; page++) {
+      const result = await this._supabaseApi.listJobs({ status: 'processing', limit: 100, after });
+      pending.push(...result.jobs);
+      if (!result.nextPageToken || result.nextPageToken === after) break;
+      after = result.nextPageToken;
+    }
+    const sites = await this._supabaseApi.listSites();
+    const linkedinIds = new Set(sites.filter((site) => site.provider === 'linkedin').map((site) => site.id));
+    const sourceJobs = pending.filter((job) =>
+      (linkedinIds.has(job.siteId) || isLinkedInUrl(job.externalUrl)) === (source === 'linkedin'),
+    );
+    // Split capacity between fresh listings and the oldest backlog.
+    const recentCount = Math.ceil(batchSize / 2);
+    const recent = sourceJobs.slice(0, recentCount);
+    const recentIds = new Set(recent.map((job) => job.id));
+    const oldest = sourceJobs.reverse().filter((job) => !recentIds.has(job.id)).slice(0, batchSize - recent.length);
+    return [...recent, ...oldest];
+  }
+
   /**
    * Perform a scan of a list links.
    */
-  async scanLinks({ links, sendNotification = true }: { links: Link[]; sendNotification?: boolean }) {
+  async scanLinks({ links, sendNotification = true, source = 'other' }: { links: Link[]; sendNotification?: boolean; source?: 'linkedin' | 'other' }) {
+    if (source === 'linkedin' && !this._settings.linkedinScanIntervalMinutes) return;
     try {
       this._logger.info('scan started', { linksCount: links.length });
       this._logToUi('Starting to scan links...');
@@ -325,6 +397,8 @@ export class JobScanner {
         links_count: links.length,
       });
       this._runningScansCount++;
+      if (source === 'linkedin') this._activeLinkedinScans++;
+      else this._activeOtherScans++;
       const start = new Date().getTime();
 
       await Promise.all(
@@ -399,15 +473,12 @@ export class JobScanner {
 
       // scan job descriptions for all pending jobs
       if (!this._isRunning) return;
-      const { jobs } = await this._supabaseApi.listJobs({
-        status: 'processing',
-        limit: 300,
-      });
+      const jobs = await this._loadPendingJobs(100, source);
       this._logger.info('job description queue ready', { jobsCount: jobs.length });
       if (jobs.length > 0) {
         this._logToUi(`Found ${jobs.length} jobs that need detailed processing`);
       }
-      const scannedJobs = await this.scanJobs(jobs);
+      const scannedJobs = await this.scanJobs(jobs, source);
       const newJobs = scannedJobs.filter((job) => job.status === 'new');
 
       const newJobIds = newJobs.map((job) => job.id);
@@ -443,21 +514,32 @@ export class JobScanner {
       this._logToUi(`Error during scan session: ${getExceptionMessage(error)}`);
     } finally {
       this._runningScansCount--;
+      if (source === 'linkedin') {
+        this._activeLinkedinScans--;
+        this._lastLinkedinScanAt = new Date();
+      } else {
+        this._activeOtherScans--;
+        this._lastOtherScanAt = new Date();
+      }
     }
   }
 
   /**
    * Scan a list of new jobs to extract the description.
    */
-  async scanJobs(jobs: Job[]): Promise<Job[]> {
+  async scanJobs(jobs: Job[], source?: 'linkedin' | 'other', priority: 'normal' | 'high' = 'normal'): Promise<Job[]> {
     this._logger.info('job description scan started', { jobsCount: jobs.length });
     this._logToUi(`Processing ${jobs.length} job descriptions...`);
 
     // figure out which jobs can be scanned in incognito mode
     const sites = await this._supabaseApi.listSites();
     const sitesMap = new Map(sites.map((site) => [site.id, site]));
-    const incognitoJobsToScan = jobs.filter((job) => sitesMap.get(job.siteId)?.incognito_support);
-    const normalJobsToScan = jobs.filter((job) => !sitesMap.get(job.siteId)?.incognito_support);
+    const eligibleJobs = jobs.filter((job) => {
+      const isLinkedIn = sitesMap.get(job.siteId)?.provider === 'linkedin' || isLinkedInUrl(job.externalUrl);
+      return isLinkedIn ? !!this._settings.linkedinScanIntervalMinutes && source !== 'other' && !isLinkedInAccessBlocked() : source !== 'linkedin';
+    });
+    const incognitoJobsToScan = eligibleJobs.filter((job) => sitesMap.get(job.siteId)?.incognito_support);
+    const normalJobsToScan = eligibleJobs.filter((job) => !sitesMap.get(job.siteId)?.incognito_support);
 
     const scanJobDescriptions = async ({
       jobsToScan,
@@ -471,7 +553,10 @@ export class JobScanner {
         if (!this._isRunning) return chunkOfJobs; // stop if the scanner is closed
 
         return Promise.all(
-          chunkOfJobs.map(async (job) => {
+          chunkOfJobs.map((job) => {
+            const inFlight = this._jobScanPromises.get(job.id);
+            if (inFlight) return inFlight;
+            const task = (async () => {
             try {
               // Add to current scanning jobs
               this._currentScanningJobs.set(String(job.id), {
@@ -485,6 +570,7 @@ export class JobScanner {
               return await htmlDownloader.loadUrl({
                 url: job.externalUrl,
                 scrollTimes: 1,
+                priority,
                 callback: async ({ html, maxRetries, retryCount }) => {
                   this._logger.debug('job html downloaded', {
                     jobId: job.id,
@@ -518,10 +604,6 @@ export class JobScanner {
                     throw new Error(`failed to parse job description for ${job.id}`);
                   }
 
-                  // add a random delay before moving on to the next link
-                  // to avoid being rate limited by cloudflare
-                  await waitRandomBetween(2000, 5000);
-
                   this._logToUi(`Successfully processed: ${job.title}`);
                   return updatedJob;
                 },
@@ -542,6 +624,13 @@ export class JobScanner {
                 // Remove from current scanning jobs
                 this._currentScanningJobs.delete(String(job.id));
             }
+            })();
+            this._jobScanPromises.set(job.id, task);
+            const clearInFlight = () => {
+              if (this._jobScanPromises.get(job.id) === task) this._jobScanPromises.delete(job.id);
+            };
+            void task.then(clearInFlight, clearInFlight);
+            return task;
           }),
         );
       }).then((r) => r.flat());
@@ -561,7 +650,7 @@ export class JobScanner {
     ]);
 
     const allScannedJobs = [...scannedIncognitoJobs, ...scannedNormalJobs];
-    const updatedJobs = jobs.map((job) => allScannedJobs.find((j) => j.id === job.id) ?? throwError('job not found')); // preserve the order
+    const updatedJobs = jobs.map((job) => allScannedJobs.find((j) => j.id === job.id) ?? job); // preserve skipped jobs
 
     this._logger.info('job description scan completed', { jobsCount: updatedJobs.length });
     this._logToUi('Finished processing all job descriptions in this batch');
@@ -625,16 +714,19 @@ export class JobScanner {
    * Close the scanner.
    */
   close() {
+    this.stopBacklogDrain();
     // end cron job
     if (this._cronJob) {
       this._logger.info(`stopping cron schedule`);
       this._cronJob.stop();
     }
 
-    // end LinkedIn cron job
-    if (this._linkedinCronJob) {
-      this._logger.info(`stopping LinkedIn cron schedule`);
-      this._linkedinCronJob.stop();
+    // End the LinkedIn interval timer.
+    if (this._linkedinTimer) {
+      this._logger.info(`stopping LinkedIn scan timer`);
+      clearInterval(this._linkedinTimer);
+      this._linkedinTimer = undefined;
+      this._nextLinkedinScanAt = undefined;
     }
 
     // stop power blocker
@@ -654,9 +746,12 @@ export class JobScanner {
     if (!link) {
       throw new Error(`link not found: ${linkId}`);
     }
+    const sites = await this._supabaseApi.listSites();
+    const isLinkedIn = sites.some(site => site.id === link.site_id && site.provider === 'linkedin') || isLinkedInUrl(link.url);
+    if (isLinkedIn && !this._settings.linkedinScanIntervalMinutes) throw new Error('LinkedIn scanning is off');
 
     // scan the link after the debug window is closed
-    this.scanLinks({ links: [link] }).catch((error) => {
+    this.scanLinks({ links: [link], source: isLinkedIn ? 'linkedin' : 'other' }).catch((error) => {
       this._logger.error(getExceptionMessage(error));
     });
   }
@@ -673,6 +768,9 @@ export class JobScanner {
    * Apply a new set of settings into the runtime.
    */
   private _applySettings(settings: JobScannerSettings) {
+    const linkedinEnabled = !!settings.linkedinScanIntervalMinutes;
+    this._normalHtmlDownloader.setLinkedInEnabled(linkedinEnabled);
+    this._incognitoHtmlDownloader.setLinkedInEnabled(linkedinEnabled);
     if (settings.cronRule !== this._settings.cronRule) {
       // stop old cron job
       if (this._cronJob) {
@@ -688,17 +786,24 @@ export class JobScanner {
 
     // Handle LinkedIn-specific scan interval
     if (settings.linkedinScanIntervalMinutes !== this._settings.linkedinScanIntervalMinutes) {
-      // stop old LinkedIn cron job
-      if (this._linkedinCronJob) {
-        this._logger.info(`stopping old LinkedIn cron schedule`);
-        this._linkedinCronJob.stop();
-        this._linkedinCronJob = undefined;
+      // Stop the previous interval before applying the new one.
+      if (this._linkedinTimer) {
+        clearInterval(this._linkedinTimer);
+        this._linkedinTimer = undefined;
+        this._nextLinkedinScanAt = undefined;
       }
-      // start new LinkedIn cron job if interval is set
-      if (settings.linkedinScanIntervalMinutes && settings.linkedinScanIntervalMinutes > 0) {
-        const linkedinCronRule = `*/${settings.linkedinScanIntervalMinutes} * * * *`;
-        this._linkedinCronJob = schedule(linkedinCronRule, () => this.scanLinkedInLinks());
-        this._logger.info(`LinkedIn cron job started successfully: every ${settings.linkedinScanIntervalMinutes} minutes`);
+      // A timer supports every interval accepted by settings, including values above 60.
+      const interval = settings.linkedinScanIntervalMinutes;
+      if (interval && Number.isInteger(interval) && interval >= 1 && interval <= 1440) {
+        const intervalMs = interval * 60_000;
+        this._nextLinkedinScanAt = new Date(Date.now() + intervalMs);
+        this._linkedinTimer = setInterval(() => {
+          this._nextLinkedinScanAt = new Date(Date.now() + intervalMs);
+          void this.scanLinkedInLinks().catch((error) => {
+            this._logger.error(`LinkedIn scan failed: ${getExceptionMessage(error)}`);
+          });
+        }, intervalMs);
+        this._logger.info(`LinkedIn scan timer started: every ${interval} minutes`);
       }
     }
 

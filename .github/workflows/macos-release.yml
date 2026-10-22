@@ -5,16 +5,40 @@ on:
     tags:
       - 'desktop-v*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing desktop-v tag to release
+        required: true
+
+permissions:
+  contents: write
 
 jobs:
   build-macos:
     runs-on: macos-latest
-    environment: Production
-    
     steps:
-      - name: Checkout code
+      - name: Checkout release tag
         uses: actions/checkout@v4
-        
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Verify release version and credentials
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          MAC_CERT: ${{ secrets.MAC_CERT }}
+          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -eu
+          VERSION=$(node -p "require('./apps/desktopProbe/package.json').version")
+          test "$RELEASE_TAG" = "desktop-v$VERSION" || { echo 'Tag and desktop package version differ'; exit 1; }
+          for NAME in MAC_CERT MAC_CERT_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            VALUE=${!NAME}
+            test -n "$VALUE" || { echo "Missing release secret: $NAME"; exit 1; }
+          done
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
@@ -22,27 +46,38 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'pnpm'
-          
-      - name: Install dependencies
-        run: |
-          pnpm install --frozen-lockfile
+          cache: pnpm
 
-      - name: Install signing cert
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build native DMG helper
+        run: pnpm exec node-gyp rebuild --directory node_modules/macos-alias
+
+      - name: Install signing certificate
         env:
           MAC_CERT: ${{ secrets.MAC_CERT }}
           MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
         run: |
-          echo "$MAC_CERT" | base64 --decode > mac-signing.p12
-          security create-keychain -p "" build.keychain
-          security import mac-signing.p12 -k build.keychain -P "$MAC_CERT_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "" build.keychain
-          
-      - name: Build macOS packages
+          set -eu
+          CERT_PATH="$RUNNER_TEMP/mac-signing.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          printf '%s' "$MAC_CERT" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p '' "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$MAC_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k '' "$KEYCHAIN_PATH"
+          security list-keychains -s "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security unlock-keychain -p '' "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep -q 'Developer ID Application' || { echo 'Developer ID Application certificate not found'; exit 1; }
+          rm "$CERT_PATH"
+
+      - name: Build and notarize macOS packages
+        working-directory: apps/desktopProbe
         env:
-          APP_BUNDLE_ID: ${{ secrets.APP_BUNDLE_ID }}
+          APP_BUNDLE_ID: ${{ secrets.APP_BUNDLE_ID || 'com.i0x1.first2fetch' }}
+          DESKTOP_AUTO_UPDATES: 'true'
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
@@ -51,137 +86,37 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          FORCE_COLOR: ${{ vars.FORCE_COLOR }}
-          NO_COLOR: ${{ vars.NO_COLOR }}
         run: |
-          pnpm make
-          pnpm make --arch arm64
-          
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v3
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ vars.AWS_REGION }}
-          
-      - name: Upload to S3
+          set -eu
+          test -n "$SUPABASE_URL" && test -n "$SUPABASE_KEY" || { echo 'Missing Supabase build secrets'; exit 1; }
+          pnpm exec electron-forge make --arch x64
+          pnpm exec electron-forge make --arch arm64
+          codesign --verify --deep --strict 'out/First 2 Fetch-darwin-x64/First 2 Fetch.app'
+          codesign --verify --deep --strict 'out/First 2 Fetch-darwin-arm64/First 2 Fetch.app'
+
+      - name: Stage release assets
+        run: |
+          set -eu
+          VERSION=$(node -p "require('./apps/desktopProbe/package.json').version")
+          mkdir -p release-assets
+          for ARCH in x64 arm64; do
+            DMG="apps/desktopProbe/out/make/First 2 Fetch-${VERSION}-${ARCH}.dmg"
+            ZIP="apps/desktopProbe/out/make/zip/darwin/${ARCH}/First 2 Fetch-darwin-${ARCH}-${VERSION}.zip"
+            test -s "$DMG" || { echo "Missing DMG: $DMG"; exit 1; }
+            test -s "$ZIP" || { echo "Missing ZIP: $ZIP"; exit 1; }
+            cp "$DMG" "release-assets/first2fetch-darwin-${ARCH}-${VERSION}.dmg"
+            cp "$ZIP" "release-assets/first2fetch-darwin-${ARCH}-${VERSION}.zip"
+          done
+          shasum -a 256 release-assets/* > release-assets/SHA256SUMS.txt
+
+      - name: Publish GitHub release
         env:
-          S3_BUCKET_NAME: ${{ vars.S3_BUCKET_NAME }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          # Get the version from package.json
-          VERSION=$(node -p "require('./package.json').version")
-          
-          # Upload DMG file (Intel)
-          INTEL_DMG_PATH="apps/desktopProbe/out/make/First 2 Apply-${VERSION}-x64.dmg"
-          if [ -f "$INTEL_DMG_PATH" ]; then
-            aws s3 cp "$INTEL_DMG_PATH" \
-              s3://${S3_BUCKET_NAME}/releases/darwin/x64/first2apply-${VERSION}.dmg
+          set -eu
+          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          else
+            gh release create "$RELEASE_TAG" release-assets/* --verify-tag --title "First 2 Fetch ${RELEASE_TAG#desktop-v}" --generate-notes
           fi
-          
-          # Upload DMG file (Apple Silicon)
-          ARM64_DMG_PATH="apps/desktopProbe/out/make/First 2 Apply-${VERSION}-arm64.dmg"
-          if [ -f "$ARM64_DMG_PATH" ]; then
-            aws s3 cp "$ARM64_DMG_PATH" \
-              s3://${S3_BUCKET_NAME}/releases/darwin/arm64/first2apply-${VERSION}.dmg
-          fi
-          
-          # Upload ZIP file (Intel)
-          INTEL_ZIP_PATH="apps/desktopProbe/out/make/zip/darwin/x64/First 2 Apply-darwin-x64-${VERSION}.zip"
-          if [ -f "$INTEL_ZIP_PATH" ]; then
-            aws s3 cp "$INTEL_ZIP_PATH" \
-              s3://${S3_BUCKET_NAME}/releases/darwin/x64/first2apply-${VERSION}.zip
-          fi
-          
-          # Upload ZIP file (Apple Silicon)
-          ARM64_ZIP_PATH="apps/desktopProbe/out/make/zip/darwin/arm64/First 2 Apply-darwin-arm64-${VERSION}.zip"
-          if [ -f "$ARM64_ZIP_PATH" ]; then
-            aws s3 cp "$ARM64_ZIP_PATH" \
-              s3://${S3_BUCKET_NAME}/releases/darwin/arm64/first2apply-${VERSION}.zip
-          fi
-          
-      - name: Update latest symlinks
-        env:
-          S3_BUCKET_NAME: ${{ vars.S3_BUCKET_NAME }}
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          
-          # Create "latest" versions for easy linking
-          
-          # Intel DMG
-          INTEL_DMG_S3_PATH="s3://${S3_BUCKET_NAME}/releases/darwin/x64/first2apply-${VERSION}.dmg"
-          if aws s3 ls "$INTEL_DMG_S3_PATH" > /dev/null 2>&1; then
-            aws s3 cp "$INTEL_DMG_S3_PATH" \
-              s3://${S3_BUCKET_NAME}/releases/darwin/x64/first2apply-latest.dmg
-          fi
-          
-          # Apple Silicon DMG
-          ARM64_DMG_S3_PATH="s3://${S3_BUCKET_NAME}/releases/darwin/arm64/first2apply-${VERSION}.dmg"
-          if aws s3 ls "$ARM64_DMG_S3_PATH" > /dev/null 2>&1; then
-            aws s3 cp "$ARM64_DMG_S3_PATH" \
-              s3://${S3_BUCKET_NAME}/releases/darwin/arm64/first2apply-latest.dmg
-          fi
-          
-          # Intel ZIP
-          INTEL_ZIP_S3_PATH="s3://${S3_BUCKET_NAME}/releases/darwin/x64/first2apply-${VERSION}.zip"
-          if aws s3 ls "$INTEL_ZIP_S3_PATH" > /dev/null 2>&1; then
-            aws s3 cp "$INTEL_ZIP_S3_PATH" \
-              s3://${S3_BUCKET_NAME}/releases/darwin/x64/first2apply-latest.zip
-          fi
-          
-          # Apple Silicon ZIP
-          ARM64_ZIP_S3_PATH="s3://${S3_BUCKET_NAME}/releases/darwin/arm64/first2apply-${VERSION}.zip"
-          if aws s3 ls "$ARM64_ZIP_S3_PATH" > /dev/null 2>&1; then
-            aws s3 cp "$ARM64_ZIP_S3_PATH" \
-              s3://${S3_BUCKET_NAME}/releases/darwin/arm64/first2apply-latest.zip
-          fi
-          
-      - name: Update RELEASES.json
-        env:
-          S3_BUCKET_NAME: ${{ vars.S3_BUCKET_NAME }}
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          RELEASES_JSON="RELEASES.json"
-
-          # Download the existing RELEASES.json from S3
-          aws s3 cp s3://${S3_BUCKET_NAME}/releases/darwin/arm64/$RELEASES_JSON $RELEASES_JSON 
-
-          # Update the RELEASES.json with the new release information
-          jq \
-            --arg version "$VERSION" \
-            --arg pub_date "$PUB_DATE" \
-            '.currentRelease = $version | .releases += [{
-              "version": $version,
-              "updateTo": {
-                "name": "First 2 Apply v" + $version,
-                "version": $version,
-                "pub_date": $pub_date,
-                "url": "https://s3.eu-central-1.amazonaws.com/first2apply.com/releases/darwin/arm64/first2apply-" + $version + ".zip",
-                "notes": ""
-              }
-            }]' $RELEASES_JSON > tmp.$$.json && mv tmp.$$.json $RELEASES_JSON
-
-          # Upload the updated RELEASES.json back to S3
-          aws s3 cp $RELEASES_JSON s3://${S3_BUCKET_NAME}/releases/darwin/arm64/$RELEASES_JSON
-
-          # do the same process for x64
-          # Download the existing RELEASES.json from S3
-          aws s3 cp s3://${S3_BUCKET_NAME}/releases/darwin/x64/$RELEASES_JSON $RELEASES_JSON
-
-          # Update the RELEASES.json with the new release information
-          jq \
-            --arg version "$VERSION" \
-            --arg pub_date "$PUB_DATE" \
-            '.currentRelease = $version | .releases += [{
-              "version": $version,
-              "updateTo": {
-                "name": "First 2 Apply v" + $version,
-                "version": $version,
-                "pub_date": $pub_date,
-                "url": "https://s3.eu-central-1.amazonaws.com/first2apply.com/releases/darwin/x64/first2apply-" + $version + ".zip",
-                "notes": ""
-              }
-            }]' $RELEASES_JSON > tmp.$$.json && mv tmp.$$.json $RELEASES_JSON
-
-          # Upload the updated RELEASES.json back to S3
-          aws s3 cp $RELEASES_JSON s3://${S3_BUCKET_NAME}/releases/darwin/x64/$RELEASES_JSON

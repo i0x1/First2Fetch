@@ -26,9 +26,9 @@ import {
   openExternalUrl,
   updateAdvancedMatchingConfig,
 } from '@/lib/electronMainSdk';
-import { JobScannerSettings } from '@/lib/types';
-import { Button, Input } from '@first2apply/ui';
-import { Switch } from '@first2apply/ui';
+import { JobScannerSettings, LINKEDIN_SCAN_INTERVALS } from '@/lib/types';
+import { Button } from '@first2apply/ui';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch } from '@first2apply/ui';
 import { useToast } from '@first2apply/ui';
 import { PauseIcon, PlayIcon } from '@radix-ui/react-icons';
 import * as luxon from 'luxon';
@@ -124,6 +124,14 @@ export function SettingsPage() {
       const missingKeys = providersInUse.filter(
         (provider) => !aiForm.apiKeyInputs[provider]?.trim() && !aiForm.storedProviders.includes(provider),
       );
+      if (missingKeys.includes('typesafe')) {
+        toast({
+          title: 'TypeSafe API key required',
+          description: 'Add a TypeSafe API key before selecting Jev for the JD filter.',
+          variant: 'destructive',
+        });
+        return;
+      }
       if (missingKeys.length > 0) {
         const shouldContinue = window.confirm(
           `Missing API keys for: ${missingKeys.join(', ')}. Custom scraping and AI filters will not work until you add keys. Continue saving anyway?`,
@@ -224,19 +232,31 @@ export function SettingsPage() {
             <CompactKvRow label="Scan frequency">
               <CronSchedule cronRule={settings.cronRule} onCronRuleChange={onCronRuleChange} />
             </CompactKvRow>
-            <CompactKvRow label="LinkedIn interval" hint="Minutes; blank uses default">
-              <Input
-                type="number"
-                min={1}
-                max={1440}
-                placeholder="Min"
-                className="h-6 w-16 text-[10px]"
-                value={settings.linkedinScanIntervalMinutes ?? ''}
-                onChange={(e) => {
-                  const value = e.target.value ? parseInt(e.target.value, 10) : undefined;
-                  onUpdatedSettings({ ...settings, linkedinScanIntervalMinutes: value });
-                }}
-              />
+            <CompactKvRow label="LinkedIn scans" hint="Off leaves other sites running">
+              <Select
+                value={String(settings.linkedinScanIntervalMinutes ?? 'off')}
+                onValueChange={(value) => onUpdatedSettings({
+                  ...settings,
+                  linkedinScanIntervalMinutes: value === 'off' ? undefined : Number(value),
+                })}
+              >
+                <SelectTrigger className="h-6 w-[132px] text-[10px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="off">Off</SelectItem>
+                  {settings.linkedinScanIntervalMinutes && !LINKEDIN_SCAN_INTERVALS.includes(settings.linkedinScanIntervalMinutes as typeof LINKEDIN_SCAN_INTERVALS[number]) && (
+                    <SelectItem value={String(settings.linkedinScanIntervalMinutes)}>
+                      Every {settings.linkedinScanIntervalMinutes} min
+                    </SelectItem>
+                  )}
+                  {LINKEDIN_SCAN_INTERVALS.map((minutes) => (
+                    <SelectItem key={minutes} value={String(minutes)}>
+                      {minutes < 60 ? `Every ${minutes} min` : minutes === 60 ? 'Every hour' : `Every ${minutes / 60} hours`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </CompactKvRow>
             <CompactKvRow label="In-app browser">
               <Switch

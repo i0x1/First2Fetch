@@ -1,7 +1,7 @@
 import { OverlayBrowserViewResult } from '@/lib/types';
 import { BrowserWindow, WebContentsView } from 'electron';
 
-import { consumeRuntimeData, getLinkedinReactContextBuilder } from './browserHelpers';
+import { consumeRuntimeData, getLinkedinReactContextBuilder, installLinkedInCapture } from './browserHelpers';
 
 /**
  * Class used to render a WebContentsView on top of the main window
@@ -36,19 +36,28 @@ export class OverlayBrowserView {
         partition: 'persist:scraper',
       },
     });
+    try {
+      installLinkedInCapture(this._searchView.webContents);
+    } catch {
+      // The browser remains usable if response capture is unavailable.
+    }
 
     // Suppress DevTools protocol warnings
-    this._searchView.webContents.on('console-message', (event, level, message) => {
-      // Suppress Autofill protocol warnings
-      if (
-        message.includes('Autofill.enable') ||
-        message.includes('Autofill.setAddresses') ||
-        message.includes("wasn't found")
-      ) {
-        event.preventDefault();
-        return;
-      }
-    });
+    this._searchView.webContents.on(
+      'console-message',
+      (details: Electron.Event<Electron.WebContentsConsoleMessageEventParams>) => {
+        const { message } = details;
+        // Suppress Autofill protocol warnings
+        if (
+          message.includes('Autofill.enable') ||
+          message.includes('Autofill.setAddresses') ||
+          message.includes("wasn't found")
+        ) {
+          details.preventDefault();
+          return;
+        }
+      },
+    );
 
     // set the bounds of the view to be the same as the main window
     this._updateSearchViewBounds();

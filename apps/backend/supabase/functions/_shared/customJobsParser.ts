@@ -125,8 +125,6 @@ ${htmlContent}
     usage: aiResponse.usage,
     content: aiResponse.content,
   };
-  const parseResult = PARSE_JOBS_PAGE_SCHEMA.parse(JSON.parse(response.content));
-
   await logAiUsage({
     logger,
     supabaseAdminClient,
@@ -134,6 +132,7 @@ ${htmlContent}
     llmConfig,
     response,
   });
+  const parseResult = PARSE_JOBS_PAGE_SCHEMA.parse(JSON.parse(response.content));
 
   const listFound = !parseResult.errorMessage && parseResult.jobs.length > 0;
   if (!listFound) {
@@ -363,8 +362,6 @@ ${withAdvancedMatchingPreferences}
     usage: aiResponse.usage,
     content: aiResponse.content,
   };
-  const parseResult = PARSE_JOB_DESCRIPTION_SCHEMA.parse(JSON.parse(response.content));
-
   await logAiUsage({
     logger,
     supabaseAdminClient,
@@ -372,46 +369,23 @@ ${withAdvancedMatchingPreferences}
     llmConfig,
     response,
   });
+  const parseResult = PARSE_JOB_DESCRIPTION_SCHEMA.parse(JSON.parse(response.content));
 
   let updates: JobDescriptionUpdates = {};
-  const parsingFailed = !!parseResult.errorMessage;
-  if (parsingFailed) {
-    const errorDescription = `
-### Original Description
-${job.description ?? 'No original description available.'}
-
-AI parser could not properly read this job description: 
-${parseResult.errorMessage ?? 'Unknown error'}
-
-<details>
-<summary>Original Description (for reference)</summary>
-
-${htmlContent}
-</details>
-`;
-
+  // Keep employer JD text separate from summaries, diagnostics, old descriptions,
+  // and parser input HTML. A failed parse must not overwrite a usable description.
+  if (!parseResult.errorMessage && parseResult.description?.trim()) {
     updates = {
-      description: errorDescription,
-    };
-  } else {
-    const formattedDescription = `
-## AI Generated Summary
-${parseResult.summary?.trim() ?? 'No summary extracted.'}
-
-## AI Extracted Job Description
-${parseResult.description?.trim() ?? 'No description extracted.'}
-
-<details>
-<summary>Original Description (for reference)</summary>
-${job.description ?? 'No original description available.'}
-</details>
-`;
-
-    updates = {
-      description: formattedDescription,
+      description: parseResult.description.trim(),
       salary: parseResult.salary?.trim(),
       tags: parseResult.tags?.map((tag) => tag.trim()),
     };
+  } else {
+    logger.warn('custom job description parse returned no usable description', {
+      jobId: job.id,
+      hasErrorMessage: Boolean(parseResult.errorMessage),
+      inputLength: htmlContent.length,
+    });
   }
 
   return updates;

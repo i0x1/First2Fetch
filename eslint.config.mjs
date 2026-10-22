@@ -47,6 +47,6 @@ export default [
   },
   {
     // Use "ignores" to specify patterns to ignore
-    ignores: [],
+    ignores: ['apps/webapp/.next/**', 'apps/webapp/next-env.d.ts'],
   },
 ];

@@ -13,6 +13,7 @@ type HtmlParseRequest = {
   webPageRuntimeData?: WebPageRuntimeData;
   maxRetries?: number;
   retryCount?: number;
+  force?: boolean;
 };
 
 Deno.serve(async (req) => {
@@ -157,6 +158,13 @@ async function parseHtmlToJobsList({
     return { jobs: [], currentUrlParseFailed: false };
   }
 
+  // Custom job boards use an expensive LLM call. Skip repeated scans for 24h,
+  // unless the caller explicitly requests a fresh scan.
+  if (targetSite?.provider === SiteProvider.custom && !html.force && wasScrapedWithinLast24h(link)) {
+    logger.info('scan url skipped', { reason: 'custom_site_recently_scraped', linkId: link.id });
+    return { jobs: [], currentUrlParseFailed: false };
+  }
+
   const {
     jobs,
     site,
@@ -194,6 +202,20 @@ async function parseHtmlToJobsList({
   });
 
   return { jobs, currentUrlParseFailed };
+}
+
+const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+const SCRAPE_LEEWAY_MS = 60 * 1000;
+
+function wasScrapedWithinLast24h(link: Link): boolean {
+  const lastScrapedMs = new Date(link.last_scraped_at).getTime();
+  if (Number.isNaN(lastScrapedMs)) return false;
+
+  const createdMs = new Date(link.created_at).getTime();
+  const hasRealScrape = Number.isNaN(createdMs) || lastScrapedMs - createdMs > SCRAPE_LEEWAY_MS;
+  if (!hasRealScrape) return false;
+
+  return Date.now() - lastScrapedMs < TWENTY_FOUR_HOURS_MS;
 }
 
 async function handleParsingFailureForLink({

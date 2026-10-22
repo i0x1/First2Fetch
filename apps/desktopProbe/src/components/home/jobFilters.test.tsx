@@ -22,7 +22,7 @@ const defaultProps = {
   linkIds: [] as number[],
   labels: [] as string[],
   hideReposted: false,
-  listingCounts: { new: 10, applied: 2, archived: 1, filtered: 3 },
+  listingCounts: { new: 10, ready: 4, applied: 2, archived: 1, filtered: 3 },
   onStatusChange: vi.fn(),
   onSearchJobs: vi.fn(),
   viewMode: 'split' as const,

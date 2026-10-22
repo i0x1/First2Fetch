@@ -1,0 +1,11 @@
+# TypeSafe Jev JD filter
+
+In **Settings → AI & API keys**, choose **TypeSafe (decision)** in the **JD filter (advanced matching)** row, choose a pinned Jev version, enter a TypeSafe API key, and save. The custom job-list and custom JD-parsing rows continue to use chat models. Switching the JD filter back to Gemini keeps the saved user filter rules and provider keys.
+
+The JD filter uses the user's saved filtering requirements, job title, company, location, tags, and a description capped at 32,000 characters. The Gemini path still requests `{ excluded, reason }` JSON. The TypeSafe path sends the same facts as structured `state` with a Noul question about exclusion. A Jev probability of at least `0.9` excludes the job; lower values keep it. This conservative threshold is a starting policy, not a validated accuracy claim. Jev exclusions store `Excluded by TypeSafe <version>` as the reason. The existing company blacklist runs before either model.
+
+TypeSafe is only called when advanced matching is enabled and a job has a description and a saved filter prompt. Its request has a 20-second timeout. Provider or response errors use the existing scan error and retry behavior; the app does not silently use a different provider. The API usage ledger records Jev input tokens at the catalog rate of $0.042 per million and zero output-token charge.
+
+The `scan-job-description` Edge Function was deployed to the First2Fetch Supabase project on 21 October 2026. The packaged Electron app showed TypeSafe and Jev 1.13 selected, and the live project had a saved TypeSafe key and filter prompt. During verification, three live jobs completed the Jev path and were saved with status `excluded_by_advanced_matching` and reason `Excluded by TypeSafe jev-1.13.0`. This confirms the production exclusion path, but it does not establish decision accuracy; the `0.9` threshold needs review against labeled jobs. Local checks covered the request and response mapping, threshold, desktop task-specific provider options, TypeScript builds, and desktop tests. Computer Use showed Jev 1.13 and 1.14 in the JD filter row and confirmed that the job-list row has no TypeSafe option.
+
+See [TypeSafe API research](typesafe-provider-research-2026-10-21.md) for endpoint and pricing sources.

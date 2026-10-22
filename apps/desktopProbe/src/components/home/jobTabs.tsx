@@ -29,6 +29,7 @@ export type JobListing = {
   hasMore: boolean;
   jobs: Array<Job & { isLoadingJD?: boolean }>;
   new: number;
+  ready: number;
   applied: number;
   archived: number;
   filtered: number;
@@ -66,6 +67,7 @@ export function JobTabs() {
     hasMore: true,
     jobs: [],
     new: 0,
+    ready: 0,
     applied: 0,
     archived: 0,
     filtered: 0,

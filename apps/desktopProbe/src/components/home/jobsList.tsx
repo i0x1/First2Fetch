@@ -61,6 +61,7 @@ export function JobsList({
   onLoadMoreForDate,
   onSelect,
   onApplied,
+  onReady,
   onArchive,
   onDelete,
   favoriteCompanies = [],
@@ -73,6 +74,7 @@ export function JobsList({
   onLoadMoreForDate: (dateKey: string, after?: string) => void;
   onSelect: (job: Job) => void;
   onApplied?: (job: Job) => void;
+  onReady?: (job: Job) => void;
   onArchive: (job: Job) => void;
   onDelete: (job: Job) => void;
   favoriteCompanies?: string[];
@@ -239,6 +241,7 @@ export function JobsList({
               selectedJobId={selectedJobId}
               onSelect={onSelect}
               onApplied={onApplied}
+            onReady={onReady}
               onArchive={onArchive}
               onRequestDelete={setJobToDelete}
               siteLogos={siteLogos}

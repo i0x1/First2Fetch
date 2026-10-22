@@ -74,6 +74,8 @@ web_modules/
 
 # dotenv environment variable files
 .env
+/private-exports/
+docs/electron-startup-20261016.png
 .env.*
 !.env.example
 !**/.env.example

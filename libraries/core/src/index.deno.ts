@@ -3,3 +3,4 @@ export * from './types.ts';
 export * from './logging.ts';
 export * from './remoteLogging.ts';
 export * from './aiProviderConfig.ts';
+export * from './jobDescription.ts';

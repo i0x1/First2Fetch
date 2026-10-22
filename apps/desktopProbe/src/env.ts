@@ -23,7 +23,9 @@ export const ENV = {
   openDevTools: process.env.OPEN_DEVTOOLS === 'true',
   supabase: {
     url: process.env.SUPABASE_URL,
-    key: process.env.SUPABASE_KEY,
+    // Prefer the hosted project's modern publishable key when it is present.
+    // Keep SUPABASE_KEY as a compatibility fallback for older local setups.
+    key: process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_KEY,
   },
   axiomToken: process.env.AXIOM_TOKEN,
   axiomDataset: process.env.AXIOM_DATASET,

@@ -4,11 +4,12 @@ import {
   getApiModelId,
   getModelConfig,
   isProviderName,
+  providerSupportsTask,
   resolveTaskAiConfig,
 } from '@first2apply/core';
 import { getExceptionMessage } from '@first2apply/core';
 import { SupabaseClient } from '@supabase/supabasefork';
-import { GoogleGenerativeAI } from 'npm:@google/generative-ai';
+import { GoogleGenAI } from 'npm:@google/genai@2.30.0';
 import { OpenAI as OpenAIClient } from 'openai';
 
 import {
@@ -129,7 +130,7 @@ class OpenAICompatibleProvider implements AIProvider {
 }
 
 class GoogleGeminiProvider implements AIProvider {
-  private client: GoogleGenerativeAI;
+  private client: GoogleGenAI;
   private config: LLMConfig;
   private apiModelId: string;
 
@@ -139,7 +140,7 @@ class GoogleGeminiProvider implements AIProvider {
       throw new Error(`Unsupported Google Gemini model: ${config.model}`);
     }
 
-    this.client = new GoogleGenerativeAI(config.apiKey);
+    this.client = new GoogleGenAI({ apiKey: config.apiKey });
     this.apiModelId = getApiModelId('google_gemini', config.model);
     this.config = {
       model: config.model,
@@ -153,60 +154,48 @@ class GoogleGeminiProvider implements AIProvider {
     maxCompletionTokens?: number;
     responseFormat?: { type: 'json_object' };
   }): Promise<AIResponse> {
-    const model = this.client.getGenerativeModel({
-      model: this.apiModelId,
-      generationConfig: {
-        maxOutputTokens: params.maxCompletionTokens,
-        responseMimeType: params.responseFormat?.type === 'json_object' ? 'application/json' : undefined,
-      },
-    });
-
     let systemInstruction = '';
-    const chatHistory: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+    const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
 
     for (const msg of params.messages) {
       if (msg.role === 'system') {
         systemInstruction = msg.content;
       } else {
-        const geminiRole = msg.role === 'assistant' ? 'model' : 'user';
-        chatHistory.push({
+        const geminiRole: 'model' | 'user' = msg.role === 'assistant' ? 'model' : 'user';
+        contents.push({
           role: geminiRole,
           parts: [{ text: msg.content }],
         });
       }
     }
 
-    let result;
-    if (chatHistory.length > 1) {
-      const chat = model.startChat({
-        history: chatHistory.slice(0, -1) as any,
+    const response = await this.client.models.generateContent({
+      model: this.apiModelId,
+      contents,
+      config: {
         systemInstruction: systemInstruction || undefined,
-      });
-      result = await chat.sendMessage(chatHistory[chatHistory.length - 1].parts[0].text);
-    } else {
-      const prompt = systemInstruction
-        ? `${systemInstruction}\n\n${chatHistory[0]?.parts[0]?.text || ''}`
-        : chatHistory[0]?.parts[0]?.text || '';
-      result = await model.generateContent(prompt);
+        maxOutputTokens: params.maxCompletionTokens,
+        responseMimeType: params.responseFormat?.type === 'json_object' ? 'application/json' : undefined,
+      },
+    });
+    const text = response.text;
+    if (!text) {
+      throw new Error(`${this.config.model} response missing content`);
     }
 
-    const response = await result.response;
-    const text = response.text();
-
-    const usageMetadata = (response as any).usageMetadata;
-    const inputTokens = usageMetadata?.promptTokenCount || 0;
-    const outputTokens = usageMetadata?.candidatesTokenCount || 0;
-
-    const estimatedInputTokens =
-      inputTokens ||
-      Math.ceil((systemInstruction.length + chatHistory.reduce((sum, m) => sum + m.parts[0].text.length, 0)) / 4);
-    const estimatedOutputTokens = outputTokens || Math.ceil(text.length / 4);
+    const usageMetadata = response.usageMetadata;
+    const inputTokens = usageMetadata?.promptTokenCount ??
+      Math.ceil((systemInstruction.length + contents.reduce((sum, m) => sum + m.parts[0].text.length, 0)) / 4);
+    // Gemini charges thinking tokens as output. candidatesTokenCount alone omits them.
+    const outputTokens = usageMetadata?.totalTokenCount !== undefined && usageMetadata?.promptTokenCount !== undefined
+      ? Math.max(0, usageMetadata.totalTokenCount - usageMetadata.promptTokenCount)
+      : (usageMetadata?.candidatesTokenCount ?? Math.ceil(text.length / 4)) + (usageMetadata?.thoughtsTokenCount ?? 0);
 
     return {
       usage: {
-        prompt_tokens: estimatedInputTokens,
-        completion_tokens: estimatedOutputTokens,
-        total_tokens: estimatedInputTokens + estimatedOutputTokens,
+        prompt_tokens: inputTokens,
+        completion_tokens: outputTokens,
+        total_tokens: inputTokens + outputTokens,
       },
       content: text,
     };
@@ -224,6 +213,10 @@ export function buildAIProvider(config: AIProviderConfig): AIProvider {
 
   if (config.provider === 'google_gemini') {
     return new GoogleGeminiProvider(config);
+  }
+
+  if (config.provider === 'typesafe') {
+    throw new Error('TypeSafe is a decision provider, not a chat provider');
   }
 
   const apiModelId = getApiModelId(config.provider, config.model);
@@ -273,7 +266,7 @@ function getEncryptedKeyForProvider(
 /**
  * Build provider client for a specific AI task (JD filter, job list scrape, JD parse).
  */
-export async function buildAIProviderForTask({
+export async function resolveUserAiConfigForTask({
   supabaseAdminClient,
   userId,
   task,
@@ -283,7 +276,7 @@ export async function buildAIProviderForTask({
   userId: string;
   task: AiTaskId;
   logger: ILogger;
-}): Promise<{ provider: AIProvider; config: LLMConfig } | null> {
+}): Promise<AIProviderConfig | null> {
   const { data: advancedMatching, error } = await supabaseAdminClient
     .from('advanced_matching')
     .select(
@@ -302,6 +295,9 @@ export async function buildAIProviderForTask({
     logger.info(`User ${userId} has no complete AI config for task ${task}`);
     return null;
   }
+  if (!providerSupportsTask(taskConfig.provider, task)) {
+    throw new Error(`${taskConfig.provider} does not support ${task}`);
+  }
 
   const encryptedKey = getEncryptedKeyForProvider(advancedMatching as AdvancedMatchingAiFields, taskConfig.provider);
   if (!encryptedKey) {
@@ -319,15 +315,23 @@ export async function buildAIProviderForTask({
     throw new Error('Failed to decrypt API key');
   }
 
+  return { provider: taskConfig.provider, model: taskConfig.model, apiKey: decryptedKey };
+}
+
+/** Build a chat provider for a task that needs generated text. */
+export async function buildAIProviderForTask(args: {
+  supabaseAdminClient: SupabaseClient;
+  userId: string;
+  task: AiTaskId;
+  logger: ILogger;
+}): Promise<{ provider: AIProvider; config: LLMConfig } | null> {
+  const config = await resolveUserAiConfigForTask(args);
+  if (!config) return null;
   try {
-    const provider = buildAIProvider({
-      provider: taskConfig.provider,
-      model: taskConfig.model,
-      apiKey: decryptedKey,
-    });
+    const provider = buildAIProvider(config);
     return { provider, config: provider.getConfig() };
   } catch (err) {
-    logger.error(`Failed to build AI provider for user ${userId}: ${getExceptionMessage(err)}`);
+    args.logger.error(`Failed to build AI provider for user ${args.userId}: ${getExceptionMessage(err)}`);
     throw err;
   }
 }

@@ -30,6 +30,7 @@ import { JobDetails } from './jobDetails';
 import { JobFilters } from './jobFilters';
 import { JobFiltersType } from './jobFilters/jobFiltersMenu';
 import { JobNotes } from './jobNotes';
+import { JobActivity } from './jobActivity';
 import { JobSummary } from './jobSummary';
 import { JobListing } from './jobTabs';
 import { JobsList } from './jobsList';
@@ -39,7 +40,7 @@ import { JobViewMode, jobViewGridClass } from './jobViewModeSeg';
 const JOB_VIEW_MODE_KEY = 'jobs-view-mode';
 
 const JOB_BATCH_SIZE = 100;
-const ALL_JOB_STATUSES: JobStatus[] = ['new', 'applied', 'archived', 'excluded_by_advanced_matching'];
+const ALL_JOB_STATUSES: JobStatus[] = ['new', 'ready', 'applied', 'archived', 'excluded_by_advanced_matching'];
 
 /**
  * Job tabs content component.
@@ -85,7 +86,9 @@ export function JobTabsContent({
     if (stored === 'list-focus' || stored === 'split' || stored === 'detail-focus') {
       return stored;
     }
-    return 'split';
+    // Keep the job list as the primary workspace. The detail panel remains
+    // available, but it should not take most of the screen by default.
+    return 'list-focus';
   });
 
   // Two-phase loading: date summaries + per-date jobs
@@ -205,6 +208,7 @@ export function JobTabsContent({
           ...listing,
           isLoading: false,
           new: counts.new,
+          ready: counts.ready,
           applied: counts.applied,
           archived: counts.archived,
           filtered: counts.filtered,
@@ -302,8 +306,8 @@ export function JobTabsContent({
   ]);
 
   // Update the status of a job and remove it from the list if necessary
-  const updateListedJobStatus = async (jobId: number, newStatus: JobStatus) => {
-    await updateJobStatus({ jobId, status: newStatus });
+  const updateListedJobStatus = async (jobId: number, newStatus: JobStatus, reasonCode?: string, reasonText?: string | null) => {
+    await updateJobStatus({ jobId, status: newStatus, reasonCode, reasonText });
 
     // Find and remove job from jobsByDate
     let oldJob: Job | undefined;
@@ -354,12 +358,15 @@ export function JobTabsContent({
           : tabToDecrement === 'archived'
             ? listing.archived - 1
             : listing.archived;
+      const readyCount =
+        tabToIncrement === 'ready' ? listing.ready + 1 : tabToDecrement === 'ready' ? listing.ready - 1 : listing.ready;
       const filteredCount =
         tabToDecrement === 'excluded_by_advanced_matching' ? listing.filtered - 1 : listing.filtered;
 
       return {
         ...listing,
         new: newCount,
+        ready: readyCount,
         applied: appliedCount,
         archived: archivedCount,
         filtered: filteredCount,
@@ -388,9 +395,9 @@ export function JobTabsContent({
     }
   };
 
-  const onUpdateJobStatus = async (jobId: number, newStatus: JobStatus) => {
+  const onUpdateJobStatus = async (jobId: number, newStatus: JobStatus, reasonCode?: string, reasonText?: string | null) => {
     try {
-      await updateListedJobStatus(jobId, newStatus);
+      await updateListedJobStatus(jobId, newStatus, reasonCode, reasonText);
       selectNextJob(jobId);
     } catch (error) {
       handleError({ error, title: 'Failed to update job status' });
@@ -551,6 +558,7 @@ export function JobTabsContent({
       let newCount = prev.new;
       let appliedCount = prev.applied;
       let archivedCount = prev.archived;
+      let readyCount = prev.ready;
       let filteredCount = prev.filtered;
       const removedIds = new Set<number>();
 
@@ -565,6 +573,9 @@ export function JobTabsContent({
             break;
           case 'archived':
             archivedCount = Math.max(0, archivedCount - 1);
+            break;
+          case 'ready':
+            readyCount = Math.max(0, readyCount - 1);
             break;
           case 'excluded_by_advanced_matching':
             filteredCount = Math.max(0, filteredCount - 1);
@@ -583,6 +594,7 @@ export function JobTabsContent({
         ...prev,
         jobs: remainingJobs,
         new: newCount,
+        ready: readyCount,
         applied: appliedCount,
         archived: archivedCount,
         filtered: filteredCount,
@@ -720,6 +732,7 @@ export function JobTabsContent({
           status={status}
           listingCounts={{
             new: listing.new,
+            ready: listing.ready,
             applied: listing.applied,
             archived: listing.archived,
             filtered: listing.filtered,
@@ -749,6 +762,7 @@ export function JobTabsContent({
                 onLoadMoreForDate={loadJobsForDate}
                 onSelect={(job) => scanJobAndSelect(job)}
                 onApplied={(j) => onUpdateJobStatus(j.id, 'applied')}
+                onReady={(j) => onUpdateJobStatus(j.id, 'ready')}
                 onArchive={(j) => onUpdateJobStatus(j.id, 'archived')}
                 onDelete={(j) => onUpdateJobStatus(j.id, 'deleted')}
                 favoriteCompanies={favoriteCompanies}
@@ -798,6 +812,7 @@ export function JobTabsContent({
                 />
                 <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-2.5">
                   <JobNotes jobId={selectedJob.id} compact />
+                  <JobActivity jobId={selectedJob.id} />
                   <JobDetails
                     job={selectedJob}
                     compact

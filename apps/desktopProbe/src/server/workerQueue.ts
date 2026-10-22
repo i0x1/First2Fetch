@@ -1,13 +1,19 @@
 import { EventEmitter } from 'events';
 
 type AsyncTask<T> = () => Promise<T>;
+type QueuedTask = {
+  run: () => Promise<void>;
+  reject: (error: Error) => void;
+  priority: 'normal' | 'high';
+};
 
 /**
  * A simple queue for managing concurrency of async tasks.
  */
 export class WorkerQueue extends EventEmitter {
-  private _queue: AsyncTask<unknown>[] = [];
+  private _queue: QueuedTask[] = [];
   private _currentlyActive = 0;
+  private _isClosed = false;
 
   /**
    * Class constructor.
@@ -19,17 +25,52 @@ export class WorkerQueue extends EventEmitter {
   /**
    * Enqueue a task to be executed.
    */
-  enqueue<T>(task: AsyncTask<T>): Promise<T> {
+  enqueue<T>(task: AsyncTask<T>, priority: 'normal' | 'high' = 'normal'): Promise<T> {
     return new Promise((resolve, reject) => {
-      this._queue.push(() => task().then(resolve).catch(reject));
+      if (this._isClosed) {
+        reject(new Error('Worker queue is closed'));
+        return;
+      }
+
+      const queuedTask: QueuedTask = {
+        run: async () => {
+          try {
+            resolve(await task());
+          } catch (error) {
+            reject(error);
+          }
+        },
+        reject,
+        priority,
+      };
+      if (priority === 'high') {
+        const firstNormal = this._queue.findIndex((item) => item.priority !== 'high');
+        this._queue.splice(firstNormal < 0 ? this._queue.length : firstNormal, 0, queuedTask);
+      } else {
+        this._queue.push(queuedTask);
+      }
       this.next();
     });
+  }
+
+  /** Stop queued work and emit `empty` after active work finishes. */
+  close() {
+    this._isClosed = true;
+    const queuedTasks = this._queue.splice(0);
+    queuedTasks.forEach(({ reject }) => reject(new Error('Worker queue is closed')));
+
+    if (this._currentlyActive === 0) this.emit('empty');
   }
 
   /**
    * Start the next task in the queue.
    */
   next() {
+    if (this._isClosed) {
+      if (this._currentlyActive === 0) this.emit('empty');
+      return;
+    }
+
     if (this._currentlyActive >= this._concurrency) {
       // too many tasks already running
       return;
@@ -47,7 +88,7 @@ export class WorkerQueue extends EventEmitter {
     this._currentlyActive++;
     const task = this._queue.shift();
 
-    task().finally(() => {
+    task!.run().finally(() => {
       this._currentlyActive--;
       this.next();
     });

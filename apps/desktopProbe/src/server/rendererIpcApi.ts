@@ -74,6 +74,15 @@ export function initRendererIpcApi({
     }),
   );
 
+  ipcMain.handle('request-login-code', async (_, { email }) => _apiCall(() => supabaseApi.requestLoginCode({ email })));
+  ipcMain.handle('verify-login-code', async (_, { email, token }) =>
+    _apiCall(async () => {
+      const result = await supabaseApi.verifyLoginCode({ email, token });
+      analytics.trackEvent('user_logged_in', { method: 'email_otp' });
+      return result;
+    }),
+  );
+
   ipcMain.handle('send-password-reset-email', async (_, { email }) =>
     _apiCall(() => supabaseApi.sendPasswordResetEmail({ email })),
   );
@@ -175,9 +184,9 @@ export function initRendererIpcApi({
       ),
   );
 
-  ipcMain.handle('update-job-status', async (_, { jobId, status }) =>
+  ipcMain.handle('update-job-status', async (_, { jobId, status, reasonCode, reasonText }) =>
     _apiCall(async () => {
-      const res = await supabaseApi.updateJobStatus({ jobId, status });
+      const res = await supabaseApi.updateJobStatus({ jobId, status, reasonCode, reasonText });
       analytics.trackEvent('job_status_updated', { jobId, status });
       return res;
     }),
@@ -206,11 +215,24 @@ export function initRendererIpcApi({
 
   ipcMain.handle('get-scanner-status', async (_) => _apiCall(async () => jobScanner.getScannerStatus()));
 
+  ipcMain.handle('scan-linkedin-now', async (_) => _apiCall(async () => {
+    if (!jobScanner.getSettings().linkedinScanIntervalMinutes) throw new Error('LinkedIn scanning is off');
+    void jobScanner.scanLinkedInLinks().catch((error) => {
+      logger.error('manual LinkedIn scan failed', { error: getExceptionMessage(error) });
+    });
+  }));
+
+  ipcMain.handle('scan-other-sites-now', async (_) => _apiCall(async () => {
+    void jobScanner.scanAllLinks().catch((error) => {
+      logger.error('manual other-sites scan failed', { error: getExceptionMessage(error) });
+    });
+  }));
+
   ipcMain.handle('open-external-url', async (_, { url }) => _apiCall(async () => shell.openExternal(url)));
 
   ipcMain.handle('scan-job-description', async (_, { job }) =>
     _apiCall(async () => {
-      const [updatedJob] = await jobScanner.scanJobs([job]);
+      const [updatedJob] = await jobScanner.scanJobs([job], undefined, 'high');
       return { job: updatedJob };
     }),
   );
@@ -319,6 +341,8 @@ export function initRendererIpcApi({
   );
 
   ipcMain.handle('list-notes', async (_, { job_id }) => _apiCall(() => supabaseApi.listNotes(job_id)));
+
+  ipcMain.handle('list-job-events', async (_, { job_id }) => _apiCall(() => supabaseApi.listJobEvents(job_id)));
 
   ipcMain.handle('update-note', async (_, { noteId, text }) =>
     _apiCall(() => supabaseApi.updateNote({ noteId, text })),

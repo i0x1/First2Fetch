@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link } from 'react-router-dom';
 
@@ -9,6 +10,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 
 import { Icons } from './icons';
+import { EMAIL_OTP_MAX_LENGTH, EMAIL_OTP_MIN_LENGTH, EMAIL_OTP_PLACEHOLDER } from '@first2apply/core';
 
 // Schema definition for form validation using Zod
 const schema = z.object({
@@ -20,11 +22,18 @@ type LoginFormValues = z.infer<typeof schema>;
 
 export function LoginCard({
   onLoginWithEmail,
+  onRequestLoginCode,
+  onVerifyLoginCode,
   isSubmitting,
 }: {
   onLoginWithEmail: (params: { email: string; password: string }) => void;
+  onRequestLoginCode: (params: { email: string }) => Promise<void>;
+  onVerifyLoginCode: (params: { email: string; token: string }) => Promise<void>;
   isSubmitting: boolean;
 }) {
+  const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
+  const [codeSent, setCodeSent] = useState(false);
   // Initialize form handling with react-hook-form and Zod for schema validation
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(schema),
@@ -64,7 +73,7 @@ export function LoginCard({
                 <FormItem className="space-y-1">
                   <FormLabel>Email</FormLabel>
                   <FormControl>
-                    <Input id="email" type="email" placeholder="name@example.com" {...field} />
+                    <Input id="email" type="email" placeholder="name@example.com" {...field} onChange={(event) => { field.onChange(event); setEmail(event.target.value); }} />
                   </FormControl>
                 </FormItem>
               )}
@@ -93,6 +102,9 @@ export function LoginCard({
                 'Log in'
               )}
             </Button>
+            <div className="w-full border-t pt-4">
+              {!codeSent ? <Button type="button" variant="outline" className="w-full" disabled={isSubmitting || !email} onClick={async () => { await onRequestLoginCode({ email }); setCodeSent(true); }}>Email me a sign-in code</Button> : <div className="space-y-2"><Input value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, EMAIL_OTP_MAX_LENGTH))} inputMode="numeric" maxLength={EMAIL_OTP_MAX_LENGTH} placeholder={EMAIL_OTP_PLACEHOLDER} /><Button type="button" variant="outline" className="w-full" disabled={isSubmitting || code.length < EMAIL_OTP_MIN_LENGTH || code.length > EMAIL_OTP_MAX_LENGTH} onClick={() => onVerifyLoginCode({ email, token: code })}>Verify email code</Button></div>}
+            </div>
 
             <div className="justify-self-end">
               <Link to="/forgot-password" className="w-fit text-xs text-muted-foreground hover:underline">

@@ -8,6 +8,7 @@ import * as semver from 'semver';
 import { ILogger } from './logger';
 
 const S3_BUCKET = 'https://s3.eu-central-1.amazonaws.com/first2apply.com/releases';
+const MAC_UPDATE_SERVER = 'https://update.electronjs.org/i0x1/First2Fetch';
 
 type ReleaseJson = {
   currentRelease: string;
@@ -48,8 +49,14 @@ export class F2aAutoUpdater {
     private _analytics: IAnalyticsClient,
   ) {
     // only enable auto-updates in packaged apps
-    this._canAutoUpdate = app.isPackaged;
-    this._feedUrl = `${S3_BUCKET}/${process.platform}/${process.arch}/RELEASES.json`;
+    // Squirrel.Mac requires a Developer ID signature. Local ad-hoc builds use the
+    // one-click updater instead; only official signed releases enable this feed.
+    this._canAutoUpdate =
+      app.isPackaged && (process.platform !== 'darwin' || process.env.DESKTOP_AUTO_UPDATES === 'true');
+    this._feedUrl =
+      process.platform === 'darwin'
+        ? `${MAC_UPDATE_SERVER}/darwin-${process.arch}/${app.getVersion()}`
+        : `${S3_BUCKET}/${process.platform}/${process.arch}/RELEASES.json`;
   }
 
   /**
@@ -58,7 +65,9 @@ export class F2aAutoUpdater {
   start() {
     if (!this._canAutoUpdate) return;
 
-    autoUpdater.setFeedURL({ url: this._feedUrl, serverType: 'json' });
+    if (process.platform === 'darwin') {
+      autoUpdater.setFeedURL({ url: this._feedUrl });
+    }
 
     // setup auto updater events
     autoUpdater.on('error', (error) => {

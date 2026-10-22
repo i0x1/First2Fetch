@@ -3,6 +3,7 @@ import {
   EmailTemplateType,
   NewJobAlertEmailTemplate,
   SearchParsingFailureEmailTemplate,
+  WorkspaceInvitationEmailTemplate,
 } from './emailTemplates.ts';
 
 function escapeHtml(value: string): string {
@@ -19,9 +20,25 @@ export function buildEmailContent(template: EmailTemplate): { subject: string; h
       return buildSearchParsingFailureEmail(template);
     case EmailTemplateType.newJobAlert:
       return buildNewJobAlertEmail(template);
+    case EmailTemplateType.workspaceInvitation:
+      return buildWorkspaceInvitationEmail(template);
     default:
       throw new Error(`Unsupported email template type: ${(template as EmailTemplate).type}`);
   }
+}
+
+function buildWorkspaceInvitationEmail(template: WorkspaceInvitationEmailTemplate): { subject: string; html: string } {
+  return {
+    subject: 'You have access to a First 2 Apply workspace',
+    html: `
+      <p>Hello,</p>
+      <p><strong>${escapeHtml(template.payload.ownerEmail)}</strong> invited you to help review job applications in First 2 Apply.</p>
+      <p><a href="${escapeHtml(template.payload.magicLink)}">Open the shared workspace</a></p>
+      <p>This link signs you in once. You can also open <a href="${escapeHtml(template.payload.appUrl)}">First 2 Apply</a> and request a new email code.</p>
+      <p>If you did not expect this invitation, you can ignore this email.</p>
+      <p>Thanks,<br/>First 2 Apply</p>
+    `.trim(),
+  };
 }
 
 function buildSearchParsingFailureEmail(template: SearchParsingFailureEmailTemplate): { subject: string; html: string } {

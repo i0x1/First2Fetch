@@ -10,6 +10,7 @@ import {
   Review,
   StripeConfig,
   WebPageRuntimeData,
+  WorkspaceJobEvent,
 } from '@first2apply/core';
 import { User } from '@supabase/supabase-js';
 
@@ -51,6 +52,15 @@ export async function loginWithEmail({ email, password }: { email: string; passw
     password,
   });
 
+  return user;
+}
+
+export async function requestLoginCode({ email }: { email: string }): Promise<void> {
+  await _mainProcessApiCall('request-login-code', { email });
+}
+
+export async function verifyLoginCode({ email, token }: { email: string; token: string }): Promise<User> {
+  const { user } = await _mainProcessApiCall<{ user: User }>('verify-login-code', { email, token });
   return user;
 }
 
@@ -203,6 +213,7 @@ export async function getJobCounts({
 }) {
   return await _mainProcessApiCall<{
     new: number;
+    ready: number;
     applied: number;
     archived: number;
     filtered: number;
@@ -267,8 +278,13 @@ export async function listJobs({
 /**
  * Update the archived status of a job.
  */
-export async function updateJobStatus({ jobId, status }: { jobId: number; status: JobStatus }): Promise<void> {
-  await _mainProcessApiCall('update-job-status', { jobId, status });
+export async function updateJobStatus({ jobId, status, reasonCode, reasonText }: {
+  jobId: number;
+  status: JobStatus;
+  reasonCode?: string;
+  reasonText?: string | null;
+}): Promise<void> {
+  await _mainProcessApiCall('update-job-status', { jobId, status, reasonCode, reasonText });
 }
 
 /**
@@ -307,6 +323,14 @@ export async function getProbeSettings(): Promise<JobScannerSettings> {
  */
 export async function getScannerStatus(): Promise<ScannerStatus> {
   return await _mainProcessApiCall<ScannerStatus>('get-scanner-status', {});
+}
+
+export async function scanLinkedInNow(): Promise<void> {
+  await _mainProcessApiCall('scan-linkedin-now', {});
+}
+
+export async function scanOtherSitesNow(): Promise<void> {
+  await _mainProcessApiCall('scan-other-sites-now', {});
 }
 
 /**
@@ -439,6 +463,10 @@ export async function createNote({
 export async function listNotes(job_id: number): Promise<Note[]> {
   const notes = await _mainProcessApiCall<Note[]>('list-notes', { job_id });
   return notes;
+}
+
+export async function listJobEvents(job_id: number): Promise<WorkspaceJobEvent[]> {
+  return _mainProcessApiCall<WorkspaceJobEvent[]>('list-job-events', { job_id });
 }
 
 /**

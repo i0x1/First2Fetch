@@ -13,9 +13,10 @@ export {
   validateApiKeyFormat,
   type AiTaskId,
   type ProviderName,
+  providerSupportsTask,
 } from '@first2apply/core';
 
-import { AI_PROVIDER_CONFIG, ProviderName } from '@first2apply/core';
+import { AI_PROVIDER_CONFIG, AiTaskId, ProviderName, providerSupportsTask } from '@first2apply/core';
 
 export type ModelOption = {
   value: string;
@@ -29,8 +30,8 @@ export type ProviderOption = {
   models: ModelOption[];
 };
 
-export function getProviderOptions(): ProviderOption[] {
-  return Object.values(AI_PROVIDER_CONFIG).map((config) => ({
+export function getProviderOptions(task?: AiTaskId): ProviderOption[] {
+  return Object.values(AI_PROVIDER_CONFIG).filter((config) => !task || providerSupportsTask(config.name, task)).map((config) => ({
     value: config.name,
     label: config.displayName,
     models: Object.entries(config.models).map(([value, model]) => ({

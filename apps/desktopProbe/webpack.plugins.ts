@@ -12,10 +12,14 @@ export const plugins = [
   new ForkTsCheckerWebpackPlugin({
     logger: 'webpack-infrastructure',
   }),
-  // SUPABASE_* and AXIOM_* are read at runtime from `.env` (see `src/env.ts`); embedding them via
-  // EnvironmentPlugin bakes stale values whenever webpack runs outside the Forge process.
+  // The hosted Supabase URL and public client key must be present in packaged apps.
+  // Forge loads the local .env (or CI environment) before webpack runs. Never add a service-role key.
   new webpack.EnvironmentPlugin({
     APP_BUNDLE_ID: '',
+    SUPABASE_URL: '',
+    SUPABASE_PUBLISHABLE_KEY: '',
+    SUPABASE_KEY: '',
+    DESKTOP_AUTO_UPDATES: 'false',
     AMPLITUDE_API_KEY: '',
   }),
   new CopyWebpackPlugin({

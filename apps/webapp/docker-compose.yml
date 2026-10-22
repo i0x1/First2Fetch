@@ -1,0 +1,8 @@
+services:
+  web:
+    image: ${WEBAPP_IMAGE:?Set WEBAPP_IMAGE in .env}
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:3002:3002"

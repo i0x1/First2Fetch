@@ -40,7 +40,7 @@ export function JobFilters({
   labels: string[];
   hideReposted: boolean;
   status: JobStatus;
-  listingCounts: { new: number; applied: number; archived: number; filtered: number };
+  listingCounts: { new: number; ready: number; applied: number; archived: number; filtered: number };
   onStatusChange: (status: JobStatus) => void;
   onSearchJobs: (_: { search: string; filters: JobFiltersType }) => void;
   viewMode: JobViewMode;
