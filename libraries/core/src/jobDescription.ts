@@ -5,7 +5,7 @@ export function normalizeJobDescription(value: string | null | undefined): strin
   if (!value) return undefined;
   const normalized = value
     .replace(/\r\n?/g, '\n')
-    .replace(/\u0000/g, '')
+    .replaceAll('\u0000', '')
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
