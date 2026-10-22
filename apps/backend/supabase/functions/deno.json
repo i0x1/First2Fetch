@@ -2,7 +2,7 @@
   "nodeModules": "auto",
   "imports": {
     "@first2apply/core": "../../../../libraries/core/src/index.deno.ts",
-    "@google/generative-ai": "npm:@google/generative-ai@0.21.0",
+    "@google/genai": "npm:@google/genai@2.30.0",
     "@supabase/supabasefork": "npm:@supabase/supabase-js@2.76.1",
     "npm:mailersend": "npm:mailersend@2.6.0",
     "npm:resend": "npm:resend@4.0.0",

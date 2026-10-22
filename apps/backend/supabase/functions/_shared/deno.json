@@ -4,7 +4,7 @@
     "@first2apply/core": "../../../../../libraries/core/src/index.deno.ts",
     "npm:resend": "npm:resend@4.0.0",
     "openai": "npm:openai@6.7.0",
-    "@google/generative-ai": "npm:@google/generative-ai@0.21.0",
+    "@google/genai": "npm:@google/genai@2.30.0",
     "npm:stripe": "npm:stripe@15.1.0",
     "@supabase/supabasefork": "npm:@supabase/supabase-js@2.76.1",
     "turndown": "npm:turndown@7.1.2",

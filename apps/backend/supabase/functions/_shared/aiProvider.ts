@@ -9,7 +9,7 @@ import {
 } from '@first2apply/core';
 import { getExceptionMessage } from '@first2apply/core';
 import { SupabaseClient } from '@supabase/supabasefork';
-import { GoogleGenerativeAI } from 'npm:@google/generative-ai';
+import { GoogleGenAI } from 'npm:@google/genai@2.30.0';
 import { OpenAI as OpenAIClient } from 'openai';
 
 import {
@@ -130,7 +130,7 @@ class OpenAICompatibleProvider implements AIProvider {
 }
 
 class GoogleGeminiProvider implements AIProvider {
-  private client: GoogleGenerativeAI;
+  private client: GoogleGenAI;
   private config: LLMConfig;
   private apiModelId: string;
 
@@ -140,7 +140,7 @@ class GoogleGeminiProvider implements AIProvider {
       throw new Error(`Unsupported Google Gemini model: ${config.model}`);
     }
 
-    this.client = new GoogleGenerativeAI(config.apiKey);
+    this.client = new GoogleGenAI({ apiKey: config.apiKey });
     this.apiModelId = getApiModelId('google_gemini', config.model);
     this.config = {
       model: config.model,
@@ -154,60 +154,48 @@ class GoogleGeminiProvider implements AIProvider {
     maxCompletionTokens?: number;
     responseFormat?: { type: 'json_object' };
   }): Promise<AIResponse> {
-    const model = this.client.getGenerativeModel({
-      model: this.apiModelId,
-      generationConfig: {
-        maxOutputTokens: params.maxCompletionTokens,
-        responseMimeType: params.responseFormat?.type === 'json_object' ? 'application/json' : undefined,
-      },
-    });
-
     let systemInstruction = '';
-    const chatHistory: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+    const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
 
     for (const msg of params.messages) {
       if (msg.role === 'system') {
         systemInstruction = msg.content;
       } else {
-        const geminiRole = msg.role === 'assistant' ? 'model' : 'user';
-        chatHistory.push({
+        const geminiRole: 'model' | 'user' = msg.role === 'assistant' ? 'model' : 'user';
+        contents.push({
           role: geminiRole,
           parts: [{ text: msg.content }],
         });
       }
     }
 
-    let result;
-    if (chatHistory.length > 1) {
-      const chat = model.startChat({
-        history: chatHistory.slice(0, -1) as any,
+    const response = await this.client.models.generateContent({
+      model: this.apiModelId,
+      contents,
+      config: {
         systemInstruction: systemInstruction || undefined,
-      });
-      result = await chat.sendMessage(chatHistory[chatHistory.length - 1].parts[0].text);
-    } else {
-      const prompt = systemInstruction
-        ? `${systemInstruction}\n\n${chatHistory[0]?.parts[0]?.text || ''}`
-        : chatHistory[0]?.parts[0]?.text || '';
-      result = await model.generateContent(prompt);
+        maxOutputTokens: params.maxCompletionTokens,
+        responseMimeType: params.responseFormat?.type === 'json_object' ? 'application/json' : undefined,
+      },
+    });
+    const text = response.text;
+    if (!text) {
+      throw new Error(`${this.config.model} response missing content`);
     }
 
-    const response = await result.response;
-    const text = response.text();
-
-    const usageMetadata = (response as any).usageMetadata;
-    const inputTokens = usageMetadata?.promptTokenCount || 0;
-    const outputTokens = usageMetadata?.candidatesTokenCount || 0;
-
-    const estimatedInputTokens =
-      inputTokens ||
-      Math.ceil((systemInstruction.length + chatHistory.reduce((sum, m) => sum + m.parts[0].text.length, 0)) / 4);
-    const estimatedOutputTokens = outputTokens || Math.ceil(text.length / 4);
+    const usageMetadata = response.usageMetadata;
+    const inputTokens = usageMetadata?.promptTokenCount ??
+      Math.ceil((systemInstruction.length + contents.reduce((sum, m) => sum + m.parts[0].text.length, 0)) / 4);
+    // Gemini charges thinking tokens as output. candidatesTokenCount alone omits them.
+    const outputTokens = usageMetadata?.totalTokenCount !== undefined && usageMetadata?.promptTokenCount !== undefined
+      ? Math.max(0, usageMetadata.totalTokenCount - usageMetadata.promptTokenCount)
+      : (usageMetadata?.candidatesTokenCount ?? Math.ceil(text.length / 4)) + (usageMetadata?.thoughtsTokenCount ?? 0);
 
     return {
       usage: {
-        prompt_tokens: estimatedInputTokens,
-        completion_tokens: estimatedOutputTokens,
-        total_tokens: estimatedInputTokens + estimatedOutputTokens,
+        prompt_tokens: inputTokens,
+        completion_tokens: outputTokens,
+        total_tokens: inputTokens + outputTokens,
       },
       content: text,
     };

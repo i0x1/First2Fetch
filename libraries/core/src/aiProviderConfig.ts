@@ -3,13 +3,7 @@
  * Used by desktop UI and Supabase edge functions — keep in sync here only.
  */
 
-export type ProviderName =
-  | 'openai'
-  | 'google_gemini'
-  | 'deepseek'
-  | 'moonshot'
-  | 'openrouter'
-  | 'typesafe';
+export type ProviderName = 'openai' | 'google_gemini' | 'deepseek' | 'moonshot' | 'openrouter' | 'typesafe';
 
 export type AiTaskId = 'jd_filter' | 'job_list' | 'jd_parse';
 
@@ -57,29 +51,34 @@ export const AI_TASKS: AiTaskMeta[] = [
     label: 'JD filter (advanced matching)',
     description: 'Decides if a job matches your filter rules after the description is loaded.',
     defaultProvider: 'google_gemini',
-    defaultModel: 'gemini-2.5-flash-lite',
+    defaultModel: 'gemini-3.1-flash-lite',
   },
   {
     id: 'job_list',
     label: 'Job list scraping (custom sites)',
     description: 'Extracts job cards from custom career/listing pages.',
     defaultProvider: 'google_gemini',
-    defaultModel: 'gemini-2.5-flash',
+    defaultModel: 'gemini-3.8-flash',
   },
   {
     id: 'jd_parse',
     label: 'Job description parsing (custom sites)',
     description: 'Extracts and summarizes a single job description page.',
     defaultProvider: 'google_gemini',
-    defaultModel: 'gemini-2.5-flash',
+    defaultModel: 'gemini-3.1-flash-lite',
   },
 ];
 
-/** Standard-tier USD per 1M tokens (Google AI Gemini API, Jun 2026) */
-const GEMINI_25_FLASH_LITE = { input: 0.1, output: 0.4, label: 'Gemini 2.5 Flash Lite', isBudget: true };
-const GEMINI_25_FLASH = { input: 0.3, output: 2.5, label: 'Gemini 2.5 Flash' };
-const GEMINI_25_PRO = { input: 1.25, output: 5, label: 'Gemini 2.5 Pro' };
-const GEMINI_20_FLASH = { input: 0.1, output: 0.4, label: 'Gemini 2.0 Flash', isBudget: true };
+/** Gemini Developer API Standard tier USD per 1M text tokens, checked 2026-10-21.
+ * Gemini 3.8 Flash has introductory rates through 2026-12-31.
+ * These rates do not include free-tier use, credits, caching, or other tiers.
+ */
+const GEMINI_31_FLASH_LITE = { input: 0.25, output: 1.5, label: 'Gemini 3.1 Flash-Lite', isBudget: true };
+const GEMINI_35_FLASH_LITE = { input: 0.3, output: 2.5, label: 'Gemini 3.5 Flash-Lite' };
+const GEMINI_38_FLASH = { input: 0.75, output: 3.75, label: 'Gemini 3.8 Flash' };
+const GEMINI_25_FLASH_LITE = { input: 0.1, output: 0.4, label: 'Gemini 2.5 Flash Lite (legacy)', isBudget: true };
+const GEMINI_25_FLASH = { input: 0.3, output: 2.5, label: 'Gemini 2.5 Flash (legacy)' };
+const GEMINI_25_PRO = { input: 1.25, output: 5, label: 'Gemini 2.5 Pro (legacy)' };
 
 export const AI_PROVIDER_CONFIG: Record<ProviderName, ProviderConfig> = {
   openai: {
@@ -102,10 +101,12 @@ export const AI_PROVIDER_CONFIG: Record<ProviderName, ProviderConfig> = {
     displayName: 'Google Gemini',
     apiKeyHint: 'AIza...',
     models: {
+      'gemini-3.1-flash-lite': GEMINI_31_FLASH_LITE,
+      'gemini-3.5-flash-lite': GEMINI_35_FLASH_LITE,
+      'gemini-3.8-flash': GEMINI_38_FLASH,
       'gemini-2.5-flash-lite': GEMINI_25_FLASH_LITE,
       'gemini-2.5-flash': GEMINI_25_FLASH,
       'gemini-2.5-pro': GEMINI_25_PRO,
-      'gemini-2.0-flash': GEMINI_20_FLASH,
     },
   },
   deepseek: {
@@ -281,16 +282,16 @@ export type AdvancedMatchingAiFields = {
   ai_configured_providers?: string[] | null;
 };
 
-const TASK_AI_COLUMNS: Record<AiTaskId, { provider: keyof AdvancedMatchingAiFields; model: keyof AdvancedMatchingAiFields }> = {
+const TASK_AI_COLUMNS: Record<
+  AiTaskId,
+  { provider: keyof AdvancedMatchingAiFields; model: keyof AdvancedMatchingAiFields }
+> = {
   jd_filter: { provider: 'ai_jd_filter_provider', model: 'ai_jd_filter_model' },
   job_list: { provider: 'ai_job_list_provider', model: 'ai_job_list_model' },
   jd_parse: { provider: 'ai_jd_parse_provider', model: 'ai_jd_parse_model' },
 };
 
-export function resolveTaskAiConfig(
-  record: AdvancedMatchingAiFields,
-  task: AiTaskId,
-): AiTaskConfig | null {
+export function resolveTaskAiConfig(record: AdvancedMatchingAiFields, task: AiTaskId): AiTaskConfig | null {
   const { provider: providerField, model: modelField } = TASK_AI_COLUMNS[task];
   let provider = record[providerField] as string | null | undefined;
   let model = record[modelField] as string | null | undefined;
