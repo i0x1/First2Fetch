@@ -25,6 +25,9 @@ if pgrep -f '/Applications/First 2 Fetch.app/Contents/MacOS/First 2 Fetch' >/dev
   fail "The packaged app is still open. Quit First 2 Fetch, then run this launcher again. Both copies share sign-in and settings, so only one can run at a time."
 fi
 
+# The desktop bundle loads libraries/core/build. Compile it before Electron starts.
+pnpm --filter @first2apply/core build || fail "The shared app code did not compile. Review the build error above."
+
 # Polling avoids macOS file watcher exhaustion (EMFILE) in this large workspace.
 export WATCHPACK_POLLING=true
 export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--dns-result-order=ipv4first"

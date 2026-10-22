@@ -45,7 +45,7 @@ function createScanner() {
   const api = {
     listLinks: vi.fn(async () => links),
     listSites: vi.fn(async () => sites),
-    listJobs: vi.fn(async () => ({ jobs })),
+    listJobs: vi.fn(async (_args?: { after?: string }) => ({ jobs, nextPageToken: undefined as string | undefined })),
     runPostScanHook: vi.fn(async () => {}),
     increaseScrapeFailureCount: vi.fn(async () => {}),
   };
@@ -58,7 +58,7 @@ function createScanner() {
     analytics: { trackEvent: vi.fn() } as never,
   });
   scanners.push(scanner);
-  return { scanner, loadUrl, downloader };
+  return { scanner, loadUrl, downloader, api };
 }
 
 describe('LinkedIn scan isolation', () => {
@@ -111,4 +111,59 @@ describe('LinkedIn scan isolation', () => {
     expect(downloader.setLinkedInEnabled).toHaveBeenLastCalledWith(false);
     expect(scanner.getScannerStatus().nextLinkedinScanTime).toBeNull();
   });
+});
+
+it('pages through pending jobs and drains recent and older non-LinkedIn work', async () => {
+  const { scanner, loadUrl, api } = createScanner();
+  api.listJobs.mockImplementation(async ({ after }: { after?: string }) => after
+    ? { jobs: [{ id: 333, siteId: 2, title: 'Older job', externalUrl: 'https://jobs.example.com/333', status: 'processing' }], nextPageToken: undefined }
+    : { jobs, nextPageToken: 'next' });
+
+  await scanner.drainPendingDescriptions();
+
+  expect(api.listJobs).toHaveBeenCalledTimes(2);
+  expect(loadUrl.mock.calls.map(([request]) => request.url)).toEqual([
+    'https://jobs.example.com/222',
+    'https://jobs.example.com/333',
+  ]);
+});
+
+it('reserves half of each drain batch for old pending jobs', async () => {
+  const { scanner, loadUrl, api } = createScanner();
+  const pending = Array.from({ length: 60 }, (_, index) => ({
+    id: 1000 + index,
+    siteId: 2,
+    title: `Job ${index}`,
+    externalUrl: `https://jobs.example.com/${index}`,
+    status: 'processing',
+  }));
+  api.listJobs.mockResolvedValue({ jobs: pending, nextPageToken: undefined });
+
+  await scanner.drainPendingDescriptions();
+
+  const urls = loadUrl.mock.calls.map(([request]) => request.url);
+  expect(urls).toHaveLength(50);
+  expect(urls).toContain('https://jobs.example.com/0');
+  expect(urls).toContain('https://jobs.example.com/59');
+  expect(urls).not.toContain('https://jobs.example.com/30');
+});
+
+it('marks a clicked description as high priority', async () => {
+  const { scanner, loadUrl } = createScanner();
+  await scanner.scanJobs([jobs[1] as never], undefined, 'high');
+  expect(loadUrl).toHaveBeenCalledWith(expect.objectContaining({ priority: 'high' }));
+});
+
+it('shares one active description scan across background and clicked requests', async () => {
+  const { scanner, loadUrl } = createScanner();
+  let finish!: (job: typeof jobs[number]) => void;
+  loadUrl.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+
+  const background = scanner.scanJobs([jobs[1] as never]);
+  const selected = scanner.scanJobs([jobs[1] as never], undefined, 'high');
+  await vi.waitFor(() => expect(loadUrl).toHaveBeenCalledTimes(1));
+  finish(jobs[1]);
+
+  await Promise.all([background, selected]);
+  expect(loadUrl).toHaveBeenCalledTimes(1);
 });

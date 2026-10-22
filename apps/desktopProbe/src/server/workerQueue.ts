@@ -4,6 +4,7 @@ type AsyncTask<T> = () => Promise<T>;
 type QueuedTask = {
   run: () => Promise<void>;
   reject: (error: Error) => void;
+  priority: 'normal' | 'high';
 };
 
 /**
@@ -24,14 +25,14 @@ export class WorkerQueue extends EventEmitter {
   /**
    * Enqueue a task to be executed.
    */
-  enqueue<T>(task: AsyncTask<T>): Promise<T> {
+  enqueue<T>(task: AsyncTask<T>, priority: 'normal' | 'high' = 'normal'): Promise<T> {
     return new Promise((resolve, reject) => {
       if (this._isClosed) {
         reject(new Error('Worker queue is closed'));
         return;
       }
 
-      this._queue.push({
+      const queuedTask: QueuedTask = {
         run: async () => {
           try {
             resolve(await task());
@@ -40,7 +41,14 @@ export class WorkerQueue extends EventEmitter {
           }
         },
         reject,
-      });
+        priority,
+      };
+      if (priority === 'high') {
+        const firstNormal = this._queue.findIndex((item) => item.priority !== 'high');
+        this._queue.splice(firstNormal < 0 ? this._queue.length : firstNormal, 0, queuedTask);
+      } else {
+        this._queue.push(queuedTask);
+      }
       this.next();
     });
   }

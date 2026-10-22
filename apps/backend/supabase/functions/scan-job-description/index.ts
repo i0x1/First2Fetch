@@ -161,31 +161,9 @@ Deno.serve(async (req) => {
       }
     };
 
-    // Let's add a timeout of 30 seconds on the parsing operation, but without failing it
-    // This means it will still work in the background, but the client will not wait for it.
-    const timeoutPromise = new Promise<{
-      updatedJob: Job;
-      parseFailed: boolean;
-    }>((resolve) => {
-      setTimeout(() => {
-        resolve({
-          updatedJob: job,
-          parseFailed: false,
-        });
-      }, 30_000);
-    });
-
-    const { updatedJob, parseFailed } = await Promise.race([
-      parseDescriptionAndSaveUpdates().catch((error) => {
-        // If Promise.race rejects, catch it and return the original job
-        logger.error('job description scan promise failed', { jobId, error: getExceptionMessage(error) });
-        return {
-          updatedJob: job,
-          parseFailed: true,
-        };
-      }),
-      timeoutPromise,
-    ]);
+    // The caller must receive the saved result. Returning the original job
+    // after a timer makes a pending description look like a successful scan.
+    const { updatedJob, parseFailed } = await parseDescriptionAndSaveUpdates();
 
     return new Response(JSON.stringify({ job: updatedJob, parseFailed }), {
       headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },

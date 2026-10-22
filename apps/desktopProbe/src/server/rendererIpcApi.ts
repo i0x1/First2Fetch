@@ -232,7 +232,7 @@ export function initRendererIpcApi({
 
   ipcMain.handle('scan-job-description', async (_, { job }) =>
     _apiCall(async () => {
-      const [updatedJob] = await jobScanner.scanJobs([job]);
+      const [updatedJob] = await jobScanner.scanJobs([job], undefined, 'high');
       return { job: updatedJob };
     }),
   );

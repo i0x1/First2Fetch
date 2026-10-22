@@ -154,6 +154,9 @@ export class JobScanner {
   };
   private _cronJob: ScheduledTask | undefined;
   private _linkedinTimer: NodeJS.Timeout | undefined;
+  private _backlogTimer: NodeJS.Timeout | undefined;
+  private _backlogRunning = false;
+  private _jobScanPromises = new Map<number, Promise<Job>>();
   private _nextLinkedinScanAt: Date | undefined;
   private _prowerSaveBlockerId: number | undefined;
   private _notificationsMap: Map<string, Notification> = new Map();
@@ -330,6 +333,58 @@ export class JobScanner {
     return this.scanAllLinks({ linkedinOnly: true });
   }
 
+  /** Process pending descriptions between listing scans. Each run is bounded. */
+  startBacklogDrain() {
+    if (this._backlogTimer) return;
+    this._backlogTimer = setInterval(() => {
+      void this.drainPendingDescriptions().catch((error) => {
+        this._logger.error('pending description drain failed', { error: getExceptionMessage(error) });
+      });
+    }, 60_000);
+  }
+
+  stopBacklogDrain() {
+    if (this._backlogTimer) clearInterval(this._backlogTimer);
+    this._backlogTimer = undefined;
+  }
+
+  async drainPendingDescriptions() {
+    if (this._backlogRunning || this._settings.isPaused || !this._isRunning || this.isScanning()) return;
+    this._backlogRunning = true;
+    try {
+      const jobs = await this._loadPendingJobs(50, 'other');
+      if (jobs.length > 0) {
+        this._logger.info('pending description drain started', { jobsCount: jobs.length });
+        await this.scanJobs(jobs, 'other');
+        this._logger.info('pending description drain completed', { jobsCount: jobs.length });
+      }
+    } finally {
+      this._backlogRunning = false;
+    }
+  }
+
+  private async _loadPendingJobs(batchSize: number, source: 'linkedin' | 'other'): Promise<Job[]> {
+    const pending: Job[] = [];
+    let after: string | undefined;
+    for (let page = 0; page < 20; page++) {
+      const result = await this._supabaseApi.listJobs({ status: 'processing', limit: 100, after });
+      pending.push(...result.jobs);
+      if (!result.nextPageToken || result.nextPageToken === after) break;
+      after = result.nextPageToken;
+    }
+    const sites = await this._supabaseApi.listSites();
+    const linkedinIds = new Set(sites.filter((site) => site.provider === 'linkedin').map((site) => site.id));
+    const sourceJobs = pending.filter((job) =>
+      (linkedinIds.has(job.siteId) || isLinkedInUrl(job.externalUrl)) === (source === 'linkedin'),
+    );
+    // Split capacity between fresh listings and the oldest backlog.
+    const recentCount = Math.ceil(batchSize / 2);
+    const recent = sourceJobs.slice(0, recentCount);
+    const recentIds = new Set(recent.map((job) => job.id));
+    const oldest = sourceJobs.reverse().filter((job) => !recentIds.has(job.id)).slice(0, batchSize - recent.length);
+    return [...recent, ...oldest];
+  }
+
   /**
    * Perform a scan of a list links.
    */
@@ -418,10 +473,7 @@ export class JobScanner {
 
       // scan job descriptions for all pending jobs
       if (!this._isRunning) return;
-      const { jobs } = await this._supabaseApi.listJobs({
-        status: 'processing',
-        limit: 300,
-      });
+      const jobs = await this._loadPendingJobs(100, source);
       this._logger.info('job description queue ready', { jobsCount: jobs.length });
       if (jobs.length > 0) {
         this._logToUi(`Found ${jobs.length} jobs that need detailed processing`);
@@ -475,7 +527,7 @@ export class JobScanner {
   /**
    * Scan a list of new jobs to extract the description.
    */
-  async scanJobs(jobs: Job[], source?: 'linkedin' | 'other'): Promise<Job[]> {
+  async scanJobs(jobs: Job[], source?: 'linkedin' | 'other', priority: 'normal' | 'high' = 'normal'): Promise<Job[]> {
     this._logger.info('job description scan started', { jobsCount: jobs.length });
     this._logToUi(`Processing ${jobs.length} job descriptions...`);
 
@@ -501,7 +553,10 @@ export class JobScanner {
         if (!this._isRunning) return chunkOfJobs; // stop if the scanner is closed
 
         return Promise.all(
-          chunkOfJobs.map(async (job) => {
+          chunkOfJobs.map((job) => {
+            const inFlight = this._jobScanPromises.get(job.id);
+            if (inFlight) return inFlight;
+            const task = (async () => {
             try {
               // Add to current scanning jobs
               this._currentScanningJobs.set(String(job.id), {
@@ -515,6 +570,7 @@ export class JobScanner {
               return await htmlDownloader.loadUrl({
                 url: job.externalUrl,
                 scrollTimes: 1,
+                priority,
                 callback: async ({ html, maxRetries, retryCount }) => {
                   this._logger.debug('job html downloaded', {
                     jobId: job.id,
@@ -548,10 +604,6 @@ export class JobScanner {
                     throw new Error(`failed to parse job description for ${job.id}`);
                   }
 
-                  // add a random delay before moving on to the next link
-                  // to avoid being rate limited by cloudflare
-                  await waitRandomBetween(2000, 5000);
-
                   this._logToUi(`Successfully processed: ${job.title}`);
                   return updatedJob;
                 },
@@ -572,6 +624,13 @@ export class JobScanner {
                 // Remove from current scanning jobs
                 this._currentScanningJobs.delete(String(job.id));
             }
+            })();
+            this._jobScanPromises.set(job.id, task);
+            const clearInFlight = () => {
+              if (this._jobScanPromises.get(job.id) === task) this._jobScanPromises.delete(job.id);
+            };
+            void task.then(clearInFlight, clearInFlight);
+            return task;
           }),
         );
       }).then((r) => r.flat());
@@ -655,6 +714,7 @@ export class JobScanner {
    * Close the scanner.
    */
   close() {
+    this.stopBacklogDrain();
     // end cron job
     if (this._cronJob) {
       this._logger.info(`stopping cron schedule`);

@@ -89,3 +89,36 @@ it('stops LinkedIn after an access challenge and still loads another site', asyn
   })).resolves.toBe('Other loaded');
   expect(loadURL).toHaveBeenCalledTimes(2);
 });
+
+it('releases the browser worker before parsing the captured HTML', async () => {
+  let workerBusy = false;
+  const window = {
+    loadURL: vi.fn(async () => {}),
+    webContents: {
+      once: vi.fn(),
+      executeJavaScript: vi.fn(async (script: string) => script === 'document.title' ? 'Jobs' : '<html>Job</html>'),
+      getURL: () => 'https://jobs.example.com/1',
+    },
+  };
+  const downloader = new HtmlDownloader({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
+    numInstances: 1,
+    incognitoMode: false,
+  });
+  (downloader as never as { _pool: unknown })._pool = {
+    useBrowserWindow: async (useWindow: (window: unknown) => Promise<unknown>) => {
+      workerBusy = true;
+      try { return await useWindow(window); } finally { workerBusy = false; }
+    },
+  };
+  (downloader as never as { _isRunning: boolean })._isRunning = true;
+
+  await downloader.loadUrl({
+    url: 'https://jobs.example.com/1',
+    scrollTimes: 0,
+    callback: async ({ html }) => {
+      expect(workerBusy).toBe(false);
+      expect(html).toBe('<html>Job</html>');
+    },
+  });
+});

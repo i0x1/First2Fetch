@@ -27,3 +27,17 @@ it('rejects new work after close', async () => {
 
   await expect(queue.enqueue(async () => 'late')).rejects.toThrow('Worker queue is closed');
 });
+
+it('runs user requested work before queued background work', async () => {
+  const queue = new WorkerQueue(1);
+  const order: string[] = [];
+  let finishActive!: () => void;
+  const active = queue.enqueue(() => new Promise<void>((resolve) => { finishActive = resolve; }));
+  const background = queue.enqueue(async () => { order.push('background'); });
+  const selected = queue.enqueue(async () => { order.push('selected'); }, 'high');
+
+  finishActive();
+  await Promise.all([active, background, selected]);
+
+  expect(order).toEqual(['selected', 'background']);
+});

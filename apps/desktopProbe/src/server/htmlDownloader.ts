@@ -103,17 +103,18 @@ export class HtmlDownloader {
   /**
    * Load the HTML of a given URL with concurrency support.
    *
-   * Takes in a callback that will be called with the HTML content. Will be retried if it fails
-   * with a new version of the window's HTML. Using a callback instead of returning the HTML directly
-   * because we need to keep the window aquired until the callback is finished.
+   * Capture HTML in a browser worker, then release the worker before calling
+   * the parser. A failed parser callback can retry with the captured HTML.
    */
   async loadUrl<T>({
     url,
     scrollTimes = 3,
     callback,
+    priority = 'normal',
   }: {
     url: string;
     scrollTimes?: number;
+    priority?: 'normal' | 'high';
     callback: (_: {
       html: string;
       webPageRuntimeData: WebPageRuntimeData;
@@ -124,40 +125,37 @@ export class HtmlDownloader {
     if (!this._pool) throw new Error('Pool not initialized');
     this._checkLinkedInAccess(url);
 
-    return this._pool.useBrowserWindow(async (window) => {
+    const captured = await this._pool.useBrowserWindow(async (window) => {
       this._checkLinkedInAccess(url);
       await this._loadUrl(window, url, scrollTimes);
       this._checkLinkedInAccess(url);
+      if (isLinkedInUrl(window.webContents.getURL())) {
+        await window.webContents.executeJavaScript(getLinkedinReactContextBuilder()).catch((error) => {
+          this._logger.error(`Failed to inject LinkedIn React context fallback: ${getExceptionMessage(error)}`);
+        });
+      }
+      const html: string = await window.webContents.executeJavaScript('document.documentElement.innerHTML');
+      const webPageRuntimeData = consumeRuntimeData(window.webContents.getURL());
+      return { html, webPageRuntimeData };
+    }, priority);
 
-      const maxRetries = 1;
-      let retryCount = 0;
-      return backOff(
-        async () => {
-          this._checkLinkedInAccess(url);
-          if (isLinkedInUrl(window.webContents.getURL())) {
-            await window.webContents.executeJavaScript(getLinkedinReactContextBuilder()).catch((error) => {
-              this._logger.error(`Failed to inject LinkedIn React context fallback: ${getExceptionMessage(error)}`);
-            });
-          }
-
-          const html: string = await window.webContents.executeJavaScript('document.documentElement.innerHTML');
-          const finalUrl = window.webContents.getURL();
-          const webPageRuntimeData = consumeRuntimeData(finalUrl);
-          this._checkLinkedInAccess(url);
-          return callback({ html, webPageRuntimeData, maxRetries, retryCount: retryCount++ });
-        },
-        {
-          jitter: 'full',
-          numOfAttempts: 1 + maxRetries,
-          maxDelay: 5_000,
-          startingDelay: 1_000,
-          retry: () => {
-            // perform retries only if the window is still running
-            return this._isRunning && !isLinkedInUrl(url);
-          },
-        },
-      );
-    });
+    // Parsing and API calls can take much longer than navigation. Release the
+    // browser before them so queued pages and user clicks can proceed.
+    const maxRetries = 1;
+    let retryCount = 0;
+    return backOff(
+      () => {
+        this._checkLinkedInAccess(url);
+        return callback({ ...captured, maxRetries, retryCount: retryCount++ });
+      },
+      {
+        jitter: 'full',
+        numOfAttempts: 1 + maxRetries,
+        maxDelay: 5_000,
+        startingDelay: 1_000,
+        retry: () => this._isRunning && !isLinkedInUrl(url),
+      },
+    );
   }
 
   /**
@@ -342,7 +340,7 @@ class BrowserWindowPool {
   /**
    * Get an available window and use it.
    */
-  async useBrowserWindow<T>(fn: (window: BrowserWindow) => Promise<T>) {
+  async useBrowserWindow<T>(fn: (window: BrowserWindow) => Promise<T>, priority: 'normal' | 'high' = 'normal') {
     return this._queue.enqueue(() => {
       const worker = this._pool.find((w) => w.isAvailable);
       if (!worker) throw new Error('No available window found');
@@ -351,7 +349,7 @@ class BrowserWindowPool {
       return fn(worker.window).finally(() => {
         worker.isAvailable = true;
       });
-    });
+    }, priority);
   }
 
   getSession() {

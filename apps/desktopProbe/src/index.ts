@@ -280,12 +280,12 @@ let supabaseApi!: F2aSupabaseApi;
 const htmlDownloaders = [
   new HtmlDownloader({
     logger,
-    numInstances: 2,
+    numInstances: 3,
     incognitoMode: false,
   }),
   new HtmlDownloader({
     logger,
-    numInstances: 1,
+    numInstances: 2,
     incognitoMode: true,
   }),
 ];
@@ -520,6 +520,9 @@ async function bootstrap() {
         if (session?.user?.id) {
           // set the user id for logging and analytics
           analytics.setUserId(session.user.id);
+          jobScanner?.startBacklogDrain();
+        } else {
+          jobScanner?.stopBacklogDrain();
         }
 
         // clear the session from disk if it's being removed
