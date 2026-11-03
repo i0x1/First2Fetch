@@ -1,5 +1,5 @@
 import { IAnalyticsClient } from '@/lib/analytics';
-import { getExceptionMessage } from '@first2apply/core';
+import { SiteProvider, getExceptionMessage } from '@first2apply/core';
 import { Job, Link } from '@first2apply/core';
 import { Notification, app, powerSaveBlocker } from 'electron';
 import fs from 'fs';
@@ -112,7 +112,15 @@ function getNextCronTime(cronExpression: string): Date | null {
   }
 }
 
-import { AVAILABLE_CRON_RULES, JobScannerSettings, ScannerJobStatus, ScannerStatus } from '../lib/types';
+import {
+  AVAILABLE_CRON_RULES,
+  DEFAULT_CUSTOM_BOARD_SCAN_INTERVAL_MINUTES,
+  JobScannerSettings,
+  MAX_CUSTOM_BOARD_SCAN_INTERVAL_MINUTES,
+  MIN_CUSTOM_BOARD_SCAN_INTERVAL_MINUTES,
+  ScannerJobStatus,
+  ScannerStatus,
+} from '../lib/types';
 import { chunk, promiseAllSequence, waitRandomBetween } from './helpers';
 import {
   HtmlDownloader,
@@ -123,6 +131,32 @@ import {
 } from './htmlDownloader';
 import { ILogger } from './logger';
 import { F2aSupabaseApi } from './supabaseApi';
+
+// Custom boards ride on the regular scan schedule, and the previous scan finishes a few
+// minutes after it starts. Without this slack, a 30 min interval on a 30 min schedule
+// would be skipped every other run.
+const CUSTOM_BOARD_DUE_LEEWAY_MS = 5 * 60_000;
+
+/** Effective custom board interval, falling back to the 24h default for missing or invalid values. */
+export function getCustomBoardScanIntervalMinutes(settings: Pick<JobScannerSettings, 'customBoardScanIntervalMinutes'>): number {
+  const value = settings.customBoardScanIntervalMinutes;
+  if (
+    typeof value !== 'number' ||
+    !Number.isInteger(value) ||
+    value < MIN_CUSTOM_BOARD_SCAN_INTERVAL_MINUTES ||
+    value > MAX_CUSTOM_BOARD_SCAN_INTERVAL_MINUTES
+  ) {
+    return DEFAULT_CUSTOM_BOARD_SCAN_INTERVAL_MINUTES;
+  }
+  return value;
+}
+
+/** Whether a custom board link is due for another (LLM-parsed) scan. */
+export function isCustomBoardScanDue(lastScrapedAt: string | null | undefined, intervalMinutes: number, now = Date.now()): boolean {
+  const lastMs = lastScrapedAt ? new Date(lastScrapedAt).getTime() : NaN;
+  if (Number.isNaN(lastMs)) return true;
+  return now - lastMs >= intervalMinutes * 60_000 - CUSTOM_BOARD_DUE_LEEWAY_MS;
+}
 
 const userDataPath = app.getPath('userData');
 const settingsPath = path.join(userDataPath, 'settings.json');
@@ -213,6 +247,7 @@ export class JobScanner {
       this._logger.info('scanner settings loaded', {
         cronRule: settingsToApply.cronRule,
         linkedinScanIntervalMinutes: settingsToApply.linkedinScanIntervalMinutes,
+        customBoardScanIntervalMinutes: settingsToApply.customBoardScanIntervalMinutes,
         isPaused: settingsToApply.isPaused,
       });
     } else {
@@ -323,13 +358,36 @@ export class JobScanner {
     
       const sites = await this._supabaseApi.listSites();
       const linkedinSiteIds = new Set(sites.filter(site => site.provider === 'linkedin').map(site => site.id));
-      const linksToScan = allLinks.filter(link =>
+      const sourceLinks = allLinks.filter(link =>
         (linkedinSiteIds.has(link.site_id) || isLinkedInUrl(link.url)) === linkedinOnly,
       );
-      this._logger.info('scan links selected', { mode: linkedinOnly ? 'linkedin' : 'other', linksCount: linksToScan.length });
-      this._logToUi(`Found ${linksToScan.length} ${linkedinOnly ? 'LinkedIn' : 'other'} links to scan`);
 
-      return await this.scanLinks({ links: linksToScan, source: linkedinOnly ? 'linkedin' : 'other' });
+      // Custom boards follow their own interval. When one is due, ask the backend to
+      // parse it even if its default once-a-day limit has not passed yet.
+      const customSiteIds = new Set(sites.filter((site) => site.provider === SiteProvider.custom).map((site) => site.id));
+      const customIntervalMinutes = getCustomBoardScanIntervalMinutes(this._settings);
+      const notDueCustomLinks = sourceLinks.filter(
+        (link) => customSiteIds.has(link.site_id) && !isCustomBoardScanDue(link.last_scraped_at, customIntervalMinutes),
+      );
+      const notDueIds = new Set(notDueCustomLinks.map((link) => link.id));
+      const linksToScan = sourceLinks.filter((link) => !notDueIds.has(link.id));
+      const forceLinkIds = new Set(linksToScan.filter((link) => customSiteIds.has(link.site_id)).map((link) => link.id));
+
+      this._logger.info('scan links selected', {
+        mode: linkedinOnly ? 'linkedin' : 'other',
+        linksCount: linksToScan.length,
+        customDueCount: forceLinkIds.size,
+        customNotDueCount: notDueCustomLinks.length,
+        customIntervalMinutes,
+      });
+      this._logToUi(`Found ${linksToScan.length} ${linkedinOnly ? 'LinkedIn' : 'other'} links to scan`);
+      if (notDueCustomLinks.length > 0) {
+        this._logToUi(
+          `Skipping ${notDueCustomLinks.length} custom board${notDueCustomLinks.length === 1 ? '' : 's'} not due yet (every ${formatMinutes(customIntervalMinutes)})`,
+        );
+      }
+
+      return await this.scanLinks({ links: linksToScan, source: linkedinOnly ? 'linkedin' : 'other', forceLinkIds });
     } finally {
       if (linkedinOnly) this._startingLinkedinScan = false;
       else this._startingOtherScan = false;
@@ -400,7 +458,18 @@ export class JobScanner {
   /**
    * Perform a scan of a list links.
    */
-  async scanLinks({ links, sendNotification = true, source = 'other' }: { links: Link[]; sendNotification?: boolean; source?: 'linkedin' | 'other' }) {
+  async scanLinks({
+    links,
+    sendNotification = true,
+    source = 'other',
+    forceLinkIds,
+  }: {
+    links: Link[];
+    sendNotification?: boolean;
+    source?: 'linkedin' | 'other';
+    /** Links to parse even if the backend's once-a-day custom board limit has not passed. */
+    forceLinkIds?: Set<number>;
+  }) {
     if (source === 'linkedin' && !this._settings.linkedinScanIntervalMinutes) return;
     try {
       this._logger.info('scan started', { linksCount: links.length });
@@ -425,7 +494,14 @@ export class JobScanner {
                 if (!this._isRunning) return []; // stop if the scanner is closed
 
                 const { newJobs, parseFailed } = await this._supabaseApi.scanHtmls([
-                  { linkId: link.id, content: html, webPageRuntimeData, maxRetries, retryCount },
+                  {
+                    linkId: link.id,
+                    content: html,
+                    webPageRuntimeData,
+                    maxRetries,
+                    retryCount,
+                    force: forceLinkIds?.has(link.id) || undefined,
+                  },
                 ]);
 
                 if (parseFailed) {
@@ -763,7 +839,8 @@ export class JobScanner {
     if (isLinkedIn && !this._settings.linkedinScanIntervalMinutes) throw new Error('LinkedIn scanning is off');
 
     // scan the link after the debug window is closed
-    this.scanLinks({ links: [link], source: isLinkedIn ? 'linkedin' : 'other' }).catch((error) => {
+    // a scan the user asked for always runs, even for a custom board that is not due
+    this.scanLinks({ links: [link], source: isLinkedIn ? 'linkedin' : 'other', forceLinkIds: new Set([link.id]) }).catch((error) => {
       this._logger.error(getExceptionMessage(error));
     });
   }
@@ -841,4 +918,10 @@ export class JobScanner {
     this._settings = settings;
     this._logger.info(`settings applied successfully`);
   }
+}
+
+function formatMinutes(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  if (minutes % 60 === 0) return minutes === 60 ? 'hour' : `${minutes / 60} hours`;
+  return `${minutes} min`;
 }

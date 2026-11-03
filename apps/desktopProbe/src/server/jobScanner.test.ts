@@ -16,7 +16,7 @@ vi.mock('./helpers', async (importOriginal) => ({
   waitRandomBetween: async () => {},
 }));
 
-import { JobScanner } from './jobScanner';
+import { JobScanner, getCustomBoardScanIntervalMinutes, isCustomBoardScanDue } from './jobScanner';
 
 const sites = [
   { id: 1, provider: 'linkedin', incognito_support: false },
@@ -166,4 +166,75 @@ it('shares one active description scan across background and clicked requests', 
 
   await Promise.all([background, selected]);
   expect(loadUrl).toHaveBeenCalledTimes(1);
+});
+
+describe('custom board scan interval', () => {
+  const now = Date.now();
+  const minutesAgo = (minutes: number) => new Date(now - minutes * 60_000).toISOString();
+
+  it('treats a scan as due within a few minutes of the interval and when never scraped', () => {
+    expect(isCustomBoardScanDue(undefined, 60, now)).toBe(true);
+    expect(isCustomBoardScanDue(minutesAgo(28), 30, now)).toBe(true); // previous run finished a bit late
+    expect(isCustomBoardScanDue(minutesAgo(20), 30, now)).toBe(false);
+    expect(isCustomBoardScanDue(minutesAgo(60 * 6), 1440, now)).toBe(false);
+  });
+
+  it('falls back to 24 hours for missing or out-of-range values', () => {
+    expect(getCustomBoardScanIntervalMinutes({})).toBe(1440);
+    expect(getCustomBoardScanIntervalMinutes({ customBoardScanIntervalMinutes: 5 })).toBe(1440);
+    expect(getCustomBoardScanIntervalMinutes({ customBoardScanIntervalMinutes: 90.5 })).toBe(1440);
+    expect(getCustomBoardScanIntervalMinutes({ customBoardScanIntervalMinutes: 90 })).toBe(90);
+  });
+
+  function createCustomBoardScanner(customLinks: Array<{ id: number; last_scraped_at: string }>) {
+    const { scanner, loadUrl, api } = createScanner();
+    const allSites = [...sites, { id: 3, provider: 'custom', incognito_support: false }];
+    const allLinks = [
+      links[1],
+      ...customLinks.map((link) => ({ ...link, site_id: 3, title: `Board ${link.id}`, url: `https://board${link.id}.example.com/`, scrape_failure_count: 0 })),
+    ];
+    api.listSites.mockResolvedValue(allSites as never);
+    api.listLinks.mockResolvedValue(allLinks as never);
+    api.listJobs.mockResolvedValue({ jobs: [], nextPageToken: undefined });
+    const scanHtmls = vi.fn(async (_htmls: Array<{ linkId: number; force?: boolean }>) => ({ newJobs: [], parseFailed: false }));
+    (api as Record<string, unknown>).scanHtmls = scanHtmls;
+    loadUrl.mockImplementation((async ({ callback }: { callback: (args: unknown) => Promise<unknown> }) =>
+      callback({ html: '<html></html>', webPageRuntimeData: {}, maxRetries: 1, retryCount: 0 })) as never);
+    return { scanner, loadUrl, scanHtmls };
+  }
+
+  it('scans due custom boards with force and skips ones scanned within the interval', async () => {
+    const { scanner, loadUrl, scanHtmls } = createCustomBoardScanner([
+      { id: 31, last_scraped_at: minutesAgo(65) },
+      { id: 32, last_scraped_at: minutesAgo(10) },
+    ]);
+    scanner.updateSettings({ ...scanner.getSettings(), customBoardScanIntervalMinutes: 60 });
+
+    await scanner.scanAllLinks();
+
+    expect(loadUrl.mock.calls.map(([request]) => request.url)).toEqual([
+      'https://jobs.example.com/search',
+      'https://board31.example.com/',
+    ]);
+    const requests = scanHtmls.mock.calls.map(([htmls]) => htmls[0]);
+    expect(requests.find((html) => html.linkId === 31)?.force).toBe(true);
+    expect(requests.find((html) => html.linkId === 22)?.force).toBeUndefined();
+  });
+
+  it('keeps the once-a-day default when no interval is set', async () => {
+    const { scanner, loadUrl } = createCustomBoardScanner([{ id: 31, last_scraped_at: minutesAgo(65) }]);
+
+    await scanner.scanAllLinks();
+
+    expect(loadUrl.mock.calls.map(([request]) => request.url)).toEqual(['https://jobs.example.com/search']);
+  });
+
+  it('always scans a custom board when the user retries it directly', async () => {
+    const { scanner, scanHtmls } = createCustomBoardScanner([{ id: 32, last_scraped_at: minutesAgo(10) }]);
+
+    await scanner.scanLink({ linkId: 32 });
+    await vi.waitFor(() => expect(scanHtmls).toHaveBeenCalled());
+
+    expect(scanHtmls.mock.calls[0][0][0]).toMatchObject({ linkId: 32, force: true });
+  });
 });

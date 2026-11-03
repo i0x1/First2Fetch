@@ -1,4 +1,5 @@
 import { CronSchedule } from '@/components/cronSchedule';
+import { CustomBoardScanInterval } from '@/components/customBoardScanInterval';
 import {
   AiProvidersFormState,
   AiProvidersSection,
@@ -257,6 +258,12 @@ export function SettingsPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </CompactKvRow>
+            <CompactKvRow label="Custom boards" hint="Simplify, YC, JobSignal… each scan uses an AI parse">
+              <CustomBoardScanInterval
+                value={settings.customBoardScanIntervalMinutes}
+                onChange={(minutes) => onUpdatedSettings({ ...settings, customBoardScanIntervalMinutes: minutes })}
+              />
             </CompactKvRow>
             <CompactKvRow label="In-app browser">
               <Switch

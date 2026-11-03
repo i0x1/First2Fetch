@@ -42,6 +42,13 @@ export type CronRule = (typeof AVAILABLE_CRON_RULES)[number];
 
 export const LINKEDIN_SCAN_INTERVALS = [30, 60, 120, 240, 480, 720, 1440] as const;
 
+/** Preset intervals for custom job boards (Simplify, YC, JobSignal, ...). Any whole number of minutes is accepted. */
+export const CUSTOM_BOARD_SCAN_INTERVALS = [30, 60, 120, 240, 360, 720, 1440] as const;
+/** Matches the backend's default once-a-day limit for custom boards. */
+export const DEFAULT_CUSTOM_BOARD_SCAN_INTERVAL_MINUTES = 1440;
+export const MIN_CUSTOM_BOARD_SCAN_INTERVAL_MINUTES = 15;
+export const MAX_CUSTOM_BOARD_SCAN_INTERVAL_MINUTES = 10080; // 1 week
+
 export type JobScannerSettings = {
   cronRule?: string;
   preventSleep: boolean;
@@ -49,6 +56,7 @@ export type JobScannerSettings = {
   areEmailAlertsEnabled: boolean;
   inAppBrowserEnabled: boolean;
   linkedinScanIntervalMinutes?: number; // undefined means LinkedIn scanning is off
+  customBoardScanIntervalMinutes?: number; // undefined means once every 24h
   isPaused: boolean; // Global pause/resume for job scraping
 };
 
