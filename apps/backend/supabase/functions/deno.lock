@@ -6,11 +6,11 @@
     "npm:@google/generative-ai@*": "0.24.1",
     "npm:@supabase/supabase-js@2.76.1": "2.76.1",
     "npm:mailersend@2.6.0": "2.6.0",
-    "npm:openai@6.7.0": "6.7.0_zod@3.25.1",
+    "npm:openai@6.7.0": "6.7.0_zod@4.6.6",
     "npm:resend@4.0.0": "4.0.0_react@18.3.1_react-dom@18.3.1__react@18.3.1",
     "npm:stripe@15.1.0": "15.1.0",
     "npm:turndown@7.1.2": "7.1.2",
-    "npm:zod@3.25.1": "3.25.1"
+    "npm:zod@4.6.6": "4.6.6"
   },
   "jsr": {
     "@std/encoding@1.0.10": {
@@ -611,7 +611,7 @@
     "object-inspect@1.13.4": {
       "integrity": "sha512-W67iLl4J2EXEGTbfeHCffrjDfitvLANg0UlX3wFUUSTx92KXRFegMHUVgSqE+wvhAbi4WqjGg9czysTV2Epbew=="
     },
-    "openai@6.7.0_zod@3.25.1": {
+    "openai@6.7.0_zod@4.6.6": {
       "integrity": "sha512-mgSQXa3O/UXTbA8qFzoa7aydbXBJR5dbLQXCRapAOtoNT+v69sLdKMZzgiakpqhclRnhPggPAXoniVGn2kMY2A==",
       "dependencies": [
         "zod"
@@ -870,8 +870,8 @@
     "ws@8.21.0": {
       "integrity": "sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g=="
     },
-    "zod@3.25.1": {
-      "integrity": "sha512-bkxUGQiqWDTXHSgqtevYDri5ee2GPC9szPct4pqpzLEpswgDQmuseDz81ZF0AnNu1xsmnBVmbtv/t/WeUIHlpg=="
+    "zod@4.6.6": {
+      "integrity": "sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA=="
     }
   },
   "remote": {
@@ -908,7 +908,7 @@
       "npm:resend@4.0.0",
       "npm:stripe@15.1.0",
       "npm:turndown@7.1.2",
-      "npm:zod@3.25.1"
+      "npm:zod@4.6.6"
     ]
   }
 }

@@ -8,9 +8,9 @@
     "npm:resend": "npm:resend@4.0.0",
     "npm:stripe": "npm:stripe@15.1.0",
     "npm:turndown": "npm:turndown@7.1.2",
-    "npm:zod": "npm:zod@3.25.1",
+    "npm:zod": "npm:zod@4.6.6",
     "openai": "npm:openai@6.7.0",
     "turndown": "npm:turndown@7.1.2",
-    "zod": "npm:zod@3.25.1"
+    "zod": "npm:zod@4.6.6"
   }
 }
