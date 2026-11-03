@@ -185,16 +185,24 @@ export function ScannerStatusPage() {
           </div>
           <div className="flex items-center justify-between gap-2">
             <span>
-              <strong className="text-foreground">LinkedIn</strong> · {status.linkedinEnabled ? status.linkedinAccessBlocked ? 'Access challenge' : status.isLinkedinScanning ? 'Scanning' : 'Idle' : 'Off'}
+              <strong className="text-foreground">LinkedIn</strong> · {status.linkedinEnabled ? status.linkedinAccessBlocked ? 'Access challenge, paused' : status.isLinkedinScanning ? 'Scanning' : 'Idle' : 'Off'}
               {' · '}Last: {status.lastLinkedinScanTime ? luxon.DateTime.fromISO(status.lastLinkedinScanTime).toRelative() : 'None this session'}
-              {' · '}Next: {status.linkedinEnabled && !status.linkedinAccessBlocked && status.nextLinkedinScanTime ? luxon.DateTime.fromISO(status.nextLinkedinScanTime).toRelative() : 'None'}
+              {' · '}Next: {!status.linkedinEnabled
+                ? 'None'
+                : status.linkedinAccessBlocked
+                  ? status.linkedinAccessBlockedUntil
+                    ? `after ${luxon.DateTime.fromISO(status.linkedinAccessBlockedUntil).toLocaleString(luxon.DateTime.TIME_SIMPLE)}`
+                    : 'None'
+                  : status.nextLinkedinScanTime
+                    ? luxon.DateTime.fromISO(status.nextLinkedinScanTime).toRelative()
+                    : 'None'}
             </span>
             {status.linkedinEnabled && (
               <Button
                 variant="outline"
                 size="sm"
                 className="h-6 shrink-0 px-2 text-[10px]"
-                disabled={status.linkedinAccessBlocked || status.isLinkedinScanning}
+                disabled={status.isLinkedinScanning}
                 onClick={() => void scanLinkedInNow().catch((error) => handleError({ error }))}
               >
                 Scan LinkedIn now

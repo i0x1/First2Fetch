@@ -8,7 +8,24 @@ import { ILogger } from './logger';
 import { WorkerQueue } from './workerQueue';
 
 const KNOWN_AUTHWALLS = ['/authwall', '/login', '/checkpoint/'];
-let linkedInAccessBlocked = false;
+// A LinkedIn access challenge pauses LinkedIn scans for a cooldown instead of
+// until the app restarts. Repeated challenges back off: 1h, 2h, 4h, capped at 8h.
+const LINKEDIN_BLOCK_BASE_MS = 60 * 60 * 1000;
+const LINKEDIN_BLOCK_MAX_MS = 8 * 60 * 60 * 1000;
+let linkedInBlockedUntil = 0;
+let linkedInBlockStrikes = 0;
+
+function markLinkedInAccessBlocked() {
+  // concurrent LinkedIn pages can hit the same challenge; count it once
+  if (isLinkedInAccessBlocked()) return;
+  linkedInBlockStrikes++;
+  const cooldownMs = Math.min(LINKEDIN_BLOCK_BASE_MS * 2 ** (linkedInBlockStrikes - 1), LINKEDIN_BLOCK_MAX_MS);
+  linkedInBlockedUntil = Date.now() + cooldownMs;
+}
+
+function markLinkedInAccessOk() {
+  linkedInBlockStrikes = 0;
+}
 
 export function isLinkedInUrl(url: string): boolean {
   try {
@@ -19,8 +36,18 @@ export function isLinkedInUrl(url: string): boolean {
   }
 }
 
-export function isLinkedInAccessBlocked(): boolean {
-  return linkedInAccessBlocked;
+export function isLinkedInAccessBlocked(now = Date.now()): boolean {
+  return now < linkedInBlockedUntil;
+}
+
+/** When the current LinkedIn cooldown ends, or null when LinkedIn is not paused. */
+export function getLinkedInAccessBlockedUntil(): Date | null {
+  return isLinkedInAccessBlocked() ? new Date(linkedInBlockedUntil) : null;
+}
+
+/** Lift the cooldown for a user-requested scan. The backoff level is kept until a scan succeeds. */
+export function clearLinkedInAccessBlock() {
+  linkedInBlockedUntil = 0;
 }
 
 const CHALLENGE_TITLE_PATTERNS = [
@@ -160,7 +187,7 @@ export class HtmlDownloader {
   private _checkLinkedInAccess(url: string) {
     if (!isLinkedInUrl(url)) return;
     if (!this._linkedInEnabled) throw new Error('LinkedIn scanning is off');
-    if (linkedInAccessBlocked) throw new Error('LinkedIn access challenge; restart after resolving it');
+    if (isLinkedInAccessBlocked()) throw new Error('LinkedIn access challenge; scans paused until the cooldown ends');
   }
 
   /**
@@ -256,14 +283,14 @@ export class HtmlDownloader {
           isAccessChallengeTitle(title)
         ) {
           this._logger.warn('page access challenge detected', { ...getUrlSummary(url), statusCode });
-          if (isLinkedIn) linkedInAccessBlocked = true;
+          if (isLinkedIn) markLinkedInAccessBlocked();
           throw new Error('rate limit exceeded');
         }
 
         const loadedUrl = window.webContents.getURL();
         if (isLinkedIn && isAuthwallUrl(loadedUrl)) {
           this._logger.warn('page load authwall detected', getUrlSummary(loadedUrl));
-          linkedInAccessBlocked = true;
+          markLinkedInAccessBlocked();
           throw new Error('authwall');
         }
 
@@ -314,7 +341,7 @@ export class HtmlDownloader {
           const finalUrl = window.webContents.getURL();
           if (isAuthwallUrl(finalUrl)) {
             this._logger.warn('page load authwall detected', getUrlSummary(finalUrl));
-            if (isLinkedIn) linkedInAccessBlocked = true;
+            if (isLinkedIn) markLinkedInAccessBlocked();
             throw new Error('authwall');
           }
         }
@@ -325,10 +352,12 @@ export class HtmlDownloader {
         maxDelay: 10_000,
         retry: (error) => {
           // Access challenges require user action. Repeating the request adds load.
-          return this._isRunning && (!isLinkedIn || !linkedInAccessBlocked) && !NON_RETRYABLE_LOAD_ERRORS.includes(error instanceof Error ? error.message : String(error));
+          return this._isRunning && (!isLinkedIn || !isLinkedInAccessBlocked()) && !NON_RETRYABLE_LOAD_ERRORS.includes(error instanceof Error ? error.message : String(error));
         },
       },
     );
+
+    if (isLinkedIn) markLinkedInAccessOk();
 
     if (isGlassdoorUrl(url)) {
       // best effort: a failure here must not discard the cards that already loaded

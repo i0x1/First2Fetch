@@ -44,6 +44,7 @@ vi.mock('@/lib/electronMainSdk', () => ({
     linkedinCronRule: undefined,
     linkedinEnabled: false,
     linkedinAccessBlocked: false,
+    linkedinAccessBlockedUntil: null,
     isLinkedinScanning: false,
     isOtherScanning: false,
     lastLinkedinScanTime: null,
@@ -79,6 +80,7 @@ describe('ScannerStatusPage', () => {
       linkedinCronRule: 'Every 120 minutes',
       linkedinEnabled: true,
       linkedinAccessBlocked: false,
+      linkedinAccessBlockedUntil: null,
       isLinkedinScanning: false,
       isOtherScanning: false,
       lastLinkedinScanTime: null,
@@ -93,7 +95,7 @@ describe('ScannerStatusPage', () => {
     expect(scanLinkedInNow).toHaveBeenCalledOnce();
   });
 
-  it('disables the LinkedIn action after an access challenge', async () => {
+  it('keeps the LinkedIn action available during an access-challenge cooldown', async () => {
     vi.mocked(getScannerStatus).mockResolvedValue({
       isScanning: false,
       nextScanTime: null,
@@ -102,6 +104,7 @@ describe('ScannerStatusPage', () => {
       linkedinCronRule: 'Every 120 minutes',
       linkedinEnabled: true,
       linkedinAccessBlocked: true,
+      linkedinAccessBlockedUntil: '2026-11-03T21:00:00.000Z',
       isLinkedinScanning: false,
       isOtherScanning: false,
       lastLinkedinScanTime: null,
@@ -111,6 +114,7 @@ describe('ScannerStatusPage', () => {
     });
     render(<ScannerStatusPage />);
 
-    expect(await screen.findByRole('button', { name: 'Scan LinkedIn now' })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: 'Scan LinkedIn now' })).toBeEnabled();
+    expect(screen.getByText(/Access challenge, paused/)).toBeInTheDocument();
   });
 });

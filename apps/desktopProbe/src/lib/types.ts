@@ -80,6 +80,8 @@ export type ScannerStatus = {
   linkedinCronRule: string | undefined;
   linkedinEnabled: boolean;
   linkedinAccessBlocked: boolean;
+  /** ISO time when the LinkedIn cooldown ends, null when not paused. */
+  linkedinAccessBlockedUntil: string | null;
   isLinkedinScanning: boolean;
   isOtherScanning: boolean;
   lastLinkedinScanTime: string | null;

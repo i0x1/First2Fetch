@@ -114,7 +114,13 @@ function getNextCronTime(cronExpression: string): Date | null {
 
 import { AVAILABLE_CRON_RULES, JobScannerSettings, ScannerJobStatus, ScannerStatus } from '../lib/types';
 import { chunk, promiseAllSequence, waitRandomBetween } from './helpers';
-import { HtmlDownloader, isLinkedInAccessBlocked, isLinkedInUrl } from './htmlDownloader';
+import {
+  HtmlDownloader,
+  clearLinkedInAccessBlock,
+  getLinkedInAccessBlockedUntil,
+  isLinkedInAccessBlocked,
+  isLinkedInUrl,
+} from './htmlDownloader';
 import { ILogger } from './logger';
 import { F2aSupabaseApi } from './supabaseApi';
 
@@ -258,6 +264,7 @@ export class JobScanner {
       isScanning: this.isScanning(),
       linkedinEnabled: !!this._settings.linkedinScanIntervalMinutes,
       linkedinAccessBlocked: isLinkedInAccessBlocked(),
+      linkedinAccessBlockedUntil: getLinkedInAccessBlockedUntil()?.toISOString() ?? null,
       isLinkedinScanning: this._activeLinkedinScans > 0,
       isOtherScanning: this._activeOtherScans > 0,
       lastLinkedinScanTime: this._lastLinkedinScanAt?.toISOString() ?? null,
@@ -293,7 +300,10 @@ export class JobScanner {
       return;
     }
     if (linkedinOnly && isLinkedInAccessBlocked()) {
-      this._logToUi('LinkedIn scan skipped because an access challenge was detected');
+      const until = getLinkedInAccessBlockedUntil();
+      this._logToUi(
+        `LinkedIn scan skipped because of a recent access challenge${until ? `; retrying after ${until.toLocaleTimeString()}` : ''}`,
+      );
       return;
     }
 
@@ -329,7 +339,9 @@ export class JobScanner {
   /**
    * Scan only LinkedIn links for the current user.
    */
-  async scanLinkedInLinks() {
+  async scanLinkedInLinks({ force = false }: { force?: boolean } = {}) {
+    // a user-requested scan skips the remaining cooldown after an access challenge
+    if (force) clearLinkedInAccessBlock();
     return this.scanAllLinks({ linkedinOnly: true });
   }
 
