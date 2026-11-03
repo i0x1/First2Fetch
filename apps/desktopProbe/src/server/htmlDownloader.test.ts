@@ -2,7 +2,15 @@ import { expect, it, vi } from 'vitest';
 
 vi.mock('electron', () => ({ BrowserWindow: class {} }));
 
-import { HtmlDownloader, isLinkedInAccessBlocked, isLinkedInUrl } from './htmlDownloader';
+import {
+  HtmlDownloader,
+  clearLinkedInAccessBlock,
+  getLinkedInAccessBlockedUntil,
+  isAccessChallengeTitle,
+  isGlassdoorUrl,
+  isLinkedInAccessBlocked,
+  isLinkedInUrl,
+} from './htmlDownloader';
 
 it('checks LinkedIn Off again when a queued page gets a browser worker', async () => {
   const loadURL = vi.fn(async () => {});
@@ -81,6 +89,11 @@ it('stops LinkedIn after an access challenge and still loads another site', asyn
     callback: async () => 'LinkedIn loaded',
   })).rejects.toThrow('rate limit exceeded');
   expect(isLinkedInAccessBlocked()).toBe(true);
+  // the pause is a cooldown, not permanent until restart
+  const blockedUntil = getLinkedInAccessBlockedUntil()!.getTime();
+  expect(blockedUntil - Date.now()).toBeGreaterThan(55 * 60 * 1000);
+  expect(blockedUntil - Date.now()).toBeLessThanOrEqual(60 * 60 * 1000);
+  expect(isLinkedInAccessBlocked(blockedUntil + 1)).toBe(false);
 
   await expect(downloader.loadUrl({
     url: 'https://jobs.example.com/search',
@@ -121,4 +134,91 @@ it('releases the browser worker before parsing the captured HTML', async () => {
       expect(html).toBe('<html>Job</html>');
     },
   });
+});
+
+
+it('recognises bot-protection challenge pages by title', () => {
+  expect(isAccessChallengeTitle('Security Check - Indeed.com')).toBe(true);
+  expect(isAccessChallengeTitle('Just a moment...')).toBe(true);
+  expect(isAccessChallengeTitle('Attention Required! | Cloudflare')).toBe(true);
+  expect(isAccessChallengeTitle('14,212 data analyst Jobs in United States | Glassdoor')).toBe(false);
+  expect(isAccessChallengeTitle(undefined)).toBe(false);
+});
+
+it('loads more Glassdoor results and treats an Indeed challenge as a rate limit', async () => {
+  expect(isGlassdoorUrl('https://www.glassdoor.com/Job/x.htm')).toBe(true);
+  expect(isGlassdoorUrl('https://notglassdoor.com/')).toBe(false);
+
+  const scripts: string[] = [];
+  const window = {
+    loadURL: vi.fn(async () => {}),
+    webContents: {
+      once: vi.fn(),
+      executeJavaScript: vi.fn(async (script: string) => {
+        scripts.push(script);
+        if (script === 'document.title') return 'Jobs';
+        if (script.includes('show more jobs')) return 2;
+        return '<html></html>';
+      }),
+      getURL: () => 'https://www.glassdoor.com/Job/x.htm',
+    },
+  };
+  const downloader = new HtmlDownloader({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
+    numInstances: 1,
+    incognitoMode: false,
+  });
+  (downloader as never as { _pool: unknown })._pool = {
+    useBrowserWindow: async (use: (w: unknown) => Promise<unknown>) => use(window),
+  };
+  (downloader as never as { _isRunning: boolean })._isRunning = true;
+
+  await downloader.loadUrl({ url: 'https://www.glassdoor.com/Job/x.htm', scrollTimes: 0, callback: async () => 'ok' });
+  expect(scripts.some((s) => s.includes('show more jobs'))).toBe(true);
+
+  (window.webContents.executeJavaScript as ReturnType<typeof vi.fn>).mockImplementation(async (script: string) =>
+    script === 'document.title' ? 'Security Check - Indeed.com' : '<html></html>',
+  );
+  await expect(
+    downloader.loadUrl({ url: 'https://www.indeed.com/jobs?q=x', scrollTimes: 0, callback: async () => 'ok' }),
+  ).rejects.toThrow('rate limit exceeded');
+});
+
+it('lets a manual retry lift the LinkedIn cooldown and backs off on repeat challenges', async () => {
+  clearLinkedInAccessBlock();
+  let title = 'Just a moment';
+  const window = {
+    loadURL: vi.fn(async () => {}),
+    webContents: {
+      once: vi.fn(),
+      executeJavaScript: vi.fn(async (script: string) => (script === 'document.title' ? title : '<html></html>')),
+      getURL: () => 'https://www.linkedin.com/jobs/search/',
+    },
+  };
+  const downloader = new HtmlDownloader({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
+    numInstances: 1,
+    incognitoMode: false,
+  });
+  (downloader as never as { _pool: unknown })._pool = {
+    useBrowserWindow: async (useWindow: (window: unknown) => Promise<unknown>) => useWindow(window),
+  };
+  (downloader as never as { _isRunning: boolean })._isRunning = true;
+  downloader.setLinkedInEnabled(true);
+  const load = () => downloader.loadUrl({ url: 'https://www.linkedin.com/jobs/search/', scrollTimes: 0, callback: async () => 'ok' });
+
+  // the earlier test left one strike; a second challenge doubles the cooldown
+  await expect(load()).rejects.toThrow('rate limit exceeded');
+  expect(getLinkedInAccessBlockedUntil()!.getTime() - Date.now()).toBeGreaterThan(115 * 60 * 1000);
+  await expect(load()).rejects.toThrow('LinkedIn access challenge');
+
+  clearLinkedInAccessBlock();
+  title = 'Jobs';
+  await expect(load()).resolves.toBe('ok');
+
+  // a success resets the backoff to the first step
+  title = 'Just a moment';
+  await expect(load()).rejects.toThrow('rate limit exceeded');
+  expect(getLinkedInAccessBlockedUntil()!.getTime() - Date.now()).toBeLessThanOrEqual(60 * 60 * 1000);
+  clearLinkedInAccessBlock();
 });

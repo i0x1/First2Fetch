@@ -8,7 +8,24 @@ import { ILogger } from './logger';
 import { WorkerQueue } from './workerQueue';
 
 const KNOWN_AUTHWALLS = ['/authwall', '/login', '/checkpoint/'];
-let linkedInAccessBlocked = false;
+// A LinkedIn access challenge pauses LinkedIn scans for a cooldown instead of
+// until the app restarts. Repeated challenges back off: 1h, 2h, 4h, capped at 8h.
+const LINKEDIN_BLOCK_BASE_MS = 60 * 60 * 1000;
+const LINKEDIN_BLOCK_MAX_MS = 8 * 60 * 60 * 1000;
+let linkedInBlockedUntil = 0;
+let linkedInBlockStrikes = 0;
+
+function markLinkedInAccessBlocked() {
+  // concurrent LinkedIn pages can hit the same challenge; count it once
+  if (isLinkedInAccessBlocked()) return;
+  linkedInBlockStrikes++;
+  const cooldownMs = Math.min(LINKEDIN_BLOCK_BASE_MS * 2 ** (linkedInBlockStrikes - 1), LINKEDIN_BLOCK_MAX_MS);
+  linkedInBlockedUntil = Date.now() + cooldownMs;
+}
+
+function markLinkedInAccessOk() {
+  linkedInBlockStrikes = 0;
+}
 
 export function isLinkedInUrl(url: string): boolean {
   try {
@@ -19,9 +36,82 @@ export function isLinkedInUrl(url: string): boolean {
   }
 }
 
-export function isLinkedInAccessBlocked(): boolean {
-  return linkedInAccessBlocked;
+export function isLinkedInAccessBlocked(now = Date.now()): boolean {
+  return now < linkedInBlockedUntil;
 }
+
+/** When the current LinkedIn cooldown ends, or null when LinkedIn is not paused. */
+export function getLinkedInAccessBlockedUntil(): Date | null {
+  return isLinkedInAccessBlocked() ? new Date(linkedInBlockedUntil) : null;
+}
+
+/** Lift the cooldown for a user-requested scan. The backoff level is kept until a scan succeeds. */
+export function clearLinkedInAccessBlock() {
+  linkedInBlockedUntil = 0;
+}
+
+const CHALLENGE_TITLE_PATTERNS = [
+  'just a moment',
+  'security check',
+  'attention required',
+  'access denied',
+  'verify you are human',
+  'are you a robot',
+  'captcha',
+];
+
+/**
+ * Bot-protection interstitials (Cloudflare and similar) return a page with no job list.
+ * Detect them by title so they are reported as an access challenge instead of a parser failure.
+ */
+export function isAccessChallengeTitle(title: string | undefined | null): boolean {
+  const normalized = title?.toLowerCase().trim();
+  if (!normalized) return false;
+  return CHALLENGE_TITLE_PATTERNS.some((pattern) => normalized.startsWith(pattern) || normalized.includes(pattern));
+}
+
+export function isGlassdoorUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === 'glassdoor.com' || host.endsWith('.glassdoor.com');
+  } catch {
+    return false;
+  }
+}
+
+// Glassdoor renders 30 cards per page and loads 30 more on each "Show more jobs" click.
+const GLASSDOOR_MAX_LOAD_MORE_CLICKS = 5;
+
+function getGlassdoorLoadMoreScript() {
+  return `
+    (async () => {
+      const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+      const countCards = () => document.querySelectorAll('[data-test="jobListing"]').length;
+      let clicks = 0;
+      for (let i = 0; i < ${GLASSDOOR_MAX_LOAD_MORE_CLICKS}; i++) {
+        const button = Array.from(document.querySelectorAll('button'))
+          .find((b) => /^show more jobs$/i.test((b.innerText || '').trim()));
+        if (!button) break;
+        const before = countCards();
+        button.scrollIntoView({ block: 'center' });
+        button.click();
+        // wait for new cards; stop if nothing arrives (end of results or a login wall)
+        let waited = 0;
+        while (countCards() <= before && waited < 8000) {
+          await sleep(500);
+          waited += 500;
+        }
+        if (countCards() <= before) break;
+        clicks++;
+        await sleep(800 + Math.floor(Math.random() * 700));
+      }
+      return clicks;
+    })()
+  `;
+}
+
+// compared against Error.message: getExceptionMessage returns the stack trace, which never matches
+const NON_RETRYABLE_LOAD_ERRORS = ['rate limit exceeded', 'authwall', 'LinkedIn scanning is off'];
 
 function isAuthwallUrl(url: string): boolean {
   try {
@@ -97,7 +187,7 @@ export class HtmlDownloader {
   private _checkLinkedInAccess(url: string) {
     if (!isLinkedInUrl(url)) return;
     if (!this._linkedInEnabled) throw new Error('LinkedIn scanning is off');
-    if (linkedInAccessBlocked) throw new Error('LinkedIn access challenge; restart after resolving it');
+    if (isLinkedInAccessBlocked()) throw new Error('LinkedIn access challenge; scans paused until the cooldown ends');
   }
 
   /**
@@ -190,17 +280,17 @@ export class HtmlDownloader {
         if (
           statusCode === 429 ||
           (isLinkedIn && (statusCode === 403 || statusCode === 999)) ||
-          title?.toLowerCase().startsWith('just a moment')
+          isAccessChallengeTitle(title)
         ) {
           this._logger.warn('page access challenge detected', { ...getUrlSummary(url), statusCode });
-          if (isLinkedIn) linkedInAccessBlocked = true;
+          if (isLinkedIn) markLinkedInAccessBlocked();
           throw new Error('rate limit exceeded');
         }
 
         const loadedUrl = window.webContents.getURL();
         if (isLinkedIn && isAuthwallUrl(loadedUrl)) {
           this._logger.warn('page load authwall detected', getUrlSummary(loadedUrl));
-          linkedInAccessBlocked = true;
+          markLinkedInAccessBlocked();
           throw new Error('authwall');
         }
 
@@ -251,7 +341,7 @@ export class HtmlDownloader {
           const finalUrl = window.webContents.getURL();
           if (isAuthwallUrl(finalUrl)) {
             this._logger.warn('page load authwall detected', getUrlSummary(finalUrl));
-            if (isLinkedIn) linkedInAccessBlocked = true;
+            if (isLinkedIn) markLinkedInAccessBlocked();
             throw new Error('authwall');
           }
         }
@@ -262,10 +352,22 @@ export class HtmlDownloader {
         maxDelay: 10_000,
         retry: (error) => {
           // Access challenges require user action. Repeating the request adds load.
-          return this._isRunning && (!isLinkedIn || !linkedInAccessBlocked) && !['rate limit exceeded', 'authwall', 'LinkedIn scanning is off'].includes(getExceptionMessage(error));
+          return this._isRunning && (!isLinkedIn || !isLinkedInAccessBlocked()) && !NON_RETRYABLE_LOAD_ERRORS.includes(error instanceof Error ? error.message : String(error));
         },
       },
     );
+
+    if (isLinkedIn) markLinkedInAccessOk();
+
+    if (isGlassdoorUrl(url)) {
+      // best effort: a failure here must not discard the cards that already loaded
+      try {
+        const clicks: number = await window.webContents.executeJavaScript(getGlassdoorLoadMoreScript());
+        this._logger.debug('glassdoor load more completed', { ...getUrlSummary(url), clicks });
+      } catch (error) {
+        this._logger.warn(`glassdoor load more failed: ${getExceptionMessage(error)}`);
+      }
+    }
 
     this._logger.debug('page load completed', getUrlSummary(url));
   }

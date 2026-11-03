@@ -217,7 +217,7 @@ export function initRendererIpcApi({
 
   ipcMain.handle('scan-linkedin-now', async (_) => _apiCall(async () => {
     if (!jobScanner.getSettings().linkedinScanIntervalMinutes) throw new Error('LinkedIn scanning is off');
-    void jobScanner.scanLinkedInLinks().catch((error) => {
+    void jobScanner.scanLinkedInLinks({ force: true }).catch((error) => {
       logger.error('manual LinkedIn scan failed', { error: getExceptionMessage(error) });
     });
   }));
