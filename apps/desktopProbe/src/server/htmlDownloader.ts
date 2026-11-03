@@ -23,6 +23,69 @@ export function isLinkedInAccessBlocked(): boolean {
   return linkedInAccessBlocked;
 }
 
+const CHALLENGE_TITLE_PATTERNS = [
+  'just a moment',
+  'security check',
+  'attention required',
+  'access denied',
+  'verify you are human',
+  'are you a robot',
+  'captcha',
+];
+
+/**
+ * Bot-protection interstitials (Cloudflare and similar) return a page with no job list.
+ * Detect them by title so they are reported as an access challenge instead of a parser failure.
+ */
+export function isAccessChallengeTitle(title: string | undefined | null): boolean {
+  const normalized = title?.toLowerCase().trim();
+  if (!normalized) return false;
+  return CHALLENGE_TITLE_PATTERNS.some((pattern) => normalized.startsWith(pattern) || normalized.includes(pattern));
+}
+
+export function isGlassdoorUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === 'glassdoor.com' || host.endsWith('.glassdoor.com');
+  } catch {
+    return false;
+  }
+}
+
+// Glassdoor renders 30 cards per page and loads 30 more on each "Show more jobs" click.
+const GLASSDOOR_MAX_LOAD_MORE_CLICKS = 5;
+
+function getGlassdoorLoadMoreScript() {
+  return `
+    (async () => {
+      const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+      const countCards = () => document.querySelectorAll('[data-test="jobListing"]').length;
+      let clicks = 0;
+      for (let i = 0; i < ${GLASSDOOR_MAX_LOAD_MORE_CLICKS}; i++) {
+        const button = Array.from(document.querySelectorAll('button'))
+          .find((b) => /^show more jobs$/i.test((b.innerText || '').trim()));
+        if (!button) break;
+        const before = countCards();
+        button.scrollIntoView({ block: 'center' });
+        button.click();
+        // wait for new cards; stop if nothing arrives (end of results or a login wall)
+        let waited = 0;
+        while (countCards() <= before && waited < 8000) {
+          await sleep(500);
+          waited += 500;
+        }
+        if (countCards() <= before) break;
+        clicks++;
+        await sleep(800 + Math.floor(Math.random() * 700));
+      }
+      return clicks;
+    })()
+  `;
+}
+
+// compared against Error.message: getExceptionMessage returns the stack trace, which never matches
+const NON_RETRYABLE_LOAD_ERRORS = ['rate limit exceeded', 'authwall', 'LinkedIn scanning is off'];
+
 function isAuthwallUrl(url: string): boolean {
   try {
     const path = new URL(url).pathname.toLowerCase();
@@ -190,7 +253,7 @@ export class HtmlDownloader {
         if (
           statusCode === 429 ||
           (isLinkedIn && (statusCode === 403 || statusCode === 999)) ||
-          title?.toLowerCase().startsWith('just a moment')
+          isAccessChallengeTitle(title)
         ) {
           this._logger.warn('page access challenge detected', { ...getUrlSummary(url), statusCode });
           if (isLinkedIn) linkedInAccessBlocked = true;
@@ -262,10 +325,20 @@ export class HtmlDownloader {
         maxDelay: 10_000,
         retry: (error) => {
           // Access challenges require user action. Repeating the request adds load.
-          return this._isRunning && (!isLinkedIn || !linkedInAccessBlocked) && !['rate limit exceeded', 'authwall', 'LinkedIn scanning is off'].includes(getExceptionMessage(error));
+          return this._isRunning && (!isLinkedIn || !linkedInAccessBlocked) && !NON_RETRYABLE_LOAD_ERRORS.includes(error instanceof Error ? error.message : String(error));
         },
       },
     );
+
+    if (isGlassdoorUrl(url)) {
+      // best effort: a failure here must not discard the cards that already loaded
+      try {
+        const clicks: number = await window.webContents.executeJavaScript(getGlassdoorLoadMoreScript());
+        this._logger.debug('glassdoor load more completed', { ...getUrlSummary(url), clicks });
+      } catch (error) {
+        this._logger.warn(`glassdoor load more failed: ${getExceptionMessage(error)}`);
+      }
+    }
 
     this._logger.debug('page load completed', getUrlSummary(url));
   }

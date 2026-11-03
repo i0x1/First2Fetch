@@ -432,7 +432,7 @@ export function parseGlassDoorJobs({ siteId, html }: { siteId: number; html: str
   if (!document) throw new Error('Could not parse html');
 
   // check if the list is empty first
-  const noResultsNode = document.querySelector('.ErrorPage_errorPageTitle__XtznY');
+  const noResultsNode = document.querySelector('[class*="ErrorPage_errorPageTitle"]');
   if (noResultsNode) {
     return {
       jobs: [],
@@ -441,7 +441,7 @@ export function parseGlassDoorJobs({ siteId, html }: { siteId: number; html: str
     };
   }
 
-  const jobsList = document.querySelector('.JobsList_jobsList__lqjTr');
+  const jobsList = document.querySelector('[class*="JobsList_jobsList"]');
   // make sure we are not hitting the similar jobs section
   if (jobsList && jobsList.parentElement?.parentElement?.getAttribute('data-test') === 'related-jobs-list') {
     return {
@@ -471,13 +471,17 @@ export function parseGlassDoorJobs({ siteId, html }: { siteId: number; html: str
     const title = el.querySelector(`#job-title-${externalId}`)?.textContent?.trim() || '';
     if (!title) return null;
 
-    const companyName = el.querySelector('.jobCard .EmployerProfile_profileContainer__63w3R')?.textContent?.trim();
+    // Glassdoor ships hashed CSS-module class names that change between deploys, so
+    // anchor on the stable id and match the generated classes by prefix only.
+    const employerEl = el.querySelector(`#job-employer-${externalId}`);
+    const companyName = (
+      employerEl?.querySelector('[class*="EmployerName"]')?.textContent ||
+      employerEl?.querySelector('img')?.getAttribute('alt')?.replace(/\s+logo$/i, '') ||
+      ''
+    ).trim();
     if (!companyName) return null;
 
-    const companyLogo = el
-      .querySelector('.jobCard .EmployerLogo_logoContainer__7hw16 > img')
-      ?.getAttribute('src')
-      ?.trim();
+    const companyLogo = employerEl?.querySelector('img')?.getAttribute('src')?.trim();
 
     const location = el.querySelector(`#job-location-${externalId}`)?.textContent?.trim();
 
@@ -529,7 +533,9 @@ export function parseIndeedJobs({ siteId, html }: { siteId: number; html: string
   }
 
   const jobsList =
-    document.querySelector('#mosaic-jobResults ul') || document.querySelector('#mosaic-provider-jobcards ul');
+    document.querySelector('#mosaic-jobResults ul') ||
+    document.querySelector('#mosaic-provider-jobcards ul') ||
+    document.querySelector('ul.jobsearch-ResultsList');
   if (!jobsList) {
     return {
       jobs: [],
@@ -541,8 +547,8 @@ export function parseIndeedJobs({ siteId, html }: { siteId: number; html: string
   const jobElements = Array.from(jobsList.querySelectorAll(':scope > li')) as Element[];
 
   const jobs = jobElements.map((el): ParsedJob | null => {
-    const jobLinkEl = el.querySelector('.jobTitle > a');
-    const externalId = jobLinkEl?.getAttribute('id')?.trim();
+    const jobLinkEl = el.querySelector('.jobTitle > a') ?? el.querySelector('h2 a[data-jk], a.jcs-JobTitle');
+    const externalId = (jobLinkEl?.getAttribute('id') || jobLinkEl?.getAttribute('data-jk'))?.trim();
     if (!externalId) return null;
 
     const externalHref = jobLinkEl?.getAttribute('href')?.trim();
@@ -554,16 +560,16 @@ export function parseIndeedJobs({ siteId, html }: { siteId: number; html: string
       externalUrl = `https://www.indeed.com/viewjob?jk=${jk}`;
     }
 
-    const title = jobLinkEl?.querySelector('span')?.textContent?.trim() || '';
+    const title = (jobLinkEl?.querySelector('span')?.textContent || jobLinkEl?.textContent)?.trim() || '';
     if (!title) return null;
 
-    const companyEl = el.querySelector('.company_location');
+    // data-testid attributes are stable, unlike the wrapper classes around them
     const companyName =
-      companyEl?.querySelector(':scope > div span[data-testid=company-name]')?.textContent?.trim() ||
+      el.querySelector('[data-testid=company-name]')?.textContent?.trim() ||
       document.querySelector('h1[data-testid=PageHeader-title-jobs]')?.textContent?.trim();
     if (!companyName) return null;
 
-    let location = companyEl?.querySelector(':scope > div > div[data-testid=text-location]')?.textContent?.trim();
+    let location = el.querySelector('[data-testid=text-location]')?.textContent?.trim();
 
     let jobType: JobType = 'onsite';
     if (location?.toLowerCase().includes('remote')) jobType = 'remote';
@@ -575,8 +581,7 @@ export function parseIndeedJobs({ siteId, html }: { siteId: number; html: string
       .replace(/\sin\s/i, '')
       .trim();
 
-    let salary = el
-      .querySelector('.salary-snippet-container')
+    let salary = (el.querySelector('.salary-snippet-container') ?? el.querySelector('[data-testid*=salary]'))
       ?.textContent?.trim()
       ?.replace(/a year/, '')
       ?.trim();
@@ -587,18 +592,17 @@ export function parseIndeedJobs({ siteId, html }: { siteId: number; html: string
         ?.replace(/a year/, '')
         ?.trim()
         ?.split('-')
-        .map(
-          (s) =>
-            `$${Math.round(
-              parseInt(
-                s
-                  .trim()
-                  .slice(1)
-                  .replace(/\.[0-9]+/i, '')
-                  .replace(/,/i, ''),
-              ) / 1000,
-            )}k`,
-        )
+        .map((s) => {
+          const amount = parseInt(
+            s
+              .trim()
+              .slice(1)
+              .replace(/\.[0-9]+/i, '')
+              .replace(/,/g, ''),
+          );
+          return Number.isNaN(amount) ? '' : `$${Math.round(amount / 1000)}k`;
+        })
+        .filter(Boolean)
         .join(' - ');
     }
 
@@ -993,7 +997,7 @@ export function parseNaukriJobs({ siteId, html }: { siteId: number; html: string
   const document = new DOMParser().parseFromString(html, 'text/html');
   if (!document) throw new Error('Could not parse html');
 
-  const noResultsNode = document.querySelector('.styles_no-result-container__miYYz');
+  const noResultsNode = document.querySelector('[class*="no-result-container"]');
   if (noResultsNode) {
     return {
       jobs: [],

@@ -71,18 +71,25 @@ Deno.serve(async (req) => {
       const isLastRetry = htmls.every((html) => html.retryCount === html.maxRetries);
       const parsedJobs = await Promise.all(
         htmls.map(async (html) => {
-          const { jobs, currentUrlParseFailed } = await parseHtmlToJobsList({
-            html,
-            allJobSites,
-            isLastRetry,
-            links,
-            context,
-          });
-          if (currentUrlParseFailed) {
-            parseFailed = true;
-          }
+          // one site's parser crashing must not discard the jobs found for the other sites in this batch
+          try {
+            const { jobs, currentUrlParseFailed } = await parseHtmlToJobsList({
+              html,
+              allJobSites,
+              isLastRetry,
+              links,
+              context,
+            });
+            if (currentUrlParseFailed) {
+              parseFailed = true;
+            }
 
-          return jobs;
+            return jobs;
+          } catch (error) {
+            logger.error('scan url crashed', { linkId: html.linkId, error: getExceptionMessage(error) });
+            parseFailed = true;
+            return [];
+          }
         }),
       ).then((r) => r.flat());
 

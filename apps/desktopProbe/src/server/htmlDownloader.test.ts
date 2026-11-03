@@ -2,7 +2,7 @@ import { expect, it, vi } from 'vitest';
 
 vi.mock('electron', () => ({ BrowserWindow: class {} }));
 
-import { HtmlDownloader, isLinkedInAccessBlocked, isLinkedInUrl } from './htmlDownloader';
+import { HtmlDownloader, isAccessChallengeTitle, isGlassdoorUrl, isLinkedInAccessBlocked, isLinkedInUrl } from './htmlDownloader';
 
 it('checks LinkedIn Off again when a queued page gets a browser worker', async () => {
   const loadURL = vi.fn(async () => {});
@@ -121,4 +121,52 @@ it('releases the browser worker before parsing the captured HTML', async () => {
       expect(html).toBe('<html>Job</html>');
     },
   });
+});
+
+
+it('recognises bot-protection challenge pages by title', () => {
+  expect(isAccessChallengeTitle('Security Check - Indeed.com')).toBe(true);
+  expect(isAccessChallengeTitle('Just a moment...')).toBe(true);
+  expect(isAccessChallengeTitle('Attention Required! | Cloudflare')).toBe(true);
+  expect(isAccessChallengeTitle('14,212 data analyst Jobs in United States | Glassdoor')).toBe(false);
+  expect(isAccessChallengeTitle(undefined)).toBe(false);
+});
+
+it('loads more Glassdoor results and treats an Indeed challenge as a rate limit', async () => {
+  expect(isGlassdoorUrl('https://www.glassdoor.com/Job/x.htm')).toBe(true);
+  expect(isGlassdoorUrl('https://notglassdoor.com/')).toBe(false);
+
+  const scripts: string[] = [];
+  const window = {
+    loadURL: vi.fn(async () => {}),
+    webContents: {
+      once: vi.fn(),
+      executeJavaScript: vi.fn(async (script: string) => {
+        scripts.push(script);
+        if (script === 'document.title') return 'Jobs';
+        if (script.includes('show more jobs')) return 2;
+        return '<html></html>';
+      }),
+      getURL: () => 'https://www.glassdoor.com/Job/x.htm',
+    },
+  };
+  const downloader = new HtmlDownloader({
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never,
+    numInstances: 1,
+    incognitoMode: false,
+  });
+  (downloader as never as { _pool: unknown })._pool = {
+    useBrowserWindow: async (use: (w: unknown) => Promise<unknown>) => use(window),
+  };
+  (downloader as never as { _isRunning: boolean })._isRunning = true;
+
+  await downloader.loadUrl({ url: 'https://www.glassdoor.com/Job/x.htm', scrollTimes: 0, callback: async () => 'ok' });
+  expect(scripts.some((s) => s.includes('show more jobs'))).toBe(true);
+
+  (window.webContents.executeJavaScript as ReturnType<typeof vi.fn>).mockImplementation(async (script: string) =>
+    script === 'document.title' ? 'Security Check - Indeed.com' : '<html></html>',
+  );
+  await expect(
+    downloader.loadUrl({ url: 'https://www.indeed.com/jobs?q=x', scrollTimes: 0, callback: async () => 'ok' }),
+  ).rejects.toThrow('rate limit exceeded');
 });
