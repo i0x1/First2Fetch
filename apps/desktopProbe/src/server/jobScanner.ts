@@ -137,6 +137,18 @@ import { F2aSupabaseApi } from './supabaseApi';
 // would be skipped every other run.
 const CUSTOM_BOARD_DUE_LEEWAY_MS = 5 * 60_000;
 
+// A description page that fails to load (a bot check, for example) leaves its job pending.
+// Without a wait, the once-a-minute backlog drain would reload that page every minute,
+// which keeps the site's bot check active. Wait 15 min, then double, capped at 6 h.
+const DESCRIPTION_RETRY_BASE_MS = 15 * 60_000;
+const DESCRIPTION_RETRY_MAX_MS = 6 * 60 * 60_000;
+
+/** How long background scans wait before retrying a description after this many failures in a row. */
+export function getDescriptionRetryDelayMs(failures: number): number {
+  if (failures <= 0) return 0;
+  return Math.min(DESCRIPTION_RETRY_BASE_MS * 2 ** (failures - 1), DESCRIPTION_RETRY_MAX_MS);
+}
+
 /** Effective custom board interval, falling back to the 24h default for missing or invalid values. */
 export function getCustomBoardScanIntervalMinutes(settings: Pick<JobScannerSettings, 'customBoardScanIntervalMinutes'>): number {
   const value = settings.customBoardScanIntervalMinutes;
@@ -197,6 +209,8 @@ export class JobScanner {
   private _backlogTimer: NodeJS.Timeout | undefined;
   private _backlogRunning = false;
   private _jobScanPromises = new Map<number, Promise<Job>>();
+  // Failed description loads per job, used to space out background retries.
+  private _descriptionRetries = new Map<number, { failures: number; nextAttemptAt: number }>();
   private _nextLinkedinScanAt: Date | undefined;
   private _prowerSaveBlockerId: number | undefined;
   private _notificationsMap: Map<string, Notification> = new Map();
@@ -444,8 +458,11 @@ export class JobScanner {
     }
     const sites = await this._supabaseApi.listSites();
     const linkedinIds = new Set(sites.filter((site) => site.provider === 'linkedin').map((site) => site.id));
-    const sourceJobs = pending.filter((job) =>
-      (linkedinIds.has(job.siteId) || isLinkedInUrl(job.externalUrl)) === (source === 'linkedin'),
+    const now = Date.now();
+    const sourceJobs = pending.filter(
+      (job) =>
+        (linkedinIds.has(job.siteId) || isLinkedInUrl(job.externalUrl)) === (source === 'linkedin') &&
+        (this._descriptionRetries.get(job.id)?.nextAttemptAt ?? 0) <= now,
     );
     // Split capacity between fresh listings and the oldest backlog.
     const recentCount = Math.ceil(batchSize / 2);
@@ -655,7 +672,7 @@ export class JobScanner {
               });
               this._logToUi(`Fetching description for: ${job.title}`);
 
-              return await htmlDownloader.loadUrl({
+              const scannedJob = await htmlDownloader.loadUrl({
                 url: job.externalUrl,
                 scrollTimes: 1,
                 priority,
@@ -696,13 +713,21 @@ export class JobScanner {
                   return updatedJob;
                 },
               });
+              this._descriptionRetries.delete(job.id);
+              return scannedJob;
             } catch (error) {
-              if (this._isRunning)
+              if (this._isRunning) {
+                const failures = (this._descriptionRetries.get(job.id)?.failures ?? 0) + 1;
+                const retryDelayMs = getDescriptionRetryDelayMs(failures);
+                this._descriptionRetries.set(job.id, { failures, nextAttemptAt: Date.now() + retryDelayMs });
                 this._logger.error('job description scan failed', {
                   jobId: job.id,
                   title: job.title,
                   error: getExceptionMessage(error),
+                  failures,
+                  retryInMinutes: Math.round(retryDelayMs / 60_000),
                 });
+              }
               this._logToUi(`Error processing job ${job.title}: ${getExceptionMessage(error)}`);
 
               // intetionally return initial job if there is an error
