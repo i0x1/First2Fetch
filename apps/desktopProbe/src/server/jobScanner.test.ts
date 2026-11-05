@@ -16,7 +16,12 @@ vi.mock('./helpers', async (importOriginal) => ({
   waitRandomBetween: async () => {},
 }));
 
-import { JobScanner, getCustomBoardScanIntervalMinutes, isCustomBoardScanDue } from './jobScanner';
+import {
+  JobScanner,
+  getCustomBoardScanIntervalMinutes,
+  getDescriptionRetryDelayMs,
+  isCustomBoardScanDue,
+} from './jobScanner';
 
 const sites = [
   { id: 1, provider: 'linkedin', incognito_support: false },
@@ -146,6 +151,43 @@ it('reserves half of each drain batch for old pending jobs', async () => {
   expect(urls).toContain('https://jobs.example.com/0');
   expect(urls).toContain('https://jobs.example.com/59');
   expect(urls).not.toContain('https://jobs.example.com/30');
+});
+
+describe('description retry backoff', () => {
+  it('doubles the wait from 15 minutes and caps it at 6 hours', () => {
+    expect(getDescriptionRetryDelayMs(0)).toBe(0);
+    expect(getDescriptionRetryDelayMs(1)).toBe(15 * 60_000);
+    expect(getDescriptionRetryDelayMs(2)).toBe(30 * 60_000);
+    expect(getDescriptionRetryDelayMs(10)).toBe(6 * 60 * 60_000);
+  });
+
+  it('skips a failed description in the drain until its wait has passed', async () => {
+    const { scanner, loadUrl } = createScanner();
+    loadUrl.mockRejectedValueOnce(new Error('rate limit exceeded'));
+
+    await scanner.drainPendingDescriptions();
+    expect(loadUrl).toHaveBeenCalledTimes(1);
+
+    await scanner.drainPendingDescriptions();
+    expect(loadUrl).toHaveBeenCalledTimes(1);
+
+    vi.useFakeTimers({ now: Date.now() + 16 * 60_000, toFake: ['Date'] });
+    try {
+      await scanner.drainPendingDescriptions();
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(loadUrl).toHaveBeenCalledTimes(2);
+  });
+
+  it('still scans a backed-off description when the user opens it', async () => {
+    const { scanner, loadUrl } = createScanner();
+    loadUrl.mockRejectedValueOnce(new Error('rate limit exceeded'));
+    await scanner.drainPendingDescriptions();
+
+    await scanner.scanJobs([jobs[1] as never], undefined, 'high');
+    expect(loadUrl).toHaveBeenCalledTimes(2);
+  });
 });
 
 it('marks a clicked description as high priority', async () => {
