@@ -517,6 +517,17 @@ export function parseGlassDoorJobs({ siteId, html }: { siteId: number; html: str
 /**
  * Method used to parse a indeed job page.
  */
+/** Indeed's job key, from the card's data-jk or the jk query parameter of its link. */
+function getIndeedJobKey(dataJk: string | null | undefined, href: string): string | undefined {
+  const fromAttr = dataJk?.trim();
+  if (fromAttr) return fromAttr;
+  try {
+    return new URL(href, 'https://www.indeed.com').searchParams.get('jk')?.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function parseIndeedJobs({ siteId, html }: { siteId: number; html: string }): JobSiteParseResult {
   const document = new DOMParser().parseFromString(html, 'text/html');
   if (!document) throw new Error('Could not parse html');
@@ -554,11 +565,12 @@ export function parseIndeedJobs({ siteId, html }: { siteId: number; html: string
     const externalHref = jobLinkEl?.getAttribute('href')?.trim();
     if (!externalHref) return null;
 
-    let externalUrl = `https://www.indeed.com${externalHref}`;
-    if (externalHref === '#') {
-      const jk = jobLinkEl?.getAttribute('data-jk')?.trim();
-      externalUrl = `https://www.indeed.com/viewjob?jk=${jk}`;
-    }
+    // Card links go through Indeed's /rc/clk or sponsored /pagead/clk redirects, which trip
+    // its bot check more often than the job page itself. Save the plain job page instead.
+    const jk = getIndeedJobKey(jobLinkEl?.getAttribute('data-jk'), externalHref);
+    const externalUrl = jk
+      ? `https://www.indeed.com/viewjob?jk=${encodeURIComponent(jk)}`
+      : `https://www.indeed.com${externalHref}`;
 
     const title = (jobLinkEl?.querySelector('span')?.textContent || jobLinkEl?.textContent)?.trim() || '';
     if (!title) return null;

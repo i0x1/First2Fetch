@@ -21,6 +21,28 @@ Deno.test('parseIndeedJobs reads company and location from data-testid without w
   }
   if (first.salary !== '$80k - $100k') throw new Error(`Unexpected salary: ${first.salary}`);
   if (second.salary?.includes('NaN')) throw new Error(`Salary produced NaN: ${second.salary}`);
+  if (first.externalUrl !== 'https://www.indeed.com/viewjob?jk=abc') throw new Error(`Unexpected URL: ${first.externalUrl}`);
+  if (second.externalUrl !== 'https://www.indeed.com/viewjob?jk=def') throw new Error(`Unexpected URL: ${second.externalUrl}`);
+});
+
+Deno.test('parseIndeedJobs saves sponsored cards as the plain job page and keeps the job ID', () => {
+  const result = parseIndeedJobs({
+    siteId: 1,
+    html: `<div id="mosaic-provider-jobcards"><ul>
+      <li><h2 class="jobTitle"><a id="sj_9f8e" data-jk="xyz123" href="/pagead/clk?mo=r&ad=-6NYlbfk"><span>AI Engineer</span></a></h2>
+        <span data-testid="company-name">Gamma</span></li>
+      <li><h2 class="jobTitle"><a id="job_nokey" href="/company/acme/jobs/AI-Engineer-123"><span>AI Engineer</span></a></h2>
+        <span data-testid="company-name">Acme</span></li>
+    </ul></div>`,
+  });
+  const [sponsored, noKey] = result.jobs;
+  if (sponsored.externalId !== 'sj_9f8e') throw new Error(`Job ID changed: ${sponsored.externalId}`);
+  if (sponsored.externalUrl !== 'https://www.indeed.com/viewjob?jk=xyz123') {
+    throw new Error(`Unexpected sponsored URL: ${sponsored.externalUrl}`);
+  }
+  if (noKey.externalUrl !== 'https://www.indeed.com/company/acme/jobs/AI-Engineer-123') {
+    throw new Error(`Link without a job key should be kept: ${noKey.externalUrl}`);
+  }
 });
 
 Deno.test('parseNaukriJobs detects the no-results state regardless of the hashed class suffix', () => {
